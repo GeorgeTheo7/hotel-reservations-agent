@@ -42,6 +42,7 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | D20 | Code uses an injected clock, never `datetime.now()` | Deterministic tests and evaluations |
 | D21 | Test world = **season 2027**: rate/min-stay rows seeded for 2027; test `received_at` between Nov 2026 and Sep 2027; a date without a year resolves to the next future occurrence | The first season the agent would quote; reproducible evaluations |
 | D22 | Expired holds never block: availability queries treat `hold` with `expires_at < now` as free (filter, no write); approval flips them (D10); the periodic job only tidies | Read tools stay read-only; correct from week 3 |
+| D23 | Timestamps stored as `timestamptz` in **UTC**; the clock (D20) returns timezone-aware UTC; calendar logic (stay dates, < 48 h notice, check-in by 22:00, "next weekend", hold expiry shown to guests) uses hotel time **`Europe/Athens`** | One unambiguous storage format; guests and owner think in hotel local time |
 
 ## Domain data
 | Type | Rooms | Std/max | Extra bed | Notes |
@@ -69,6 +70,8 @@ Unmet requests: other type free → ≤ 2 alternatives cheapest first · all boo
 | `outbox` | draft, status `pending/sent (simulated)` |
 | `policy_chunks` | `policy_id`, text, embedding (`vector`), tsvector |
 | `audit_log` | append-only: run, step, event, input/output JSON, model, `prompt_version`, tokens, cost, latency, error, actor, at |
+
+Tables are created by migrations in the week they are first needed. Week 1: inventory tables + `bookings`, with `bookings.email_id` and `request_id` as nullable columns without foreign keys. **Week 3 adds the foreign keys** for `bookings.email_id` and `request_id` once their target tables exist.
 
 ## Tools
 | Tool | Reads/writes | Approval | Errors |
