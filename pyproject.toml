@@ -24,7 +24,20 @@ select = [
     "UP",  # pyupgrade (modern syntax)
     "SIM", # simplifications
     "RUF", # ruff-specific checks
+    "DTZ", # no naive datetimes (D23: everything timezone-aware)
+    "TID251", # banned APIs, see below
 ]
+
+# D20: only the injected clock may read the system time.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"datetime.datetime.now".msg = "Use an injected Clock (anemos.clock), see D20."
+"datetime.datetime.utcnow".msg = "Use an injected Clock (anemos.clock), see D20."
+"datetime.datetime.today".msg = "Use an injected Clock (anemos.clock), see D20."
+"datetime.date.today".msg = "Use an injected Clock (anemos.clock), see D20."
+"time.time".msg = "Use an injected Clock (anemos.clock), see D20."
+
+[tool.ruff.lint.per-file-ignores]
+"src/anemos/clock.py" = ["TID251"]  # the one place allowed to read the system time
 
 [tool.mypy]
 strict = true
