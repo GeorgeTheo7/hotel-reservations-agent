@@ -72,3 +72,23 @@ def open_rolled_back(test_db: str) -> Callable[[], AbstractContextManager[Conn]]
 def db(open_rolled_back: Callable[[], AbstractContextManager[Conn]]) -> Iterator[Conn]:
     with open_rolled_back() as conn:
         yield conn
+
+
+type ExpectViolation = Callable[[type[psycopg.Error], str], AbstractContextManager[None]]
+
+
+@pytest.fixture
+def expect_violation(db: Conn) -> ExpectViolation:
+    """`with expect_violation(ExclusionViolation, "constraint_name"): db.execute(...)`
+
+    Runs the block in a SAVEPOINT, so the test's transaction stays usable afterwards,
+    and checks both the error class and the name of the constraint that fired.
+    """
+
+    @contextmanager
+    def check(error: type[psycopg.Error], constraint: str) -> Iterator[None]:
+        with pytest.raises(error) as caught, db.transaction():
+            yield
+        assert caught.value.diag.constraint_name == constraint
+
+    return check

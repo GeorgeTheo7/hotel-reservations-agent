@@ -12,6 +12,19 @@ pytestmark = pytest.mark.integration
 type Conn = psycopg.Connection[TupleRow]
 
 EXTENSIONS = "SELECT extname FROM pg_extension WHERE extname IN ('btree_gist', 'vector') ORDER BY 1"
+APP_TABLES = (
+    "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+    " AND tablename <> 'alembic_version' ORDER BY 1"
+)
+INVENTORY_TABLES = [
+    ("bookings",),
+    ("min_stay_rules",),
+    ("room_rates",),
+    ("room_types",),
+    ("rooms",),
+    ("season_periods",),
+    ("seasons",),
+]
 
 
 def test_test_db_is_at_head(db: Conn) -> None:
@@ -31,7 +44,9 @@ def test_upgrade_downgrade_upgrade_on_fresh_database(
     downgrade(conninfo)
     with connect(conninfo) as conn:
         assert conn.execute(EXTENSIONS).fetchall() == []
+        assert conn.execute(APP_TABLES).fetchall() == []
         assert conn.execute("SELECT count(*) FROM alembic_version").fetchone() == (0,)
     upgrade(conninfo)
     with connect(conninfo) as conn:
         assert conn.execute(EXTENSIONS).fetchall() == [("btree_gist",), ("vector",)]
+        assert conn.execute(APP_TABLES).fetchall() == INVENTORY_TABLES
