@@ -1,7 +1,7 @@
 """Integration test harness.
 
 - Once per test session: drop and recreate a throwaway database `<dev db>_test`,
-  then migrate it to head. The dev database is never touched.
+  migrate it to head and load the 2027 seed data. The dev database is never touched.
 - Per test: the `db` fixture is a connection inside an outer transaction that is
   always rolled back, so tests cannot leave data behind for each other.
 - Inside that transaction, `db.commit()` raises, and `with db.transaction():` becomes a
@@ -21,6 +21,7 @@ from psycopg.rows import TupleRow
 
 from anemos.db.connection import connect, database_url
 from anemos.db.migrate import upgrade
+from anemos.db.seed import seed
 
 type Conn = psycopg.Connection[TupleRow]
 
@@ -49,10 +50,12 @@ def make_test_database() -> Callable[[str], str]:
 
 @pytest.fixture(scope="session")
 def test_db() -> str:
-    """Conninfo of the session's test database, migrated to head. Left in place after the
-    run so a failure can be inspected; recreated at the start of the next run."""
+    """Conninfo of the session's test database, migrated to head and seeded (2027).
+    Left in place after the run so a failure can be inspected; recreated next run."""
     conninfo = recreate_database(f"{dev_database_name()}_test")
     upgrade(conninfo)
+    with connect(conninfo) as conn:
+        seed(conn)
     return conninfo
 
 
