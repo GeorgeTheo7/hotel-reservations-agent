@@ -1,0 +1,47 @@
+[project]
+name = "anemos"
+version = "0.1.0"
+description = "Reservations inbox agent for the fictional Hotel Anemos: drafts replies, owner approves."
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+# uv's own build backend; used only to install the package (src/ layout).
+requires = ["uv_build>=0.12.20,<0.13"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes (unused imports, undefined names)
+    "I",   # import order
+    "B",   # bugbear (likely bugs)
+    "UP",  # pyupgrade (modern syntax)
+    "SIM", # simplifications
+    "RUF", # ruff-specific checks
+]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+# If a library forces relaxing strict mode, do it per module below with a comment saying why.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "-ra", "--import-mode=importlib"]
+markers = [
+    "unit: no database, no network",
+    "integration: needs the local Postgres service",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.4",
+]
