@@ -1,0 +1,82 @@
+# CI: lint, types, unit tests, integration tests. Never evaluations (they call a model).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: the jobs only read the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # No database and no DATABASE_URL here: a unit test that touches Postgres fails.
+  static-and-unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Actions pinned to a full commit SHA (tags can be moved); version in the comment.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.12.20"
+          enable-cache: true
+      - name: Install (exactly as locked)
+        run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check
+      - name: Format
+        run: uv run ruff format --check
+      - name: Types
+        run: uv run mypy
+      - name: Unit tests
+        run: uv run pytest -m unit
+
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        # Same image as compose.yaml (checked in a step below).
+        image: pgvector/pgvector:0.8.7-pg17-trixie
+        env:
+          POSTGRES_USER: anemos
+          POSTGRES_PASSWORD: anemos_ci
+          POSTGRES_DB: anemos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U anemos -d anemos"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      # Throwaway CI-only credentials for the service container above.
+      DATABASE_URL: postgresql://anemos:anemos_ci@127.0.0.1:5432/anemos
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: CI and compose use the same Postgres image
+        run: |
+          grep -qxF "    image: pgvector/pgvector:0.8.7-pg17-trixie" compose.yaml
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.12.20"
+          enable-cache: true
+      - name: Install (exactly as locked)
+        run: uv sync --locked
+      - name: Migrate and seed (the CLI path a developer uses)
+        run: |
+          uv run alembic upgrade head
+          uv run python -m anemos.db.seed
+      - name: Integration tests
+        run: uv run pytest -m integration
