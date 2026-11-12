@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Reservations inbox agent for the fictional Hotel Anemos: drafts replies, owner approves."
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.1",
     "psycopg[binary]>=3.3.8",
 ]
 
@@ -45,6 +46,12 @@ select = [
 strict = true
 files = ["src", "tests"]
 # If a library forces relaxing strict mode, do it per module below with a comment saying why.
+
+[tool.alembic]
+# Migrations live inside the package so they ship with the code.
+script_location = "%(here)s/src/anemos/db/migrations"
+# New revision files are named <rev>_<slug>.py, e.g. 0002_inventory.py (use --rev-id 0002).
+file_template = "%%(rev)s_%%(slug)s"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

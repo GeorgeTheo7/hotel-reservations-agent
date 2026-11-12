@@ -22,6 +22,12 @@ def database_url() -> str:
     return url
 
 
-def connect(url: str | None = None) -> psycopg.Connection[TupleRow]:
-    """Open a connection. Not autocommit: statements run in a transaction until commit."""
-    return psycopg.connect(url or database_url(), connect_timeout=CONNECT_TIMEOUT)
+def connect(url: str | None = None, *, autocommit: bool = False) -> psycopg.Connection[TupleRow]:
+    """Open a connection to `url` (URL or key=value conninfo), default DATABASE_URL.
+
+    Not autocommit by default: statements run in a transaction until commit.
+    autocommit=True is for statements Postgres refuses inside a transaction (CREATE DATABASE).
+    """
+    return psycopg.connect(
+        url or database_url(), autocommit=autocommit, connect_timeout=CONNECT_TIMEOUT
+    )
