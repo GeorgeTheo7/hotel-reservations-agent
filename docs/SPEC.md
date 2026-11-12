@@ -24,12 +24,12 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | D2 | LLM budget **max $10 total**; OpenAI cheapest mini-tier model with structured outputs + tool calling (chosen in wk 4 after a 5-email Greek check); OpenAI small embedding model; hard usage limit | Minimal spend; credits on hand |
 | D3 | All model calls behind an own **LLM adapter** (plain `openai` SDK) | Model/provider swappable by config; evaluation can compare |
 | D4 | Mailbox behind an **adapter** (fake only in v1); emails stored with real-email fields; idempotent on `message_id`; sending via **outbox** table | Real mailbox in v2 is an add-on, not a rewrite |
-| D5 | Input = plain-text `clean_body`, one language, one stay, ≤ 2 rooms (same dates), children with ages | Realistic hard cases without becoming group bookings |
+| D5 | Input = plain-text `clean_body`, one language, one stay, ≤ 2 rooms (same dates), children with ages. **Greeklish** (Greek in Latin letters) is handled: extraction returns `language: el`, `script: latin`; reply in Greek script | Realistic hard cases; Greeklish is common for a Greek hotel |
 | D6 | Model emits `DateSpec` (exact / relative / holiday / approximate + nights); **code** does all calendar maths (years, weekends Fri→Sun, Orthodox Easter, nights → check-out) | Model handles language, code handles the calendar |
 | D7 | Approximate period + length → window (early 1–10, mid 11–20, late 21–end; Easter ±3 d), stay must start in window, ≤ 3 options ≥ 2 days apart. Without length → ask for info | Real options, no invented numbers |
-| D8 | Prices rendered by code into `{{QUOTE_BLOCK}}`; hold expiry into `{{HOLD_UNTIL}}` at approval | Guardrail checks a block, not free-text prices |
+| D8 | Code renders `{{QUOTE_BLOCK}}` (prices) and `{{REQUEST_SUMMARY}}` (dates, guests, rooms); hold expiry into `{{HOLD_UNTIL}}` at approval. The model should write no digits outside these | Guardrails check blocks, not numbers in free text |
 | D9 | Hold (48 h) **only if the quote matches exactly what the guest asked**; any substitution/options → no hold | Never block rooms the guest didn't request |
-| D10 | Approval = one DB transaction: lock draft (`FOR UPDATE`) → re-validate (always, any age) → holds → outbox → audit → `approved`. Graph resumed after commit. Double approve → 409; edited-price warnings → 422 unless `confirm_warnings` | DB is the source of truth; no double booking or double send |
+| D10 | Approval = one DB transaction: lock draft (`FOR UPDATE`) → flip holds past `expires_at` to `expired` → re-validate (always, any age) → holds → outbox → audit → `approved`. Graph resumed after commit. Double approve → 409; edited-price warnings → 422 unless `confirm_warnings` | DB is the source of truth; no double booking or double send |
 | D11 | Graph **C, agent on rails**: code routes; one agent loop (read tools + `write_draft`/`escalate`, max 8 calls); Q14 rules enforced **inside tools**; model may escalate, never un-escalate | Real tool choice; money rules enforced by construction |
 | D12 | Write tools (`hold_room`, `send_reply`) are never given to the model | Prompt injection can't call what isn't there |
 | D13 | Infants < 2 in a cot don't count toward occupancy; everyone else does | Single clear capacity rule |
@@ -40,6 +40,8 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | D18 | Local-first: Docker Compose runs **only Postgres** (pgvector image) until wk 11, then all services; `DEMO_MODE=replay` shows stored runs with no API key; optional manual Azure workflow | $0 hosting; one-command repo for reviewers |
 | D19 | Shared owner password (env var + session cookie); `actor = owner` in audit | Public URL can't approve holds; no user table |
 | D20 | Code uses an injected clock, never `datetime.now()` | Deterministic tests and evaluations |
+| D21 | Test world = **season 2027**: rate/min-stay rows seeded for 2027; test `received_at` between Nov 2026 and Sep 2027; a date without a year resolves to the next future occurrence | The first season the agent would quote; reproducible evaluations |
+| D22 | Expired holds never block: availability queries treat `hold` with `expires_at < now` as free (filter, no write); approval flips them (D10); the periodic job only tidies | Read tools stay read-only; correct from week 3 |
 
 ## Domain data
 | Type | Rooms | Std/max | Extra bed | Notes |
@@ -100,20 +102,20 @@ flowchart LR
 ## Escalation rules
 Reason codes (enum, raised by code or by `escalate(reason_code, note)`): `COMPLAINT`, `DISCOUNT`, `GROUP` (3+ rooms / no fit in 2), `CHANGE`, `CANCELLATION`, `THREAD_REPLY`, `LANGUAGE` (not EN/EL), `SHORT_NOTICE` (< 48 h), `LATE_ARRIVAL` (> 22:00), `NO_POLICY`, `GUARDRAIL_FAIL`, `LOOP_LIMIT`, `LEGAL`, `BILLING`, `MEDICAL`, `INJECTION`, `MODEL` (model judgement).
 Owner gets: codes, 2–3 line English summary, extracted request, tool results so far; no draft. Pets and accessibility are handled, not escalated.
-Extraction carries `flags: legal_threat | billing_request | medical_need | accessibility_need | injection_suspected`.
+Extraction carries `flags: legal_threat | billing_request | medical_need | accessibility_need | injection_suspected` and `script: greek | latin`.
 
 ## Guardrails (code, every draft and every owner edit)
 1. `{{QUOTE_BLOCK}}` exactly once on quote route; no other prices.
-2. Every number/date/time comes from a tool result, a retrieved policy chunk, or a **validated extraction field** (not arbitrary email text).
-3. Restated dates = resolved dates.
-4. Language matches email (Greek vs Latin script).
+2. **Narrow:** free text outside the code-rendered blocks contains no digits, amounts, or date/time patterns, except exact substrings of retrieved policy chunks. Number words ("three nights") are not checked mechanically; measured in evaluation.
+3. `{{REQUEST_SUMMARY}}` present when the route restates a request (dates then come only from code).
+4. Reply language: EN email → Latin script; EL email (Greek or Greeklish) → Greek script.
 5. No forbidden **phrases** per language ("booking is confirmed", "free upgrade", "guaranteed"…); template/policy wording allowed.
 6. Cited `policy_id`s were retrieved in this run. *Limit: proves citation, not faithfulness; faithfulness is measured in evaluation.*
 7. `proposed_holds` ⊆ run's quotes and satisfy D9.
 Injection: email in delimited `<email>` block marked untrusted; structural defences D11/D12; detection → `INJECTION`. Owner edits that change a price → warning to confirm.
 
 ## Evaluation plan
-Test set ~100 fictional emails (40 EN, 40 EL, 8 other languages, ~12 spam/off-topic/injection; ~30% escalations, each code ≥ 2×; traps: Orthodox Easter 2026 before opening, season boundary, 10–20 Aug, Tetris availability, over-capacity, "50% off as agreed", missing ages, "next weekend", accessible room). YAML labels: gold extraction, route, reason codes, minimum tool calls, required `policy_id`s, holds, forbidden phrases; expected prices computed by unit-tested pricing code. Fixed `received_at` + seeded DB fixture.
+Test set ~100 fictional emails (40 EN, 40 EL incl. ~4 Greeklish, 8 other languages, ~12 spam/off-topic/injection; ~30% escalations, each code ≥ 2×; traps: "Easter" from an English guest (Western 28 Mar 2027 = closed vs Orthodox 2 May 2027), season boundary, 10–20 Aug, Tetris availability, over-capacity, "50% off as agreed", missing ages, "next weekend", accessible room, date already passed → next year). YAML labels with `schema_version`: gold extraction, route, reason codes, minimum tool calls, required `policy_id`s, holds, forbidden phrases; expected prices computed by unit-tested pricing code. Fixed `received_at` + seeded 2027 DB fixture. Written and labelled gradually: 30 in week 3, ~12/week in weeks 4–8.
 Split 70 dev / 30 held-out, stratified. Dev runs ×1; held-out ×3 at milestones (pass = all 3). Each run records model, settings, commit, prompt versions, time → `eval/results/`.
 
 | Metric | Target |
@@ -125,6 +127,7 @@ Split 70 dev / 30 held-out, stratified. Dev runs ×1; held-out ×3 at milestones
 | Extraction: dates, adults, children ages | ≥ 95% each |
 | Policy recall@3 | ≥ 90% |
 | Guardrails pass first draft | ≥ 85% |
+| Guardrail false alarms on correct drafts | ≤ 5% |
 | Cost / email | ≤ $0.01 mean, ≤ $0.02 p95 |
 | Latency / email p95 | ≤ 60 s |
 
@@ -138,14 +141,14 @@ Held-out numbers are indicative (±~10 pts at n = 30). Budget: dev $2 · dev eva
 |---|---|
 | 1 | Skeleton, compose (Postgres only), schema + migrations, seed data, clock, CI |
 | 2 | `reservations/` core: availability, pricing, rules, `DateSpec`, Easter, formatting, quote template — unit-tested |
-| 3 | Emails/drafts/outbox/bookings, fake adapter, approval txn, holds, API with stub draft; first 30 test emails |
-| 4 | LLM adapter, extraction, routing, Greek check, smoke set, extraction eval |
-| 5 | Policies + retrieval + retrieval eval; agent loop |
-| 6 | Guardrails, redraft, summaries, checkpoints/interrupt, audit log; end-to-end; **measure cost, re-plan** |
-| 7 | React inbox, detail, actions, holds, password |
-| 8 | Monitoring, 100-email set, first full dev eval — **v1 feature-complete** |
+| 3 | Emails/drafts/outbox/bookings, fake adapter, approval txn (incl. expiring stale holds), holds, API with stub draft; first 30 test emails |
+| 4 | LLM adapter, extraction, routing, Greek + Greeklish check, smoke set, extraction eval; +12 test emails |
+| 5 | Policies + retrieval + retrieval eval; agent loop; +12 test emails |
+| 6 | Guardrails, redraft, summaries, checkpoints/interrupt, audit log; end-to-end; **measure cost, re-plan**; +12 test emails |
+| 7 | React inbox, detail, actions, holds, password; +12 test emails |
+| 8 | Monitoring, test set complete (~100), first full dev eval — **v1 feature-complete** |
 | 9 | Improve vs eval; MCP server + read-only role |
-| 10 | Hardening: resume, re-validation, superseded, expiry job |
+| 10 | Hardening: resume, re-validation, superseded, tidy-up job for expired holds |
 | 11 | Full compose, replay mode, README + diagram, optional Azure workflow, held-out ×3 |
 | 12 | Buffer, demo video, write-up |
 
