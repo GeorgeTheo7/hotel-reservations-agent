@@ -3,7 +3,9 @@ name = "anemos"
 version = "0.1.0"
 description = "Reservations inbox agent for the fictional Hotel Anemos: drafts replies, owner approves."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "psycopg[binary]>=3.3.8",
+]
 
 [build-system]
 # uv's own build backend; used only to install the package (src/ layout).
