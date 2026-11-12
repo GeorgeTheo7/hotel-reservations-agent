@@ -1,0 +1,26 @@
+# Local development: Postgres only until week 11 (D18).
+# Credentials come from .env (copy .env.example). Start: docker compose up -d
+name: anemos
+
+services:
+  postgres:
+    # Exact tag: pgvector 0.8.7, Postgres 17, Debian trixie base. Keep in sync with CI.
+    image: pgvector/pgvector:0.8.7-pg17-trixie
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    ports:
+      # Bound to localhost only, so the database is not reachable from the network.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # $$ escapes $ for compose, so the variable is expanded inside the container.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:
