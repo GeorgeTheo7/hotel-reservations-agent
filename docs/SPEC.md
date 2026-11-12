@@ -40,7 +40,7 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | D18 | Local-first: Docker Compose runs **only Postgres** (pgvector image) until wk 11, then all services; `DEMO_MODE=replay` shows stored runs with no API key; optional manual Azure workflow | $0 hosting; one-command repo for reviewers |
 | D19 | Shared owner password (env var + session cookie); `actor = owner` in audit | Public URL can't approve holds; no user table |
 | D20 | Code uses an injected clock, never `datetime.now()` | Deterministic tests and evaluations |
-| D21 | Test world = **season 2027**: rate/min-stay rows seeded for 2027; test `received_at` between Nov 2026 and Sep 2027; a date without a year resolves to the next future occurrence | The first season the agent would quote; reproducible evaluations |
+| D21 | Test world = **season 2027**: season periods and min-stay rows seeded for 2027, rates per season; test `received_at` between Nov 2026 and Sep 2027; a date without a year resolves to the next future occurrence | The first season the agent would quote; reproducible evaluations |
 | D22 | Expired holds never block: availability queries treat `hold` with `expires_at < now` as free (filter, no write); approval flips them (D10); the periodic job only tidies | Read tools stay read-only; correct from week 3 |
 | D23 | Timestamps stored as `timestamptz` in **UTC**; the clock (D20) returns timezone-aware UTC; calendar logic (stay dates, < 48 h notice, check-in by 22:00, "next weekend", hold expiry shown to guests) uses hotel time **`Europe/Athens`** | One unambiguous storage format; guests and owner think in hotel local time |
 
@@ -62,8 +62,11 @@ Unmet requests: other type free → ≤ 2 alternatives cheapest first · all boo
 | Table | Key fields |
 |---|---|
 | `room_types`, `rooms` | type, std/max occupancy, extra-bed rule; room number |
-| `rate_periods`, `min_stay_rules` | date range, type, `rate_cents`; arrival range, nights |
+| `seasons`, `season_periods` | season id (`low/mid/high`), `city_tax_cents`; season, date range. No overlap; a night in no period = closed |
+| `room_rates` | type, season, `rate_cents`; one row per type × season, no dates |
+| `min_stay_rules` | arrival range, nights; no overlap; dated (the 10–20 Aug rule cuts across High) |
 | `bookings` | `room_id`, `stay daterange [in,out)`, `status hold/confirmed/cancelled/expired`, `expires_at`, `request_id`, `email_id`, `price_cents`. **Exclusion constraint** `(room_id WITH =, stay WITH &&)` where status in (hold, confirmed); needs `btree_gist` |
+| `requests` | *planned, week 3*: the extracted request of an email (`DateSpec`, resolved dates, guests, rooms); target of `bookings.request_id` and `quotes.request` |
 | `quotes` | request, nightly lines (JSON), subtotal, city tax, total, deposit, cancel deadline |
 | `emails` | `message_id` (unique), `in_reply_to`, `thread_id`, `from_address`, `subject`, `raw_body`, `clean_body`, `language`, `received_at`, status |
 | `drafts` | email, text versions, `quote_ids`, `proposed_holds`, guardrail results, status |
@@ -163,4 +166,5 @@ Overruns cut buffer, then week-10 extras; never weeks 1–3 or the evaluation.
 - Exact OpenAI model chosen in week 4.
 
 ## Later
-Real mailbox (v2) · changes/cancellations + `find_reservation` · thread replies handled by agent · B (free agent) vs C baseline evaluation · German/other languages · repeat-guest history · local-model fallback · Batches API · MCP `request_hold` (creates pending approval only) · hosted demo.
+Real mailbox (v2) · changes/cancellations + `find_reservation` · thread replies handled by agent · B (free agent) vs C baseline evaluation · German/other languages · repeat-guest history · local-model fallback · Batches API · MCP `request_hold` (creates pending approval only) · hosted demo · prices per year · special rates outside the three seasons.
+*Why not in v1:* rates are keyed by room type + season with no dates of their own (`room_rates`), so rates and the season calendar cannot disagree; v1 quotes a single season of prices (D21), so neither feature is needed yet.
