@@ -3,10 +3,19 @@ from datetime import UTC, date, datetime
 import pytest
 
 from anemos.clock import FixedClock
-from anemos.reservations.datespec import ExactDates, PartialDate, resolve
-from anemos.reservations.errors import InvalidDates, NeedsInfo
+from anemos.db.seed import hotel_data
+from anemos.reservations.datespec import (
+    ExactDates,
+    HolidayDates,
+    PartialDate,
+    RelativeDates,
+    Window,
+    resolve,
+)
+from anemos.reservations.errors import Closed, InvalidDates, NeedsInfo
 from anemos.reservations.hotel_time import hotel_date
 from anemos.reservations.model import Stay
+from anemos.reservations.stay_rules import check_stay, short_notice
 
 pytestmark = pytest.mark.unit
 
@@ -170,3 +179,115 @@ def test_naive_received_at_is_refused() -> None:
     naive = datetime(2026, 12, 1, 9, 0)  # noqa: DTZ001 - naive on purpose
     with pytest.raises(ValueError, match="timezone-aware"):
         resolve(ExactDates(pd(20, 5), nights=1), naive)
+
+
+# --- relative: weekends (D29) ---
+# Week of Mon 7 Jun 2027: this Friday = 11 Jun, the Friday after = 18 Jun.
+
+THIS_WEEKEND = Stay(date(2027, 6, 11), date(2027, 6, 13))
+WEEKEND_AFTER = Stay(date(2027, 6, 18), date(2027, 6, 20))
+
+
+@pytest.mark.parametrize(
+    ("day", "weekday", "next_weekend"),
+    [
+        (7, "Mon", THIS_WEEKEND),
+        (8, "Tue", THIS_WEEKEND),
+        (9, "Wed", THIS_WEEKEND),
+        (10, "Thu", THIS_WEEKEND),
+        (11, "Fri", WEEKEND_AFTER),
+        (12, "Sat", WEEKEND_AFTER),
+        (13, "Sun", WEEKEND_AFTER),
+    ],
+)
+def test_next_weekend_for_every_weekday(day: int, weekday: str, next_weekend: Stay) -> None:
+    at = received(2027, 6, day, 6)  # 09:00 Athens
+    assert hotel_date(at).strftime("%a") == weekday
+    assert resolve(RelativeDates("next_weekend"), at) == next_weekend
+
+
+@pytest.mark.parametrize("day", range(7, 14))
+def test_this_weekend_is_the_friday_of_the_current_week(day: int) -> None:
+    assert resolve(RelativeDates("this_weekend"), received(2027, 6, day, 6)) == THIS_WEEKEND
+
+
+@pytest.mark.parametrize("day", [11, 12, 13])
+def test_this_weekend_received_fri_to_sun_is_short_notice(day: int) -> None:
+    at = received(2027, 6, day, 6)
+    stay = resolve(RelativeDates("this_weekend"), at)
+    assert isinstance(stay, Stay)
+    assert short_notice(stay.check_in, at) is not None
+
+
+def test_weekend_uses_the_athens_date() -> None:
+    # Sun 13 Jun 20:30 UTC = 23:30 Sunday in Athens; 21:30 UTC = 00:30 Monday.
+    assert resolve(RelativeDates("this_weekend"), received(2027, 6, 13, 20, 30)) == THIS_WEEKEND
+    assert resolve(RelativeDates("this_weekend"), received(2027, 6, 13, 21, 30)) == WEEKEND_AFTER
+
+
+def test_weekend_with_2_nights_stated_is_fine() -> None:
+    assert resolve(RelativeDates("next_weekend", nights=2), received(2027, 6, 7)) == THIS_WEEKEND
+
+
+@pytest.mark.parametrize("nights", [1, 3])
+def test_weekend_with_other_night_count_asks(nights: int) -> None:
+    # 1 night covers the Greek "Saturday night only" reading: ask, don't guess.
+    result = resolve(RelativeDates("next_weekend", nights=nights), received(2027, 6, 7))
+    assert isinstance(result, NeedsInfo)
+
+
+# --- holiday: Easter (D28) ---
+
+
+def test_plain_easter_is_orthodox_window() -> None:
+    # Eval trap: "Easter" from an English guest, received Nov 2026 -> Orthodox 2 May 2027.
+    result = resolve(HolidayDates("Easter", nights=4), received(2026, 11, 20))
+    assert result == Window(date(2027, 4, 29), date(2027, 5, 5), 4)
+
+
+def test_orthodox_easter_named_explicitly() -> None:
+    result = resolve(HolidayDates("easter", "orthodox", nights=3), received(2026, 11, 20))
+    assert result == Window(date(2027, 4, 29), date(2027, 5, 5), 3)
+
+
+def test_western_easter_2027_window_is_before_opening() -> None:
+    # Eval trap: "Catholic Easter" -> 28 Mar 2027, before the 15 Apr opening -> CLOSED.
+    result = resolve(HolidayDates("Easter", "western", nights=3), received(2026, 11, 20))
+    assert result == Window(date(2027, 3, 25), date(2027, 3, 31), 3)
+    on_sunday = Stay(date(2027, 3, 28), date(2027, 3, 31))
+    assert isinstance(check_stay(hotel_data(), on_sunday), Closed)
+
+
+def test_easter_without_nights_asks() -> None:
+    result = resolve(HolidayDates("Easter"), received(2026, 11, 20))
+    assert isinstance(result, NeedsInfo)
+
+
+def test_unknown_holiday_asks_for_dates() -> None:
+    result = resolve(HolidayDates("Christmas", nights=3), received(2026, 11, 20))
+    assert isinstance(result, NeedsInfo)
+    assert "Christmas" in result.missing
+
+
+def test_window_starts_today_when_received_inside_it() -> None:
+    # Received on Orthodox Easter Monday 2027 (3 May): earlier check-ins are gone.
+    result = resolve(HolidayDates("Easter", nights=2), received(2027, 5, 3))
+    assert result == Window(date(2027, 5, 3), date(2027, 5, 5), 2)
+
+
+def test_window_over_moves_to_next_year() -> None:
+    # Received 6 May 2027, after the window: Easter 2028 (16 Apr) -> NO_CALENDAR later.
+    result = resolve(HolidayDates("Easter", nights=2), received(2027, 5, 6))
+    assert result == Window(date(2028, 4, 13), date(2028, 4, 19), 2)
+
+
+def test_explicit_easter_year() -> None:
+    result = resolve(HolidayDates("Easter", year=2028, nights=2), received(2026, 11, 20))
+    assert result == Window(date(2028, 4, 13), date(2028, 4, 19), 2)
+
+
+@pytest.mark.parametrize(
+    "spec", [HolidayDates("Easter", year=2150, nights=2), HolidayDates("Easter", nights=0)]
+)
+def test_invalid_holiday_requests(spec: HolidayDates) -> None:
+    assert isinstance(resolve(spec, received(2026, 11, 20)), InvalidDates)

@@ -1,8 +1,9 @@
 """DateSpec: dates as the guest wrote them, and their resolution into a Stay (D6).
 
 The model only fills in a DateSpec; this code does all calendar maths. Kinds so far:
-exact dates. Relative, holiday and approximate kinds join `DateSpec` as a union, each
-with its own resolver.
+exact dates, relative weekends (D29) and holidays (D28). An approximate kind joins
+`DateSpec` later. Exact and relative dates resolve to one Stay; a holiday resolves to
+a Window of possible check-in dates, from which options are picked (D7).
 
 Rules:
 - "Today" is the hotel date of `received_at` (Europe/Athens, D23), never the clock.
@@ -12,12 +13,21 @@ Rules:
 - Length: check-out or nights. Neither -> NEEDS_INFO; both but disagreeing ->
   NEEDS_INFO (ask, don't guess).
 - An explicit year is kept even if the date is past; SHORT_NOTICE (D31) then escalates.
+- Weekend = check-in Friday, check-out Sunday. "Next weekend" = the coming Friday, or
+  the Friday after if received Fri-Sun; "this weekend" = Friday of the current Mon-Sun
+  week (received Fri-Sun: always SHORT_NOTICE). A stated night count other than 2 ->
+  NEEDS_INFO.
+- Holiday: Easter only. Tradition `unspecified` -> Orthodox. Window = Easter +/- 3 days;
+  without a year, the first Easter whose window has not ended; check-ins before today
+  are cut off. No night count -> NEEDS_INFO. Any other holiday -> NEEDS_INFO.
 """
 
 import calendar
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from typing import Literal, assert_never
 
+from anemos.reservations.easter import orthodox_easter, western_easter
 from anemos.reservations.errors import InvalidDates, NeedsInfo
 from anemos.reservations.hotel_time import hotel_date
 from anemos.reservations.model import Stay, stay_or_error
@@ -26,6 +36,10 @@ from anemos.reservations.model import Stay, stay_or_error
 _ANY_LEAP_YEAR = 2000
 # 29 Feb recurs within 8 years (century years like 2100 skip a leap day).
 _MAX_YEARS_AHEAD = 8
+
+FRIDAY = 4  # date.weekday(): Monday = 0
+WEEKEND_NIGHTS = 2  # Friday to Sunday
+EASTER_WINDOW_DAYS = 3  # check-in from Easter - 3 to Easter + 3 (D7)
 
 
 @dataclass(frozen=True)
@@ -61,12 +75,87 @@ class ExactDates:
     nights: int | None = None
 
 
-type DateSpec = ExactDates
+@dataclass(frozen=True)
+class RelativeDates:
+    """A relative phrase the code knows: "this weekend", "next weekend"."""
+
+    phrase: Literal["this_weekend", "next_weekend"]
+    nights: int | None = None
 
 
-def resolve(spec: DateSpec, received_at: datetime) -> Stay | NeedsInfo | InvalidDates:
+@dataclass(frozen=True)
+class HolidayDates:
+    """A holiday as named by the guest, e.g. "Easter", "Greek Easter 2027"."""
+
+    holiday: str
+    tradition: Literal["orthodox", "western", "unspecified"] = "unspecified"
+    year: int | None = None
+    nights: int | None = None
+
+
+type DateSpec = ExactDates | RelativeDates | HolidayDates
+
+
+@dataclass(frozen=True)
+class Window:
+    """Check-in on any date from first_check_in to last_check_in (inclusive), for
+    `nights` nights. Options inside it are picked against availability (D7)."""
+
+    first_check_in: date
+    last_check_in: date
+    nights: int
+
+
+def resolve(spec: DateSpec, received_at: datetime) -> Stay | Window | NeedsInfo | InvalidDates:
     today = hotel_date(received_at)
-    return _resolve_exact(spec, today)
+    match spec:
+        case ExactDates():
+            return _resolve_exact(spec, today)
+        case RelativeDates():
+            return _resolve_weekend(spec, today)
+        case HolidayDates():
+            return _resolve_holiday(spec, today)
+        case _:
+            # mypy proves this is unreachable; a new DateSpec kind without a branch
+            # becomes a type error here.
+            assert_never(spec)
+
+
+def _resolve_weekend(spec: RelativeDates, today: date) -> Stay | NeedsInfo:
+    if spec.nights is not None and spec.nights != WEEKEND_NIGHTS:
+        return NeedsInfo(
+            f"a weekend is Friday to Sunday ({WEEKEND_NIGHTS} nights), but {spec.nights}"
+            " nights were asked"
+        )
+    weekday = today.weekday()
+    this_friday = today + timedelta(days=FRIDAY - weekday)  # in the past on Sat/Sun
+    if spec.phrase == "next_weekend" and weekday >= FRIDAY:
+        friday = this_friday + timedelta(days=7)
+    else:
+        friday = this_friday
+    return Stay(friday, friday + timedelta(days=WEEKEND_NIGHTS))
+
+
+def _resolve_holiday(spec: HolidayDates, today: date) -> Window | NeedsInfo | InvalidDates:
+    if spec.holiday.strip().lower() != "easter":
+        return NeedsInfo(f"dates for {spec.holiday!r} (only Easter is known)")
+    if spec.nights is None:
+        return NeedsInfo("length of stay (number of nights)")
+    if spec.nights < 1:
+        return InvalidDates(f"{spec.nights} nights")
+    easter = western_easter if spec.tradition == "western" else orthodox_easter
+    window = timedelta(days=EASTER_WINDOW_DAYS)
+    try:
+        if spec.year is not None:
+            sunday = easter(spec.year)
+            return Window(sunday - window, sunday + window, spec.nights)
+        year = today.year
+        while easter(year) + window < today:  # this year's window is over
+            year += 1
+        sunday = easter(year)
+    except ValueError as error:  # a year the Easter functions do not support
+        return InvalidDates(str(error))
+    return Window(max(sunday - window, today), sunday + window, spec.nights)
 
 
 def _resolve_exact(spec: ExactDates, today: date) -> Stay | NeedsInfo | InvalidDates:
