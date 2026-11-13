@@ -13,7 +13,7 @@ Run with: uv run --env-file .env pytest -m integration
 import itertools
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import psycopg
@@ -131,6 +131,76 @@ class Rows:
                 "created_at": self.T0,
             }
             | overrides,
+        )
+
+    def quote(self, request_id: int, **overrides: Any) -> int:
+        line = {"night": "2027-07-12", "season": "mid", "room_rate_cents": 13000}
+        return self.insert(
+            "quotes",
+            {
+                "request_id": request_id,
+                "room_type_id": "sea_view",
+                "stay": self.STAY,
+                "rooms": 1,
+                "lines": Jsonb([line, line, line]),
+                "extra_bed_bands": [],
+                "room_subtotal_cents": 39000,
+                "extra_bed_subtotal_cents": 0,
+                "accommodation_subtotal_cents": 39000,
+                "city_tax_cents": 1200,
+                "deposit_cents": 11700,
+                "free_cancellation_until": date(2027, 6, 28),
+                "changes": [],
+                "created_at": self.T0,
+            }
+            | overrides,
+        )
+
+    def draft(self, email_id: int, request_id: int | None, **overrides: Any) -> int:
+        return self.insert(
+            "drafts",
+            {
+                "email_id": email_id,
+                "request_id": request_id,
+                "route": "quote",
+                "status": "pending_approval",
+                "created_at": self.T0,
+            }
+            | overrides,
+        )
+
+    def version(self, draft_id: int, version: int = 1, **overrides: Any) -> int:
+        return self.insert(
+            "draft_versions",
+            {
+                "draft_id": draft_id,
+                "version": version,
+                "author": "agent" if version == 1 else "owner",
+                "body": "Dear guest, {{QUOTE_BLOCK}}",
+                "guardrail_results": Jsonb({"quote_block_once": True}),
+                "created_at": self.T0,
+            }
+            | overrides,
+            returning="version",
+        )
+
+    def offer(
+        self, draft_id: int, request_id: int, quote_id: int, *, hold: bool, **overrides: Any
+    ) -> None:
+        allowed = self.db.execute(
+            "SELECT hold_allowed FROM quotes WHERE id = %s", (quote_id,)
+        ).fetchone()
+        self.insert(
+            "draft_offers",
+            {
+                "draft_id": draft_id,
+                "request_id": request_id,
+                "quote_id": quote_id,
+                "quote_hold_allowed": allowed[0] if allowed else False,
+                "hold": hold,
+            }
+            | overrides,
+            returning="draft_id",
         )
 
 

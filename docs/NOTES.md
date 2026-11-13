@@ -74,3 +74,15 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** each is implied by another: the two-column key `(request_id, email_id)` `MATCH FULL` already needs the pair in `requests`, whose `email_id` points at `emails`; and `children = -1` also fails "ages ≤ children" (0 ≤ −1).
 - **Evidence:** `children = -1` reported `requests_child_ages_not_more_than_children`, not the non-negative check; no row exists that only a one-column key refuses.
 - **Fix:** dropped the two one-column keys (spec Data model says the two-column key replaces them); kept `requests_children_non_negative` for its clearer error name, commented as unable to fire alone. Rule: a constraint whose test cannot name it is a sign it is redundant.
+
+## 2026-11-13 · `btrim(x) <> ''` does not catch a blank of newlines
+- **Symptom:** `test_blank_body_rejected` failed: a draft body of `"  \n "` passed `draft_versions_body_not_blank`.
+- **Cause:** `btrim` with one argument trims **spaces only**; tabs and newlines stay, so the trimmed text is not empty.
+- **Evidence:** the same pattern was already in `room_types_name_el_not_blank` (0004) and `emails_message_id_not_blank` / `emails_from_address_not_blank` (0005); their tests used spaces only, so they passed.
+- **Fix:** `x ~ '\S'` ("has a non-whitespace character") in 0006; the three older checks are replaced in their own migration (0007), not edited in place, because databases may already be at 0004/0005. Rule: test "blank" with a tab and a newline, not only spaces.
+
+## 2026-11-13 · Why an offer differs from the request lives on `quotes` (`changes`, D9)
+- **Symptom:** nothing stored why an offer was not what the guest asked (min-stay version, open part, other type, 2 rooms, ±7 d, window option), and `hold_allowed` was a free boolean that could disagree with it.
+- **Cause:** the reason is a fact about a quote against its request; `hold_allowed(request, offers)` mixes that with a per-draft fact ("the only offer").
+- **Evidence:** changes combine (open part + min stay, D34), so one enum value would lose information; on `draft_offers` the same quote could be labelled differently in two drafts.
+- **Fix:** `quotes.changes text[]` (CHECKed set), `hold_allowed` **generated** as `cardinality(changes) = 0`, so it cannot be written or disagree. Trade-off: the per-draft half of D9 ("a held offer is the only offer") needs a count across rows, which a CHECK cannot do; guardrail 7 checks it in code.

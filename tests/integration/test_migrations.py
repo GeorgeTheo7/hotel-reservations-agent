@@ -18,9 +18,13 @@ APP_TABLES = (
 )
 APP_TABLES_AT_HEAD = [
     ("bookings",),
+    ("draft_offers",),
+    ("draft_versions",),
+    ("drafts",),
     ("emails",),
     ("extra_bed_rates",),
     ("min_stay_rules",),
+    ("quotes",),
     ("requests",),
     ("room_rates",),
     ("room_types",),
