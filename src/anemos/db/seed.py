@@ -15,11 +15,15 @@ from psycopg import sql
 from psycopg.rows import TupleRow
 
 from anemos.db.connection import connect
+from anemos.reservations.hotel_data import HotelData, MinStayRule, SeasonPeriod
+from anemos.reservations.model import ExtraBeds, RoomType, Season
+from anemos.reservations.money import Cents
 
 SEASON_YEAR = 2027
 
-# id, name, standard occupancy, max occupancy, extra beds, offer only if needed
-ROOM_TYPES = [
+# id, name, standard occupancy, max occupancy, extra beds, offer only if needed.
+# The annotation lets mypy check each extra-beds value against the allowed ones.
+ROOM_TYPES: list[tuple[str, str, int, int, ExtraBeds, bool]] = [
     ("standard", "Standard Double", 2, 2, "cot_only", False),
     ("sea_view", "Sea View Double", 2, 3, "extra_bed", False),
     ("family_suite", "Family Suite", 2, 4, "sofa_beds", False),
@@ -111,6 +115,30 @@ def seed(conn: psycopg.Connection[TupleRow]) -> None:
             "INSERT INTO min_stay_rules (arrivals, min_nights) VALUES (daterange(%s, %s), %s)",
             MIN_STAY_RULES,
         )
+
+
+def hotel_data() -> HotelData:
+    """The seed as a HotelData snapshot, built without a database.
+
+    Unit tests use it in place of the DB loader. The pricing examples in
+    docs/pricing-examples.md are the independent check: a typo in these constants
+    would make an example test fail.
+    """
+    return HotelData(
+        room_types={row[0]: RoomType(*row) for row in ROOM_TYPES},
+        season_periods=tuple(
+            SeasonPeriod(Season(season), first, end) for season, first, end in SEASON_PERIODS
+        ),
+        city_tax_cents={Season(season): Cents(cents) for season, cents in SEASONS.items()},
+        rates={
+            (type_id, Season(season)): Cents(cents)
+            for type_id, rates in RATES.items()
+            for season, cents in zip(SEASONS, rates, strict=True)
+        },
+        min_stay_rules=tuple(
+            MinStayRule(first, end, nights) for first, end, nights in MIN_STAY_RULES
+        ),
+    )
 
 
 def main() -> None:
