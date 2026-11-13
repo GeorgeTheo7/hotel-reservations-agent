@@ -7,6 +7,7 @@ More error types are added in the steps that need them (CLOSED, MIN_STAY, ...).
 """
 
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
 from typing import ClassVar
 
@@ -15,6 +16,22 @@ from typing import ClassVar
 class InvalidDates:
     code: ClassVar[str] = "INVALID_DATES"
     reason: str
+
+
+@dataclass(frozen=True)
+class Closed:
+    """Some nights of the stay fall outside every season period (hotel closed)."""
+
+    code: ClassVar[str] = "CLOSED"
+    nights: tuple[date, ...]
+
+
+@dataclass(frozen=True)
+class MinStay:
+    """The stay is shorter than the minimum for its arrival date."""
+
+    code: ClassVar[str] = "MIN_STAY"
+    min_nights: int
 
 
 class ReasonCode(StrEnum):

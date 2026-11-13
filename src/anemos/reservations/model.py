@@ -120,6 +120,24 @@ class Stay:
         return tuple(self.check_in + timedelta(days=i) for i in range(self.night_count))
 
 
+@dataclass(frozen=True)
+class RoomRequest:
+    """What the guest asked for (dates, rooms, maybe a room type)."""
+
+    stay: Stay
+    rooms: int = 1
+    room_type_id: str | None = None  # None = the guest named no type
+
+
+@dataclass(frozen=True)
+class RoomOffer:
+    """One option the reply would quote."""
+
+    stay: Stay
+    rooms: int
+    room_type_id: str
+
+
 def stay_or_error(check_in: date, check_out: date) -> Stay | InvalidDates:
     """Build a Stay from untrusted dates, returning INVALID_DATES instead of raising."""
     if check_out == check_in:

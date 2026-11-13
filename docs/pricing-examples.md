@@ -152,7 +152,7 @@ Request: Family Suite, 20–24 July, 2 adults + children aged 13 and 6.
 
 Request: Standard Double, 30 October–2 November, 2 adults.
 
-- The last open night is 31 October. Nights of 1 and 2 November are closed.
+- The last open night is 31 October. The stay's nights are 30 Oct, 31 Oct and 1 Nov (check-out 2 Nov is not a night); only the night of 1 November is closed.
 - The agent offers the open part: **30 October–1 November**, 2 nights.
 
 | Night | Season | Room rate | Extra bed | City tax |

@@ -44,3 +44,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** the plan looked at head count only.
 - **Evidence:** tests: need + 3 people → `ACCESSIBILITY`; 1 adult for a 2-room plan, or a children-only party → `UNACCOMPANIED_CHILDREN`; 9 children → `GROUP` (checked first).
 - **Fix:** typed `NeedsEscalation(reason, detail)` result with two new reason codes. Trade-off: some parties a human would happily serve now reach the owner; a wrong substitute would reach the guest.
+
+## 2026-11-13 · DST: subtracting two Athens times gives wall-clock hours, not real hours
+- **Symptom:** arrival 31 Oct 2027 15:00 minus received 29 Oct 16:00 (both `Europe/Athens`) = 47 h, so `SHORT_NOTICE` would fire for an email received exactly 48 real hours ahead.
+- **Cause:** Python subtracts two aware datetimes that share the *same* tzinfo by wall clock, ignoring the DST change in between (clocks go back on 31 Oct).
+- **Evidence:** `test_naive_wall_clock_subtraction_would_be_wrong`: 47 h in Athens time, 48 h after converting to UTC; DST tests on 28 Mar and 31 Oct pass with `received_at` given in Athens time and via `FixedClock` (UTC).
+- **Fix:** `short_notice` converts both instants to UTC before subtracting (`hotel_time.check_in_moment` returns UTC). Rule: compute durations in UTC, use Athens only for calendar dates and display.
