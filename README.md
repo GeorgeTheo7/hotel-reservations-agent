@@ -13,9 +13,6 @@ sent or any room is held.
 
 Design decisions are in [docs/SPEC.md](docs/SPEC.md).
 
-**Status:** week 1 of 12 — foundation only: Postgres schema, migrations, 2027 seed data,
-injected clock, CI. No agent or model calls yet.
-
 ## Prerequisites
 
 | Tool | Version | Notes |

@@ -20,3 +20,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** city tax and the High-season cancellation rule need the season, so the calendar would have existed twice.
 - **Evidence:** (a) dated rates + seed tests only checks the seed, not later edits; (b) rates keyed by room type + season make disagreement impossible.
 - **Fix:** (b): `seasons` (city tax once), `season_periods` (the only calendar; no period = closed), `room_rates` (PK type + season). Trade-off: no per-year or special rates (spec "Later"); `min_stay_rules` stays dated, checked against `season_periods` by seed tests.
+
+## 2026-11-13 · Over capacity: one bigger room before two smaller ones (D27)
+- **Symptom:** spec said "over capacity → smallest fitting type (1–2 rooms)"; `pricing-examples.md` Q4 said one room first. Example 8 (Sea View, 4 adults) differed.
+- **Cause:** the spec wording ranked type size first and room count second; Q4 ranks room count first.
+- **Evidence:** Example 8: 2 × Standard = 570 / deposit 171 vs 1 × Family Suite = 750 / deposit 225.
+- **Fix:** D27, one room first; 2 rooms only if no single type fits. Trade-off: the guest is offered the dearer option first; the owner can still propose the 2-room split.
