@@ -62,3 +62,15 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** sentences the guest reads were built in Python f-strings, mixed with logic.
 - **Evidence:** 19 RUF001 findings in one module; after the move, `src/` has no Greek sentences and passes ruff unchanged.
 - **Fix:** layout in `reservations/templates/quote_*.txt` and `summary_*.txt`, sentences in `phrases_*.json` (`string.Template`); a test checks both languages have the same keys; golden files pin the output. Trade-off: a typo in a phrase key only fails at render time (covered by the golden tests), and `tests/` is exempt from RUF001 because tests must assert bilingual text.
+
+## 2026-11-13 · "Newer email" needs a total order (D48)
+- **Symptom:** D48 ("a newer email from the same guest supersedes") did not say which column defines "newer" or what breaks a tie.
+- **Cause:** two candidate orders: `received_at` (when the guest wrote) and storage order (`id`); an overnight batch can be fetched out of order, so they can disagree.
+- **Evidence:** with storage order, an email written Monday but stored after Tuesday's would supersede Tuesday's draft: the older request would win.
+- **Fix:** newer = later `received_at`, tie → higher `id`; index `(from_address, received_at, id)`. Trade-off: an email stored late supersedes nothing and its draft is born superseded, so the owner never sees a draft for it.
+
+## 2026-11-13 · Constraints that can never fire alone (migration 0005)
+- **Symptom:** tests for `bookings_email_id_fkey`, `bookings_request_id_fkey` and `requests_children_non_negative` could only assert "some constraint refused the row", never this one by name.
+- **Cause:** each is implied by another: the two-column key `(request_id, email_id)` `MATCH FULL` already needs the pair in `requests`, whose `email_id` points at `emails`; and `children = -1` also fails "ages ≤ children" (0 ≤ −1).
+- **Evidence:** `children = -1` reported `requests_child_ages_not_more_than_children`, not the non-negative check; no row exists that only a one-column key refuses.
+- **Fix:** dropped the two one-column keys (spec Data model says the two-column key replaces them); kept `requests_children_non_negative` for its clearer error name, commented as unable to fire alone. Rule: a constraint whose test cannot name it is a sign it is redundant.

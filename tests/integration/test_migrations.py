@@ -16,10 +16,12 @@ APP_TABLES = (
     "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
     " AND tablename <> 'alembic_version' ORDER BY 1"
 )
-INVENTORY_TABLES = [
+APP_TABLES_AT_HEAD = [
     ("bookings",),
+    ("emails",),
     ("extra_bed_rates",),
     ("min_stay_rules",),
+    ("requests",),
     ("room_rates",),
     ("room_types",),
     ("rooms",),
@@ -50,4 +52,4 @@ def test_upgrade_downgrade_upgrade_on_fresh_database(
     upgrade(conninfo)
     with connect(conninfo) as conn:
         assert conn.execute(EXTENSIONS).fetchall() == [("btree_gist",), ("vector",)]
-        assert conn.execute(APP_TABLES).fetchall() == INVENTORY_TABLES
+        assert conn.execute(APP_TABLES).fetchall() == APP_TABLES_AT_HEAD

@@ -82,6 +82,9 @@ class ReasonCode(StrEnum):
     ACCESSIBILITY = "ACCESSIBILITY"
     UNACCOMPANIED_CHILDREN = "UNACCOMPANIED_CHILDREN"
     NO_CALENDAR = "NO_CALENDAR"
+    NO_LONGER_AVAILABLE = "NO_LONGER_AVAILABLE"  # re-validation failed at approval (D44)
+    OWNER_REOPENED = "OWNER_REOPENED"  # owner: a set-aside email was not spam (D50)
+    SYSTEM_ERROR = "SYSTEM_ERROR"  # unexpected error while processing (D49)
 
 
 @dataclass(frozen=True)
