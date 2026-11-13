@@ -34,6 +34,23 @@ class MinStay:
     min_nights: int
 
 
+@dataclass(frozen=True)
+class OverCapacity:
+    """The party does not fit the requested rooms (D13 head count vs max occupancy)."""
+
+    code: ClassVar[str] = "OVER_CAPACITY"
+    head_count: int
+    max_people: int
+
+
+@dataclass(frozen=True)
+class NoRate:
+    """No price for these nights: closed, or no rate for the room type and season."""
+
+    code: ClassVar[str] = "NO_RATE"
+    nights: tuple[date, ...]
+
+
 class ReasonCode(StrEnum):
     """Escalation reason codes (spec: Escalation rules). Code and model raise the same set."""
 
