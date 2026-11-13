@@ -5,7 +5,7 @@ import pytest
 
 from anemos.clock import FixedClock
 from anemos.db.seed import hotel_data
-from anemos.reservations.errors import Closed, MinStay, ReasonCode
+from anemos.reservations.errors import Closed, MinStay, NeedsEscalation, ReasonCode
 from anemos.reservations.hotel_data import MinStayRule
 from anemos.reservations.hotel_time import HOTEL_TZ
 from anemos.reservations.model import RoomOffer, RoomRequest, Stay
@@ -97,6 +97,27 @@ def test_closed_is_reported_before_min_stay() -> None:
 def test_western_easter_2027_is_closed() -> None:
     result = check_stay(HOTEL, stay(3, 28, 3, 31))
     assert result == Closed((d(3, 28), d(3, 29), d(3, 30)))
+
+
+def test_year_without_calendar_escalates_not_closed() -> None:
+    # D36: June 2028 has no season periods at all (only 2027 is seeded).
+    result = check_stay(HOTEL, Stay(date(2028, 6, 10), date(2028, 6, 13)))
+    assert isinstance(result, NeedsEscalation)
+    assert result.reason == ReasonCode.NO_CALENDAR
+    assert "2028" in result.detail
+
+
+def test_stay_crossing_into_a_year_without_calendar_escalates() -> None:
+    # 30 Dec 2027 is CLOSED (configured year), but 1 Jan 2028 has no calendar: escalate.
+    result = check_stay(HOTEL, Stay(date(2027, 12, 30), date(2028, 1, 2)))
+    assert isinstance(result, NeedsEscalation)
+    assert result.reason == ReasonCode.NO_CALENDAR
+
+
+def test_has_calendar_for() -> None:
+    assert HOTEL.has_calendar_for(2027)
+    assert not HOTEL.has_calendar_for(2026)
+    assert not HOTEL.has_calendar_for(2028)
 
 
 def test_high_arrival_needs_3_nights() -> None:

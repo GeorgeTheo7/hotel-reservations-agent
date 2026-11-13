@@ -50,3 +50,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** Python subtracts two aware datetimes that share the *same* tzinfo by wall clock, ignoring the DST change in between (clocks go back on 31 Oct).
 - **Evidence:** `test_naive_wall_clock_subtraction_would_be_wrong`: 47 h in Athens time, 48 h after converting to UTC; DST tests on 28 Mar and 31 Oct pass with `received_at` given in Athens time and via `FixedClock` (UTC).
 - **Fix:** `short_notice` converts both instants to UTC before subtracting (`hotel_time.check_in_moment` returns UTC). Rule: compute durations in UTC, use Athens only for calendar dates and display.
+
+## 2026-11-13 · An unseeded year said "closed" (D36, NO_CALENDAR)
+- **Symptom:** a June 2028 stay got `CLOSED`, which would tell the guest the hotel is shut in June.
+- **Cause:** "a night in no season period = closed" cannot tell "outside the season" from "season not set up yet"; only 2027 is seeded.
+- **Evidence:** `test_year_without_calendar_escalates_not_closed` (June 2028) and a 30 Dec 2027 – 2 Jan 2028 stay both escalate; 1 Nov 2027 and Western Easter 2027 stay `CLOSED`.
+- **Fix:** `HotelData.has_calendar_for(year)`; `check_stay` returns `NO_CALENDAR` (escalation) before `CLOSED`. Trade-off: a far-future request reaches the owner instead of getting an automatic answer.

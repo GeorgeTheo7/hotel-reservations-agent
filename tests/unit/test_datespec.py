@@ -123,6 +123,43 @@ def test_29_february_without_year_is_the_next_leap_day() -> None:
     assert stay == Stay(date(2028, 2, 29), date(2028, 3, 1))
 
 
+# --- ambiguous day/month order (D37) ---
+
+
+def test_ambiguous_03_04_asks_the_guest() -> None:
+    spec = ExactDates(PartialDate(3, 4, ambiguous_order=True), nights=2)
+    result = resolve(spec, received(2026, 12, 1))
+    assert isinstance(result, NeedsInfo)
+    assert "3 April or 4 March" in result.missing
+
+
+def test_ambiguous_check_out_also_asks() -> None:
+    spec = ExactDates(pd(1, 5), PartialDate(5, 6, ambiguous_order=True))
+    assert isinstance(resolve(spec, received(2026, 12, 1)), NeedsInfo)
+
+
+@pytest.mark.parametrize(
+    ("day", "month", "expected_check_in"),
+    [
+        (13, 4, date(2027, 4, 13)),  # 13 can't be a month: one reading only
+        (4, 4, date(2027, 4, 4)),  # same date both ways
+    ],
+)
+def test_flag_ignored_when_only_one_reading_exists(
+    day: int, month: int, expected_check_in: date
+) -> None:
+    spec = ExactDates(PartialDate(day, month, ambiguous_order=True), nights=1)
+    result = resolve(spec, received(2026, 12, 1))
+    assert isinstance(result, Stay)
+    assert result.check_in == expected_check_in
+
+
+def test_unflagged_numbers_are_taken_as_read() -> None:
+    assert resolve(ExactDates(pd(3, 4), nights=1), received(2026, 12, 1)) == Stay(
+        date(2027, 4, 3), date(2027, 4, 4)
+    )
+
+
 @pytest.mark.parametrize(("day", "month"), [(0, 5), (32, 5), (10, 0), (10, 13)])
 def test_partial_date_rejects_impossible_numbers(day: int, month: int) -> None:
     with pytest.raises(ValueError):

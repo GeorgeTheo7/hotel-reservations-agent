@@ -35,12 +35,21 @@ class PartialDate:
     day: int
     month: int
     year: int | None = None
+    # Set by the model when the guest wrote numbers whose order is unclear ("03/04":
+    # 3 April or 4 March?). D37: code decides if it really is ambiguous.
+    ambiguous_order: bool = False
 
     def __post_init__(self) -> None:
         if not 1 <= self.month <= 12:
             raise ValueError(f"month must be 1-12, got {self.month}")
         if not 1 <= self.day <= 31:
             raise ValueError(f"day must be 1-31, got {self.day}")
+
+    @property
+    def truly_ambiguous(self) -> bool:
+        """Both readings are real, different dates: day and month both 1-12 and unequal.
+        13/04 has only one reading, 04/04 reads the same both ways."""
+        return self.ambiguous_order and self.day <= 12 and self.day != self.month
 
 
 @dataclass(frozen=True)
@@ -61,6 +70,13 @@ def resolve(spec: DateSpec, received_at: datetime) -> Stay | NeedsInfo | Invalid
 
 
 def _resolve_exact(spec: ExactDates, today: date) -> Stay | NeedsInfo | InvalidDates:
+    for partial in (spec.check_in, spec.check_out):
+        if partial is not None and partial.truly_ambiguous:
+            return NeedsInfo(
+                f"day/month order of {partial.day:02d}/{partial.month:02d}: "
+                f"{_month_day(partial.day, partial.month)} or "
+                f"{_month_day(partial.month, partial.day)}?"
+            )
     check_in = _on_or_after(spec.check_in, today)
     if isinstance(check_in, InvalidDates):
         return check_in
@@ -83,6 +99,11 @@ def _resolve_exact(spec: ExactDates, today: date) -> Stay | NeedsInfo | InvalidD
     if check_out is None:
         return NeedsInfo("length of stay (check-out date or number of nights)")
     return stay_or_error(check_in, check_out)
+
+
+def _month_day(day: int, month: int) -> str:
+    """For owner-facing notes only (English); guest wording comes from templates."""
+    return f"{day} {calendar.month_name[month]}"
 
 
 def _on_or_after(partial: PartialDate, earliest: date) -> date | InvalidDates:

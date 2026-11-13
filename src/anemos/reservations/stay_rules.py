@@ -27,8 +27,17 @@ def min_stay_for(hotel: HotelData, arrival: date) -> int | None:
     return None
 
 
-def check_stay(hotel: HotelData, stay: Stay) -> Closed | MinStay | None:
-    """None = the stay is bookable by the calendar. Closed nights are reported first."""
+def check_stay(hotel: HotelData, stay: Stay) -> NeedsEscalation | Closed | MinStay | None:
+    """None = the stay is bookable by the calendar.
+
+    Order: a night in a year with no season periods at all -> NO_CALENDAR escalation
+    (D36: "closed" would be a guess); then closed nights; then minimum stay.
+    """
+    no_calendar = sorted({n.year for n in stay.nights if not hotel.has_calendar_for(n.year)})
+    if no_calendar:
+        return NeedsEscalation(
+            ReasonCode.NO_CALENDAR, f"no season calendar for {', '.join(map(str, no_calendar))}"
+        )
     closed = tuple(night for night in stay.nights if not is_open(hotel, night))
     if closed:
         return Closed(closed)

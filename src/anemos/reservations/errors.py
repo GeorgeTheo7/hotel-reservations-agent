@@ -81,6 +81,7 @@ class ReasonCode(StrEnum):
     MODEL = "MODEL"
     ACCESSIBILITY = "ACCESSIBILITY"
     UNACCOMPANIED_CHILDREN = "UNACCOMPANIED_CHILDREN"
+    NO_CALENDAR = "NO_CALENDAR"
 
 
 @dataclass(frozen=True)

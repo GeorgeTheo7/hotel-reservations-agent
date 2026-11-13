@@ -9,7 +9,7 @@ changed after it is built.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from itertools import pairwise
 from types import MappingProxyType
 
@@ -80,6 +80,15 @@ class HotelData:
             object.__setattr__(self, name, MappingProxyType(dict(getattr(self, name))))
         ordered = tuple(sorted(self.season_periods, key=lambda p: p.first_night))
         object.__setattr__(self, "season_periods", ordered)
+
+    def has_calendar_for(self, year: int) -> bool:
+        """True if any season period touches `year`. A night outside every period is
+        CLOSED only in such a year; in a year with no periods at all nobody has set up
+        the season yet (NO_CALENDAR, D36)."""
+        return any(
+            p.first_night.year <= year <= (p.end - timedelta(days=1)).year
+            for p in self.season_periods
+        )
 
     def rate(self, room_type_id: str, season: Season) -> Cents | None:
         """None = no rate for this type and season (NO_RATE, week 3)."""
