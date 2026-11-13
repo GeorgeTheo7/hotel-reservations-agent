@@ -21,6 +21,14 @@ class Season(StrEnum):
     HIGH = "high"
 
 
+class ExtraBedBand(StrEnum):
+    """Extra-bed price band by age. Values match `extra_bed_rates.band` in the database;
+    the age bounds live in `occupancy.extra_bed_band`."""
+
+    CHILD_2_11 = "child_2_11"
+    AGE_12_PLUS = "age_12_plus"
+
+
 # Values match the room_types_extra_beds_valid constraint in the database.
 ExtraBeds = Literal["cot_only", "extra_bed", "sofa_beds"]
 

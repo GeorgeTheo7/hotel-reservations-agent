@@ -1,7 +1,8 @@
 """Seed data for Hotel Anemos, season 2027 (D21). All data is fictional.
 
 Idempotent: running it again gives the same rows.
-- Room types, rooms, seasons and rates are upserted (inserted or updated by key).
+- Room types, rooms, seasons, rates and extra-bed rates are upserted (inserted or
+  updated by key).
 - The 2027 calendar (season periods, minimum stays) is replaced as a whole.
 - Bookings are never touched.
 
@@ -16,7 +17,7 @@ from psycopg.rows import TupleRow
 
 from anemos.db.connection import connect
 from anemos.reservations.hotel_data import HotelData, MinStayRule, SeasonPeriod
-from anemos.reservations.model import ExtraBeds, RoomType, Season
+from anemos.reservations.model import ExtraBedBand, ExtraBeds, RoomType, Season
 from anemos.reservations.money import Cents
 
 SEASON_YEAR = 2027
@@ -71,6 +72,9 @@ MIN_STAY_RULES = [
     (date(2027, 10, 1), date(2027, 11, 1), 1),
 ]
 
+# extra-bed band -> price per extra bed per night, in cents (child 2-11 EUR 20, 12+ EUR 35)
+EXTRA_BED_RATES = {"child_2_11": 2_000, "age_12_plus": 3_500}
+
 
 def seed(conn: psycopg.Connection[TupleRow]) -> None:
     """Write the seed data in one transaction (a savepoint if one is already open)."""
@@ -115,6 +119,11 @@ def seed(conn: psycopg.Connection[TupleRow]) -> None:
             "INSERT INTO min_stay_rules (arrivals, min_nights) VALUES (daterange(%s, %s), %s)",
             MIN_STAY_RULES,
         )
+        cur.executemany(
+            "INSERT INTO extra_bed_rates (band, rate_cents) VALUES (%s, %s)"
+            " ON CONFLICT (band) DO UPDATE SET rate_cents = EXCLUDED.rate_cents",
+            list(EXTRA_BED_RATES.items()),
+        )
 
 
 def hotel_data() -> HotelData:
@@ -138,6 +147,9 @@ def hotel_data() -> HotelData:
         min_stay_rules=tuple(
             MinStayRule(first, end, nights) for first, end, nights in MIN_STAY_RULES
         ),
+        extra_bed_rates={
+            ExtraBedBand(band): Cents(cents) for band, cents in EXTRA_BED_RATES.items()
+        },
     )
 
 
@@ -155,6 +167,7 @@ def main() -> None:
                 "room_rates",
                 "season_periods",
                 "min_stay_rules",
+                "extra_bed_rates",
             )
         }
     print("Seeded:", ", ".join(f"{table} {row[0] if row else 0}" for table, row in counts.items()))

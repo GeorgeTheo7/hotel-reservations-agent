@@ -18,6 +18,7 @@ APP_TABLES = (
 )
 INVENTORY_TABLES = [
     ("bookings",),
+    ("extra_bed_rates",),
     ("min_stay_rules",),
     ("room_rates",),
     ("room_types",),

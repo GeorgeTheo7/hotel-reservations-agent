@@ -73,6 +73,7 @@ Unmet requests: other type free → ≤ 2 alternatives cheapest first · all boo
 | `seasons`, `season_periods` | season id (`low/mid/high`), `city_tax_cents`; season, date range. No overlap; a night in no period = closed |
 | `room_rates` | type, season, `rate_cents`; one row per type × season, no dates |
 | `min_stay_rules` | arrival range, nights; no overlap; dated (the 10–20 Aug rule cuts across High) |
+| `extra_bed_rates` | `band` (`child_2_11` / `age_12_plus`), `rate_cents` per extra bed per night; one row per band, same for all seasons and room types. Who pays and the age bounds of each band are code (D25); infants have no row (free cot, D13). Added week 2 (migration 0003) |
 | `bookings` | `room_id`, `stay daterange [in,out)`, `status hold/confirmed/cancelled/expired`, `expires_at`, `request_id`, `email_id`, `price_cents`. **Exclusion constraint** `(room_id WITH =, stay WITH &&)` where status in (hold, confirmed); needs `btree_gist` |
 | `requests` | *planned, week 3*: the extracted request of an email (`DateSpec`, resolved dates, guests, rooms); target of `bookings.request_id` and `quotes.request` |
 | `quotes` | request, nightly lines (JSON), subtotal, city tax, total, deposit, cancel deadline |

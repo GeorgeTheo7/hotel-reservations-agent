@@ -212,6 +212,7 @@ def snapshot(db: Conn) -> dict[str, list[tuple[Any, ...]]]:
         "room_rates": "SELECT * FROM room_rates ORDER BY 1, 2",
         "season_periods": "SELECT season_id, nights::text FROM season_periods ORDER BY nights",
         "min_stay_rules": "SELECT arrivals::text, min_nights FROM min_stay_rules ORDER BY arrivals",
+        "extra_bed_rates": "SELECT * FROM extra_bed_rates ORDER BY band",
     }
     return {table: db.execute(query).fetchall() for table, query in queries.items()}
 
@@ -228,6 +229,7 @@ def test_seeding_restores_changed_reference_data(db: Conn) -> None:
     db.execute("UPDATE room_rates SET rate_cents = 1 WHERE room_type_id = 'sea_view'")
     db.execute("UPDATE rooms SET room_type_id = 'standard' WHERE id = 107")
     db.execute("DELETE FROM season_periods WHERE season_id = 'high'")
+    db.execute("UPDATE extra_bed_rates SET rate_cents = 1 WHERE band = 'age_12_plus'")
     seed(db)
     assert snapshot(db) == before
 

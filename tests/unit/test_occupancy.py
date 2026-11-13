@@ -2,9 +2,8 @@ import pytest
 
 from anemos.db.seed import hotel_data
 from anemos.reservations.hotel_data import HotelData
-from anemos.reservations.model import Adult, Child, Party, RoomType
+from anemos.reservations.model import Adult, Child, ExtraBedBand, Party, RoomType
 from anemos.reservations.occupancy import (
-    ExtraBedBand,
     RoomPlan,
     extra_bed_band,
     extra_bed_payers,

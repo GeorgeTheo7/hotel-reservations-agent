@@ -5,7 +5,7 @@ import pytest
 
 from anemos.db.seed import hotel_data
 from anemos.reservations.hotel_data import HotelData, SeasonPeriod
-from anemos.reservations.model import Season, Stay
+from anemos.reservations.model import ExtraBedBand, Season, Stay
 from anemos.reservations.seasons import is_open, season_of
 
 pytestmark = pytest.mark.unit
@@ -58,6 +58,12 @@ def test_snapshot_rejects_float_rates(hotel: HotelData) -> None:
     rates = {**hotel.rates, ("standard", LOW): 70.0}
     with pytest.raises(ValueError, match="int cents"):
         replace(hotel, rates=rates)  # type: ignore[arg-type]
+
+
+def test_snapshot_needs_a_price_for_every_extra_bed_band(hotel: HotelData) -> None:
+    only_child = {ExtraBedBand.CHILD_2_11: hotel.extra_bed_rates[ExtraBedBand.CHILD_2_11]}
+    with pytest.raises(ValueError, match="every band"):
+        replace(hotel, extra_bed_rates=only_child)
 
 
 def test_snapshot_cannot_be_changed(hotel: HotelData) -> None:

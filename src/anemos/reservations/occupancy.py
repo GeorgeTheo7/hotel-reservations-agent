@@ -10,19 +10,13 @@ turns that into cents.
 """
 
 from dataclasses import dataclass
-from enum import StrEnum
 
 from anemos.reservations.hotel_data import HotelData
-from anemos.reservations.model import Adult, Child, Guest, Party, RoomType
+from anemos.reservations.model import Adult, Child, ExtraBedBand, Guest, Party, RoomType
 
 INFANT_AGE_LIMIT = 2  # under 2 = infant (D13)
 OLDER_BAND_FROM_AGE = 12  # extra bed: 2-11 child rate, 12+ older rate
 MAX_ROOMS_PER_REQUEST = 2  # 3+ rooms escalate as GROUP (D31)
-
-
-class ExtraBedBand(StrEnum):
-    CHILD_2_11 = "child_2_11"
-    AGE_12_PLUS = "age_12_plus"
 
 
 def is_infant(guest: Guest) -> bool:
