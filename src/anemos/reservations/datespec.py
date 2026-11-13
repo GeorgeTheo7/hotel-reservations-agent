@@ -1,9 +1,9 @@
 """DateSpec: dates as the guest wrote them, and their resolution into a Stay (D6).
 
 The model only fills in a DateSpec; this code does all calendar maths. Kinds so far:
-exact dates, relative weekends (D29) and holidays (D28). An approximate kind joins
-`DateSpec` later. Exact and relative dates resolve to one Stay; a holiday resolves to
-a Window of possible check-in dates, from which options are picked (D7).
+exact dates, relative weekends (D29), holidays (D28) and approximate periods (D7).
+Exact and relative dates resolve to one Stay; holidays and approximate periods resolve
+to a Window of possible check-in dates, from which `pick_options` picks up to 3.
 
 Rules:
 - "Today" is the hotel date of `received_at` (Europe/Athens, D23), never the clock.
@@ -20,9 +20,14 @@ Rules:
 - Holiday: Easter only. Tradition `unspecified` -> Orthodox. Window = Easter +/- 3 days;
   without a year, the first Easter whose window has not ended; check-ins before today
   are cut off. No night count -> NEEDS_INFO. Any other holiday -> NEEDS_INFO.
+- Approximate: early = 1-10, mid = 11-20, late = 21-end of month. Year and cut-off as
+  for Easter. No night count -> NEEDS_INFO.
+- Options (D7): at most 3 bookable stays starting in the window, check-ins at least
+  2 days apart, earliest first.
 """
 
 import calendar
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Literal, assert_never
@@ -40,6 +45,14 @@ _MAX_YEARS_AHEAD = 8
 FRIDAY = 4  # date.weekday(): Monday = 0
 WEEKEND_NIGHTS = 2  # Friday to Sunday
 EASTER_WINDOW_DAYS = 3  # check-in from Easter - 3 to Easter + 3 (D7)
+MAX_OPTIONS = 3
+MIN_DAYS_BETWEEN_OPTIONS = 2
+# Part of a month -> (first day, last day or None for the month's last day). D7.
+MONTH_PARTS: dict[str, tuple[int, int | None]] = {
+    "early": (1, 10),
+    "mid": (11, 20),
+    "late": (21, None),
+}
 
 
 @dataclass(frozen=True)
@@ -93,7 +106,21 @@ class HolidayDates:
     nights: int | None = None
 
 
-type DateSpec = ExactDates | RelativeDates | HolidayDates
+@dataclass(frozen=True)
+class ApproximateDates:
+    """Part of a month, e.g. "late June for a week", "early October 2027, 3 nights"."""
+
+    part: Literal["early", "mid", "late"]
+    month: int
+    year: int | None = None
+    nights: int | None = None
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.month <= 12:
+            raise ValueError(f"month must be 1-12, got {self.month}")
+
+
+type DateSpec = ExactDates | RelativeDates | HolidayDates | ApproximateDates
 
 
 @dataclass(frozen=True)
@@ -115,6 +142,8 @@ def resolve(spec: DateSpec, received_at: datetime) -> Stay | Window | NeedsInfo 
             return _resolve_weekend(spec, today)
         case HolidayDates():
             return _resolve_holiday(spec, today)
+        case ApproximateDates():
+            return _resolve_approximate(spec, today)
         case _:
             # mypy proves this is unreachable; a new DateSpec kind without a branch
             # becomes a type error here.
@@ -188,6 +217,47 @@ def _resolve_exact(spec: ExactDates, today: date) -> Stay | NeedsInfo | InvalidD
     if check_out is None:
         return NeedsInfo("length of stay (check-out date or number of nights)")
     return stay_or_error(check_in, check_out)
+
+
+def _resolve_approximate(spec: ApproximateDates, today: date) -> Window | NeedsInfo | InvalidDates:
+    if spec.nights is None:
+        return NeedsInfo("length of stay (number of nights)")
+    if spec.nights < 1:
+        return InvalidDates(f"{spec.nights} nights")
+
+    def part_of(year: int) -> tuple[date, date]:
+        first_day, last_day = MONTH_PARTS[spec.part]
+        last = last_day or calendar.monthrange(year, spec.month)[1]
+        return date(year, spec.month, first_day), date(year, spec.month, last)
+
+    if spec.year is not None:
+        first, last = part_of(spec.year)
+        return Window(first, last, spec.nights)
+    year = today.year
+    while part_of(year)[1] < today:  # this year's part of the month is over
+        year += 1
+    first, last = part_of(year)
+    return Window(max(first, today), last, spec.nights)
+
+
+def pick_options(window: Window, is_bookable: Callable[[Stay], bool]) -> tuple[Stay, ...]:
+    """D7: up to 3 bookable stays starting in the window, check-ins >= 2 days apart.
+
+    Earliest first (greedy): walk the check-in dates in order and take a stay when it
+    is bookable and far enough from the last one taken. `is_bookable` is passed in
+    (calendar + availability), so this function stays pure. Empty = nothing fits.
+    """
+    options: list[Stay] = []
+    check_in = window.first_check_in
+    while check_in <= window.last_check_in and len(options) < MAX_OPTIONS:
+        far_enough = (
+            not options or (check_in - options[-1].check_in).days >= MIN_DAYS_BETWEEN_OPTIONS
+        )
+        candidate = Stay(check_in, check_in + timedelta(days=window.nights))
+        if far_enough and is_bookable(candidate):
+            options.append(candidate)
+        check_in += timedelta(days=1)
+    return tuple(options)
 
 
 def _month_day(day: int, month: int) -> str:
