@@ -59,6 +59,21 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | D37 | **Ambiguous day/month order:** the model marks a written date like 03/04 as `ambiguous_order`; code returns `NEEDS_INFO` only if both readings are real and differ (day and month both 1–12, day ≠ month). Otherwise the flag is ignored (13/04, 04/04) | The model notices the ambiguity, code decides it; no guessing between 3 April and 4 March |
 | D38 | **Room choice:** when several rooms of the chosen type are free for the whole stay, the hold takes the **lowest room number** (for 2 rooms: the two lowest). Availability (`free_rooms`) is a snapshot; approval re-validates before holding (D10) | Deterministic and testable; the owner can still move guests between rooms |
 | D39 | **Template policy sentences agree with the policies:** the quote templates state policy facts (breakfast included, first night charged after the free-cancellation date, 30% deposit, 48 h deposit deadline for held quotes). Each must agree with the policy documents (D15); a test checks them once the policy chunks exist | Two sources for one policy can drift; the guest must not get a template that contradicts the policy text |
+| D40 | **Reject** (states Q1): the draft becomes `rejected`, the email `closed`; nothing more happens in the system and the owner replies by hand. "Reject with feedback, get a new draft": Later | A redraft loop driven by owner feedback is a feature of its own; v1 keeps one draft per email |
+| D41 | **Owner edits** (states Q2): every text version is kept with its author (`agent` / `owner`); the **latest** version is sent | The audit trail must show what the agent proposed and what the owner changed |
+| D42 | **Draft expiry** (states Q3): after 72 h with no owner action the draft becomes `expired` and the email `expired`, shown in its own list; the owner can only close it. It is **not** escalated | D17: nothing is escalated automatically |
+| D43 | **Confirming a hold** (states Q4): the owner clicks "deposit received" on the Holds page; `hold` → `confirmed` | Without payments this is the only way `confirmed` is ever used |
+| D44 | **Re-validation fails at approval** (states Q5): the draft becomes `invalidated`, the email `escalated` with `NO_LONGER_AVAILABLE`; nothing is held or sent; the owner replies by hand. Re-running the agent for a fresh offer: Later | It follows an owner action, not the passing of time, so D17 holds |
+| D45 | **No draft after escalation** (states Q6): `escalated` goes only to `closed` | One run per email (D17) |
+| D46 | **Cancelling a hold** (states Q7): only the owner, on the Holds page. A guest's cancellation email is escalated (`CANCELLATION`) and the owner cancels by hand | Changes and cancellations are escalated in v1 (Scope) |
+| D47 | **What re-validation checks** (D10): everything the draft states. Every quoted price still matches a fresh price from the database, and every offered option, held or not (min-stay version, alternatives, window options), is still available. Any failure → D44 | The guest must not receive an offer that is already false when it is sent |
+| D48 | **Same guest = same `from_address`** (D17). A newer email from that address supersedes a `pending_approval` draft. A draft created when a newer email from that address already exists is **born superseded**. **"Newer"** = later `received_at`; equal `received_at` → the higher `id` (stored later) is newer. An email stored late with an older `received_at` supersedes nothing and its own draft is born superseded | One stable key; `in_reply_to` is a thread reply, which is escalated anyway (`THREAD_REPLY`). `received_at` is when the guest wrote, so a batch fetched out of order cannot make an older email win; `id` makes the order total |
+| D49 | **Reason codes added:** `NO_LONGER_AVAILABLE` (re-validation failed at approval, D44), `OWNER_REOPENED` (owner says a set-aside email was not spam), `SYSTEM_ERROR` (an unexpected error while processing) | Every way into `escalated` in `docs/states.md` has a code |
+| D50 | **Set-aside emails** are visible through an inbox filter, so a wrongly filtered email can be found and reopened (`OWNER_REOPENED`) | A spam filter with no way to look at what it removed hides its mistakes |
+| D51 | **Final statuses are enforced in the database:** a trigger on `emails`, `drafts`, `bookings` and `outbox` refuses any UPDATE of a row whose status is final (`docs/states.md`), and any change to `outbox` text. Allowed transitions between non-final statuses are enforced in code and tests, not in SQL | The rule that matters most (nothing un-finalises, nothing rewrites a sent text) holds even against a bug or a manual SQL edit; the full transition table in SQL would duplicate `docs/states.md` |
+| D52 | **Two approvals racing for the last room:** neither sees the other's uncommitted hold, so both pass re-validation; the exclusion constraint makes the second hold insert wait and then fail. The approval runs the inserts in a **savepoint** and turns that failure into the D44 path (`invalidated`, `NO_LONGER_AVAILABLE`). Rooms are always taken in ascending room number (D38) | The constraint stays the final guard and is exercised by the race tests; no global approval lock |
+| D53 | **Guardrails 1 and 7 from week 3:** stub drafts are checked for `{{QUOTE_BLOCK}}` exactly once on the quote route and `proposed_holds` ⊆ the run's quotes satisfying D9; the other guardrails come in week 6 | "Every draft is checked in code before it is shown" holds from the first draft |
+| D54 | **Approving an expired draft** (> 72 h, D42): the draft and email are flipped to `expired` and committed; the response is **409** with `expired` in the body | Same code as a double approval: the draft is no longer `pending_approval`; the body tells the owner why |
 
 ## Domain data
 | Type | Rooms | Std/max | Extra bed | Notes |
@@ -82,16 +97,18 @@ Unmet requests: other type free → ≤ 2 alternatives cheapest first · all boo
 | `room_rates` | type, season, `rate_cents`; one row per type × season, no dates |
 | `min_stay_rules` | arrival range, nights; no overlap; dated (the 10–20 Aug rule cuts across High) |
 | `extra_bed_rates` | `band` (`child_2_11` / `age_12_plus`), `rate_cents` per extra bed per night; one row per band, same for all seasons and room types. Who pays and the age bounds of each band are code (D25); infants have no row (free cot, D13). Added week 2 (migration 0003) |
-| `bookings` | `room_id`, `stay daterange [in,out)`, `status hold/confirmed/cancelled/expired`, `expires_at`, `request_id`, `email_id`, `price_cents`. **Exclusion constraint** `(room_id WITH =, stay WITH &&)` where status in (hold, confirmed); needs `btree_gist` |
-| `requests` | *planned, week 3*: the extracted request of an email (`DateSpec`, resolved dates, guests, rooms); target of `bookings.request_id` and `quotes.request` |
-| `quotes` | request, nightly lines (JSON), subtotal, city tax, total, deposit, cancel deadline |
-| `emails` | `message_id` (unique), `in_reply_to`, `thread_id`, `from_address`, `subject`, `raw_body`, `clean_body`, `language`, `received_at`, status |
-| `drafts` | email, text versions, `quote_ids`, `proposed_holds`, guardrail results, status |
-| `outbox` | draft, status `pending/sent (simulated)` |
+| `bookings` | `room_id`, `stay daterange [in,out)`, `status hold/confirmed/cancelled/expired`, `expires_at`, `request_id`, `email_id`, `draft_id` (week 3: must point to an `approved` draft), `price_cents`. **Exclusion constraint** `(room_id WITH =, stay WITH &&)` where status in (hold, confirmed); needs `btree_gist` |
+| `requests` | the extracted request of an email (`DateSpec`, resolved dates, guests, rooms), one per email; target of `bookings.request_id` and `quotes.request` |
+| `quotes` | request, nightly lines (JSON), subtotal, city tax, total, deposit, cancel deadline, `hold_allowed` |
+| `emails` | `message_id` (unique), `in_reply_to`, `mail_thread_id` (the mailbox's thread; not D17's `thread_id`), `from_address` (lowercase), `subject`, `raw_body`, `clean_body`, `language`, `received_at`, `created_at` (stored at, injected clock), status, `reason_codes` (escalation) |
+| `drafts` | email (unique: one draft per email), request, guardrail results, status, created at |
+| `draft_versions` | draft, version number, author `agent/owner`, text (D41) |
+| `draft_offers` | draft, quote, `hold` (only if the quote's `hold_allowed`, D9); replaces `quote_ids` + `proposed_holds` so both are foreign keys |
+| `outbox` | draft (unique, must be `approved`), final text (never changes, D51), status `pending/sent (simulated)`, attempts, last error, `sent_at` |
 | `policy_chunks` | `policy_id`, text, embedding (`vector`), tsvector |
 | `audit_log` | append-only: run, step, event, input/output JSON, model, `prompt_version`, tokens, cost, latency, error, actor, at |
 
-Tables are created by migrations in the week they are first needed. Week 1: inventory tables + `bookings`, with `bookings.email_id` and `request_id` as nullable columns without foreign keys. **Week 3 adds the foreign keys** for `bookings.email_id` and `request_id` once their target tables exist.
+Tables are created by migrations in the week they are first needed. Week 1: inventory tables + `bookings`, with `bookings.email_id` and `request_id` as nullable columns without foreign keys. **Week 3 adds the foreign key** for `bookings.email_id` and `request_id` once their target tables exist: one two-column key `(request_id, email_id)` → `requests (id, email_id)`, `MATCH FULL` (both set or both NULL). It replaces two one-column keys, which would never refuse a row it accepts (the request must belong to that email, and `requests.email_id` already points at `emails`).
 
 ## Tools
 | Tool | Reads/writes | Approval | Errors |
@@ -123,7 +140,7 @@ flowchart LR
 ```
 
 ## Escalation rules
-Reason codes (enum, raised by code or by `escalate(reason_code, note)`): `COMPLAINT`, `DISCOUNT`, `GROUP` (3+ rooms / no fit in 2), `CHANGE`, `CANCELLATION`, `THREAD_REPLY`, `LANGUAGE` (not EN/EL), `SHORT_NOTICE` (< 48 h, D31), `LATE_ARRIVAL` (> 22:00), `NO_POLICY`, `GUARDRAIL_FAIL`, `LOOP_LIMIT`, `LEGAL`, `BILLING`, `MEDICAL`, `INJECTION`, `MODEL` (model judgement), `ACCESSIBILITY` (stated need, party does not fit the Accessible room, D33), `UNACCOMPANIED_CHILDREN` (fewer adults than rooms, incl. children-only parties, D32), `NO_CALENDAR` (a night in a year with no season periods, D36).
+Reason codes (enum, raised by code or by `escalate(reason_code, note)`): `COMPLAINT`, `DISCOUNT`, `GROUP` (3+ rooms / no fit in 2), `CHANGE`, `CANCELLATION`, `THREAD_REPLY`, `LANGUAGE` (not EN/EL), `SHORT_NOTICE` (< 48 h, D31), `LATE_ARRIVAL` (> 22:00), `NO_POLICY`, `GUARDRAIL_FAIL`, `LOOP_LIMIT`, `LEGAL`, `BILLING`, `MEDICAL`, `INJECTION`, `MODEL` (model judgement), `ACCESSIBILITY` (stated need, party does not fit the Accessible room, D33), `UNACCOMPANIED_CHILDREN` (fewer adults than rooms, incl. children-only parties, D32), `NO_CALENDAR` (a night in a year with no season periods, D36), `NO_LONGER_AVAILABLE` (re-validation failed at approval, D44), `OWNER_REOPENED` (a set-aside email the owner says is not spam, D50), `SYSTEM_ERROR` (an unexpected error while processing, D49).
 Owner gets: codes, 2–3 line English summary, extracted request, tool results so far; no draft. Pets and accessibility are handled, not escalated, except an accessibility need the Accessible room cannot fit (D33).
 Extraction carries `flags: legal_threat | billing_request | medical_need | accessibility_need | injection_suspected` and `script: greek | latin`.
 
@@ -172,7 +189,7 @@ Held-out numbers are indicative (±~10 pts at n = 30). Budget: dev $2 · dev eva
 | 7 | React inbox, detail, actions, holds, password; +12 test emails |
 | 8 | Monitoring, test set complete (~100), first full dev eval — **v1 feature-complete** |
 | 9 | Improve vs eval; MCP server + read-only role |
-| 10 | Hardening: resume, re-validation, superseded, tidy-up job for expired holds |
+| 10 | Hardening: resume, tidy-up job for expired holds and drafts (re-validation and superseded moved to week 3) |
 | 11 | Full compose, replay mode, README + diagram, optional Azure workflow, held-out ×3 |
 | 12 | Buffer, demo video, write-up |
 
@@ -183,5 +200,5 @@ Overruns cut buffer, then week-10 extras; never weeks 1–3 or the evaluation.
 - Exact OpenAI model chosen in week 4.
 
 ## Later
-Real mailbox (v2) · changes/cancellations + `find_reservation` · thread replies handled by agent · B (free agent) vs C baseline evaluation · German/other languages · repeat-guest history · local-model fallback · Batches API · MCP `request_hold` (creates pending approval only) · hosted demo · prices per year · special rates outside the three seasons · holidays other than Easter (D28) · relative dates like "in N weeks" (D29) · cot limit per room (D13 sets none) · 2-room plans with mixed room types (D27) · whole-month windows, one option per third of the month (D7).
+Real mailbox (v2) · changes/cancellations + `find_reservation` · thread replies handled by agent · B (free agent) vs C baseline evaluation · German/other languages · repeat-guest history · local-model fallback · Batches API · MCP `request_hold` (creates pending approval only) · hosted demo · prices per year · special rates outside the three seasons · holidays other than Easter (D28) · relative dates like "in N weeks" (D29) · cot limit per room (D13 sets none) · 2-room plans with mixed room types (D27) · whole-month windows, one option per third of the month (D7) · reject with feedback → new draft (D40) · re-run the agent after `NO_LONGER_AVAILABLE` (D44).
 *Why not in v1:* rates are keyed by room type + season with no dates of their own (`room_rates`), so rates and the season calendar cannot disagree; v1 quotes a single season of prices (D21), so neither feature is needed yet.
