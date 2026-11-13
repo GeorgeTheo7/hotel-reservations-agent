@@ -19,6 +19,14 @@ class InvalidDates:
 
 
 @dataclass(frozen=True)
+class NeedsInfo:
+    """The request cannot be resolved without asking the guest (e.g. no length of stay)."""
+
+    code: ClassVar[str] = "NEEDS_INFO"
+    missing: str
+
+
+@dataclass(frozen=True)
 class Closed:
     """Some nights of the stay fall outside every season period (hotel closed)."""
 

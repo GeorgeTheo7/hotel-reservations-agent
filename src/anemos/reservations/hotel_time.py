@@ -17,6 +17,15 @@ def require_aware(at: datetime, name: str) -> None:
         raise ValueError(f"{name} must be timezone-aware, got {at!r}")
 
 
+def hotel_date(at: datetime) -> date:
+    """The calendar date in the hotel (Europe/Athens) at instant `at`.
+
+    31 Dec 22:30 UTC is already 1 Jan in Athens (UTC+2 in winter).
+    """
+    require_aware(at, "at")
+    return at.astimezone(HOTEL_TZ).date()
+
+
 def check_in_moment(arrival: date) -> datetime:
     """15:00 hotel time on the arrival date, as UTC."""
     return datetime.combine(arrival, CHECK_IN_TIME, tzinfo=HOTEL_TZ).astimezone(UTC)
