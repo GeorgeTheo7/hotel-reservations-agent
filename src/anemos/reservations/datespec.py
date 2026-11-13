@@ -3,7 +3,7 @@
 The model only fills in a DateSpec; this code does all calendar maths. Kinds so far:
 exact dates, relative weekends (D29), holidays (D28) and approximate periods (D7).
 Exact and relative dates resolve to one Stay; holidays and approximate periods resolve
-to a Window of possible check-in dates, from which `pick_options` picks up to 3.
+to a Window of possible check-in dates; `options.window_options` picks up to 3.
 
 Rules:
 - "Today" is the hotel date of `received_at` (Europe/Athens, D23), never the clock.
@@ -21,13 +21,11 @@ Rules:
   without a year, the first Easter whose window has not ended; check-ins before today
   are cut off. No night count -> NEEDS_INFO. Any other holiday -> NEEDS_INFO.
 - Approximate: early = 1-10, mid = 11-20, late = 21-end of month. Year and cut-off as
-  for Easter. No night count -> NEEDS_INFO.
-- Options (D7): at most 3 bookable stays starting in the window, check-ins at least
-  2 days apart, earliest first.
+  for Easter. No night count -> NEEDS_INFO. A whole month ("sometime in June") ->
+  NEEDS_INFO in v1 (D7).
 """
 
 import calendar
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Literal, assert_never
@@ -45,8 +43,6 @@ _MAX_YEARS_AHEAD = 8
 FRIDAY = 4  # date.weekday(): Monday = 0
 WEEKEND_NIGHTS = 2  # Friday to Sunday
 EASTER_WINDOW_DAYS = 3  # check-in from Easter - 3 to Easter + 3 (D7)
-MAX_OPTIONS = 3
-MIN_DAYS_BETWEEN_OPTIONS = 2
 # Part of a month -> (first day, last day or None for the month's last day). D7.
 MONTH_PARTS: dict[str, tuple[int, int | None]] = {
     "early": (1, 10),
@@ -110,7 +106,7 @@ class HolidayDates:
 class ApproximateDates:
     """Part of a month, e.g. "late June for a week", "early October 2027, 3 nights"."""
 
-    part: Literal["early", "mid", "late"]
+    part: Literal["early", "mid", "late", "whole_month"]
     month: int
     year: int | None = None
     nights: int | None = None
@@ -220,6 +216,9 @@ def _resolve_exact(spec: ExactDates, today: date) -> Stay | NeedsInfo | InvalidD
 
 
 def _resolve_approximate(spec: ApproximateDates, today: date) -> Window | NeedsInfo | InvalidDates:
+    if spec.part == "whole_month":
+        month = calendar.month_name[spec.month]
+        return NeedsInfo(f"which dates in {month} (early, mid or late {month}, or exact dates)")
     if spec.nights is None:
         return NeedsInfo("length of stay (number of nights)")
     if spec.nights < 1:
@@ -238,26 +237,6 @@ def _resolve_approximate(spec: ApproximateDates, today: date) -> Window | NeedsI
         year += 1
     first, last = part_of(year)
     return Window(max(first, today), last, spec.nights)
-
-
-def pick_options(window: Window, is_bookable: Callable[[Stay], bool]) -> tuple[Stay, ...]:
-    """D7: up to 3 bookable stays starting in the window, check-ins >= 2 days apart.
-
-    Earliest first (greedy): walk the check-in dates in order and take a stay when it
-    is bookable and far enough from the last one taken. `is_bookable` is passed in
-    (calendar + availability), so this function stays pure. Empty = nothing fits.
-    """
-    options: list[Stay] = []
-    check_in = window.first_check_in
-    while check_in <= window.last_check_in and len(options) < MAX_OPTIONS:
-        far_enough = (
-            not options or (check_in - options[-1].check_in).days >= MIN_DAYS_BETWEEN_OPTIONS
-        )
-        candidate = Stay(check_in, check_in + timedelta(days=window.nights))
-        if far_enough and is_bookable(candidate):
-            options.append(candidate)
-        check_in += timedelta(days=1)
-    return tuple(options)
 
 
 def _month_day(day: int, month: int) -> str:
