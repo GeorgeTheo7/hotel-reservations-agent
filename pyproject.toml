@@ -42,6 +42,10 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "src/anemos/clock.py" = ["TID251"]  # the one place allowed to read the system time
+# Tests assert bilingual EN/EL output, so Greek letters, the euro/multiplication signs
+# and no-break spaces in strings are intended there. src/ stays strict: guest
+# wording lives in reservations/templates/, not in Python strings.
+"tests/**" = ["RUF001"]
 
 [tool.mypy]
 strict = true

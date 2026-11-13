@@ -1,0 +1,12 @@
+Our offer: $heading
+$dates
+$party
+$note
+$lines
+Accommodation total: $subtotal
+City tax, paid at the hotel on arrival (not included above): $city_tax
+$deposit
+Free cancellation up to and including $cancel_until; after that, the first night is charged.
+$cot
+Breakfast is included.
+$hold

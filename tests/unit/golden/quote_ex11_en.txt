@@ -1,0 +1,12 @@
+Your request: Standard Double, 2 rooms, Tuesday 24 August 2027 – Friday 27 August 2027 (3 nights), 4 adults.
+---
+Our offer: Standard Double, 2 rooms
+Tuesday 24 August 2027 – Friday 27 August 2027 (3 nights)
+4 adults
+Room, high season: 3 nights × 2 rooms × €140.00 = €840.00
+Accommodation total: €840.00
+City tax, paid at the hotel on arrival (not included above): €24.00
+Deposit (30% of the accommodation total), due within 48 hours: €252.00
+Free cancellation up to and including Sunday 25 July 2027; after that, the first night is charged.
+Breakfast is included.
+We are holding these rooms for you until {{HOLD_UNTIL}}.

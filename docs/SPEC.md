@@ -58,6 +58,7 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | D36 | **No calendar for a year:** a stay with any night in a year that has no season periods at all is not `CLOSED`; escalate `NO_CALENDAR`. `CLOSED` is only for nights outside the periods of a year that has some. Checked before `CLOSED` | Before the owner sets up a season, "we are closed" would be a false statement to the guest |
 | D37 | **Ambiguous day/month order:** the model marks a written date like 03/04 as `ambiguous_order`; code returns `NEEDS_INFO` only if both readings are real and differ (day and month both 1–12, day ≠ month). Otherwise the flag is ignored (13/04, 04/04) | The model notices the ambiguity, code decides it; no guessing between 3 April and 4 March |
 | D38 | **Room choice:** when several rooms of the chosen type are free for the whole stay, the hold takes the **lowest room number** (for 2 rooms: the two lowest). Availability (`free_rooms`) is a snapshot; approval re-validates before holding (D10) | Deterministic and testable; the owner can still move guests between rooms |
+| D39 | **Template policy sentences agree with the policies:** the quote templates state policy facts (breakfast included, first night charged after the free-cancellation date, 30% deposit, 48 h deposit deadline for held quotes). Each must agree with the policy documents (D15); a test checks them once the policy chunks exist | Two sources for one policy can drift; the guest must not get a template that contradicts the policy text |
 
 ## Domain data
 | Type | Rooms | Std/max | Extra bed | Notes |
@@ -166,7 +167,7 @@ Held-out numbers are indicative (±~10 pts at n = 30). Budget: dev $2 · dev eva
 | 2 | `reservations/` core: money (int cents), calendar, rules (incl. `SHORT_NOTICE`, `GROUP`), pricing, `DateSpec`, Easter, formatting, quote template — pure, unit-tested; `HotelData` loader + availability query — integration-tested |
 | 3 | Tool functions with typed errors (`check_availability`, `quote_price`, `suggest_alternatives` incl. ±7 d and other-type search; moved from wk 2), `quotes` table; the request-to-offer path (trim open part → min-stay version → re-check → price → smallest fitting plan, D27/D34) as one production function, and the 12 pricing-example tests call it instead of the test helper; emails/drafts/outbox/bookings, fake adapter, approval txn (incl. expiring stale holds), holds, API with stub draft; first 30 test emails |
 | 4 | LLM adapter, extraction, routing, Greek + Greeklish check, smoke set, extraction eval; +12 test emails |
-| 5 | Policies + retrieval + retrieval eval; agent loop; +12 test emails |
+| 5 | Policies + retrieval + retrieval eval; test that template policy sentences agree with the policy chunks (D39); agent loop; +12 test emails |
 | 6 | Guardrails, redraft, summaries, checkpoints/interrupt, audit log; end-to-end; **measure cost, re-plan**; +12 test emails |
 | 7 | React inbox, detail, actions, holds, password; +12 test emails |
 | 8 | Monitoring, test set complete (~100), first full dev eval — **v1 feature-complete** |

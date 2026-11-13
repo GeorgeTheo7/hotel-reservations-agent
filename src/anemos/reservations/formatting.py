@@ -42,6 +42,7 @@ NOUNS: dict[Lang, dict[str, tuple[str, str]]] = {
         "infant": ("infant", "infants"),
         "night": ("night", "nights"),
         "room": ("room", "rooms"),
+        "bed": ("bed", "beds"),
     },
     "el": {
         "adult": ("ενήλικας", "ενήλικες"),
@@ -49,6 +50,7 @@ NOUNS: dict[Lang, dict[str, tuple[str, str]]] = {
         "infant": ("βρέφος", "βρέφη"),
         "night": ("νύχτα", "νύχτες"),
         "room": ("δωμάτιο", "δωμάτια"),
+        "bed": ("κρεβάτι", "κρεβάτια"),
     },
 }
 AND: dict[Lang, str] = {"en": "and", "el": "και"}

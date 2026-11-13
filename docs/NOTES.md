@@ -56,3 +56,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** "a night in no season period = closed" cannot tell "outside the season" from "season not set up yet"; only 2027 is seeded.
 - **Evidence:** `test_year_without_calendar_escalates_not_closed` (June 2028) and a 30 Dec 2027 – 2 Jan 2028 stay both escalate; 1 Nov 2027 and Western Easter 2027 stay `CLOSED`.
 - **Fix:** `HotelData.has_calendar_for(year)`; `check_stay` returns `NO_CALENDAR` (escalation) before `CLOSED`. Trade-off: a far-future request reaches the owner instead of getting an automatic answer.
+
+## 2026-11-13 · Guest wording lives in template files, not in Python strings
+- **Symptom:** ruff's look-alike check (RUF001) flagged Greek words in `quote_template.py` ("για", "να" look like Latin letters); wording was also scattered across code.
+- **Cause:** sentences the guest reads were built in Python f-strings, mixed with logic.
+- **Evidence:** 19 RUF001 findings in one module; after the move, `src/` has no Greek sentences and passes ruff unchanged.
+- **Fix:** layout in `reservations/templates/quote_*.txt` and `summary_*.txt`, sentences in `phrases_*.json` (`string.Template`); a test checks both languages have the same keys; golden files pin the output. Trade-off: a typo in a phrase key only fails at render time (covered by the golden tests), and `tests/` is exempt from RUF001 because tests must assert bilingual text.

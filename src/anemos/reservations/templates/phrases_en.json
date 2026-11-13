@@ -1,0 +1,30 @@
+{
+  "room_line": "Room, $season: $factors = $amount",
+  "extra_bed_one": "Extra bed, $band: $factors = $amount",
+  "extra_bed_many": "Extra beds, $band: $factors = $amount",
+  "season_low": "low season",
+  "season_mid": "mid season",
+  "season_high": "high season",
+  "band_child_2_11": "child 2–11",
+  "band_age_12_plus": "age 12+",
+  "cot_one": "Cot for $infants: free of charge.",
+  "cot_many": "Cots for $infants: free of charge.",
+  "hold_one": "We are holding this room for you until {{HOLD_UNTIL}}.",
+  "hold_many": "We are holding these rooms for you until {{HOLD_UNTIL}}.",
+  "no_hold": "No room is held yet: reply if you would like to book and we will confirm.",
+  "note_min_stay": "Please note: the minimum stay for arrival on $arrival is $nights, so this quote is for $nights.",
+  "note_open_part": "Please note: the hotel is closed on some of the nights you asked for, so this quote covers only the nights we are open.",
+  "note_room_type": "Please note: the $asked sleeps at most $max_people people, so this quote is for the $offered.",
+  "window": "check-in between $first and $last, $nights",
+  "weekday_articles": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ],
+  "deposit_held": "Deposit (30% of the accommodation total), due within 48 hours: $amount",
+  "deposit_quote": "Deposit to confirm a booking (30% of the accommodation total): $amount"
+}

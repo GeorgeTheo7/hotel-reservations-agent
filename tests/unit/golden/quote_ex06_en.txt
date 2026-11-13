@@ -1,0 +1,14 @@
+Your request: Family Suite, 1 room, Tuesday 20 July 2027 – Saturday 24 July 2027 (4 nights), 2 adults and 2 children (ages 13 and 6).
+---
+Our offer: Family Suite, 1 room
+Tuesday 20 July 2027 – Saturday 24 July 2027 (4 nights)
+2 adults and 2 children (ages 13 and 6)
+Room, high season: 4 nights × €260.00 = €1,040.00
+Extra bed, age 12+: 4 nights × €35.00 = €140.00
+Extra bed, child 2–11: 4 nights × €20.00 = €80.00
+Accommodation total: €1,260.00
+City tax, paid at the hotel on arrival (not included above): €16.00
+Deposit (30% of the accommodation total), due within 48 hours: €378.00
+Free cancellation up to and including Sunday 20 June 2027; after that, the first night is charged.
+Breakfast is included.
+We are holding this room for you until {{HOLD_UNTIL}}.
