@@ -7,6 +7,7 @@ More error types are added in the steps that need them (CLOSED, MIN_STAY, ...).
 """
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import ClassVar
 
 
@@ -14,3 +15,35 @@ from typing import ClassVar
 class InvalidDates:
     code: ClassVar[str] = "INVALID_DATES"
     reason: str
+
+
+class ReasonCode(StrEnum):
+    """Escalation reason codes (spec: Escalation rules). Code and model raise the same set."""
+
+    COMPLAINT = "COMPLAINT"
+    DISCOUNT = "DISCOUNT"
+    GROUP = "GROUP"
+    CHANGE = "CHANGE"
+    CANCELLATION = "CANCELLATION"
+    THREAD_REPLY = "THREAD_REPLY"
+    LANGUAGE = "LANGUAGE"
+    SHORT_NOTICE = "SHORT_NOTICE"
+    LATE_ARRIVAL = "LATE_ARRIVAL"
+    NO_POLICY = "NO_POLICY"
+    GUARDRAIL_FAIL = "GUARDRAIL_FAIL"
+    LOOP_LIMIT = "LOOP_LIMIT"
+    LEGAL = "LEGAL"
+    BILLING = "BILLING"
+    MEDICAL = "MEDICAL"
+    INJECTION = "INJECTION"
+    MODEL = "MODEL"
+    ACCESSIBILITY = "ACCESSIBILITY"
+    UNACCOMPANIED_CHILDREN = "UNACCOMPANIED_CHILDREN"
+
+
+@dataclass(frozen=True)
+class NeedsEscalation:
+    """A rule found a case the owner must handle; no draft is written for it."""
+
+    reason: ReasonCode
+    detail: str

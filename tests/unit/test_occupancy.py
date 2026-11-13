@@ -1,10 +1,12 @@
 import pytest
 
 from anemos.db.seed import hotel_data
+from anemos.reservations.errors import NeedsEscalation, ReasonCode
 from anemos.reservations.hotel_data import HotelData
 from anemos.reservations.model import Adult, Child, ExtraBedBand, Party, RoomType
 from anemos.reservations.occupancy import (
     RoomPlan,
+    adults_cover_rooms,
     extra_bed_band,
     extra_bed_payers,
     fits,
@@ -131,11 +133,24 @@ def test_infant_has_no_extra_bed_band() -> None:
         (Party.of(6), RoomPlan(SEA_VIEW, 2)),
         (Party.of(7), RoomPlan(SUITE, 2)),
         (Party.of(8), RoomPlan(SUITE, 2)),
-        (Party.of(9), None),  # no fit in 2 rooms: GROUP
     ],
 )
-def test_smallest_fitting_plan(party: Party, plan: RoomPlan | None) -> None:
+def test_smallest_fitting_plan(party: Party, plan: RoomPlan) -> None:
     assert smallest_fitting_plan(HOTEL, party) == plan
+
+
+def test_two_room_plans_use_one_type() -> None:
+    # 6 people: 2 x Sea View (same type), never Suite + Standard (D27, mixed types: Later).
+    plan = smallest_fitting_plan(HOTEL, Party.of(6))
+    assert plan == RoomPlan(SEA_VIEW, 2)
+
+
+def reason(result: RoomPlan | NeedsEscalation) -> ReasonCode | None:
+    return result.reason if isinstance(result, NeedsEscalation) else None
+
+
+def test_no_fit_in_two_rooms_is_group() -> None:
+    assert reason(smallest_fitting_plan(HOTEL, Party.of(9))) == ReasonCode.GROUP
 
 
 def test_accessible_room_only_with_stated_need() -> None:
@@ -143,7 +158,38 @@ def test_accessible_room_only_with_stated_need() -> None:
     assert smallest_fitting_plan(HOTEL, Party.of(2), accessibility_need=True) == RoomPlan(
         ACCESSIBLE, 1
     )
-    # Need stated, but the Accessible room is too small: next size up.
-    assert smallest_fitting_plan(HOTEL, Party.of(3), accessibility_need=True) == RoomPlan(
-        SEA_VIEW, 1
+    # Infants don't count, so 2 adults + infant still fit the Accessible room.
+    assert smallest_fitting_plan(HOTEL, Party.of(2, (1,)), accessibility_need=True) == RoomPlan(
+        ACCESSIBLE, 1
     )
+
+
+@pytest.mark.parametrize("party", [Party.of(3), Party.of(2, (5,)), Party.of(5)])
+def test_accessibility_need_that_does_not_fit_escalates(party: Party) -> None:
+    # D33: no "next size up" substitute; the owner decides.
+    result = smallest_fitting_plan(HOTEL, party, accessibility_need=True)
+    assert reason(result) == ReasonCode.ACCESSIBILITY
+
+
+@pytest.mark.parametrize(
+    ("party", "accessibility_need"),
+    [
+        (Party.of(0, (15,)), False),  # children only, 1 room
+        (Party.of(0, (15, 12)), True),  # children only, Accessible room
+        (Party.of(1, (16, 12, 8, 4)), False),  # 5 people -> 2 rooms, 1 adult
+    ],
+)
+def test_fewer_adults_than_rooms_escalates(party: Party, accessibility_need: bool) -> None:
+    result = smallest_fitting_plan(HOTEL, party, accessibility_need=accessibility_need)
+    assert reason(result) == ReasonCode.UNACCOMPANIED_CHILDREN
+
+
+def test_one_adult_per_room_is_enough() -> None:
+    # Ex 12 has 2 adults for 2 rooms: allowed.
+    assert smallest_fitting_plan(HOTEL, Party.of(2, (16, 12, 4))) == RoomPlan(SEA_VIEW, 2)
+    assert adults_cover_rooms(Party.of(2, (16, 12, 4)), 2)
+    assert not adults_cover_rooms(Party.of(1, (16,)), 2)
+
+
+def test_group_takes_precedence_over_unaccompanied_children() -> None:
+    assert reason(smallest_fitting_plan(HOTEL, Party.of(0, (5,) * 9))) == ReasonCode.GROUP

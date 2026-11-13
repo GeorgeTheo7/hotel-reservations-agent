@@ -32,3 +32,15 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** Python has no type-level ban on floats; mypy's `NewType("Cents", int)` rejects a float argument but not a float computed inside a function.
 - **Evidence:** a planted `return s * 0.3` in `reservations/` fails `test_no_float.py` with `line 2: float literal 0.3`.
 - **Fix:** AST guard over `reservations/` (float literals, `/`, negative powers, `float`/`round`, `math`/`decimal`, float f-string specs) + runtime `type(x) is int` checks. Trade-off: `/` is banned even for paths (use `joinpath`), because the AST can't tell a `Path` from a number; `%`/`.format` strings aren't scanned.
+
+## 2026-11-13 · Extra-bed prices in the database, age bands in code (migration 0003)
+- **Symptom:** the spec gives extra-bed prices (€20 child 2–11, €35 12+) but no table held them; pricing would have needed constants in code, against "prices from the database".
+- **Cause:** week 1's schema covered room rates and city tax only.
+- **Evidence:** `seed.py` had no extra-bed values; `HotelData` had no field for them.
+- **Fix:** `extra_bed_rates` (band → `rate_cents`, CHECK on band names and rate > 0), loaded into `HotelData`, which refuses a snapshot missing a band. Trade-off: the age bounds (2–11, 12+) stay in code next to the band names, not as DB columns: simpler, but changing a bound is a code change.
+
+## 2026-11-13 · Escalate instead of substituting (D32, D33)
+- **Symptom:** `smallest_fitting_plan` offered a Sea View to a party of 3 with an accessibility need, and could plan a room with only children in it (Ex 12's party split 2 adults / 3 children).
+- **Cause:** the plan looked at head count only.
+- **Evidence:** tests: need + 3 people → `ACCESSIBILITY`; 1 adult for a 2-room plan, or a children-only party → `UNACCOMPANIED_CHILDREN`; 9 children → `GROUP` (checked first).
+- **Fix:** typed `NeedsEscalation(reason, detail)` result with two new reason codes. Trade-off: some parties a human would happily serve now reach the owner; a wrong substitute would reach the guest.

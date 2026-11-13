@@ -4,13 +4,17 @@ D13: infants under 2 sleep in a free cot and do not count toward occupancy.
 D25: extra-bed payers: sort counted guests oldest first; the first
      rooms x standard_occupancy fill the standard places, the rest pay an extra bed.
 D27: over capacity: the smallest single room type that fits; only if none fits,
-     2 rooms of the smallest type that fits.
+     2 rooms of the same, smallest type that fits.
+D32: every room needs an adult: adults >= rooms, else UNACCOMPANIED_CHILDREN.
+D33: a stated accessibility need is served only by the Accessible room; a party that
+     does not fit it escalates as ACCESSIBILITY.
 No prices here: this module says *who* pays and in which age band; pricing (step 5)
 turns that into cents.
 """
 
 from dataclasses import dataclass
 
+from anemos.reservations.errors import NeedsEscalation, ReasonCode
 from anemos.reservations.hotel_data import HotelData
 from anemos.reservations.model import Adult, Child, ExtraBedBand, Guest, Party, RoomType
 
@@ -66,29 +70,59 @@ class RoomPlan:
     rooms: int
 
 
+def adult_count(party: Party) -> int:
+    return sum(1 for guest in party.guests if isinstance(guest, Adult))
+
+
+def adults_cover_rooms(party: Party, rooms: int) -> bool:
+    """D32: every room needs at least one adult. Applies to any plan or request."""
+    return adult_count(party) >= rooms
+
+
 def smallest_fitting_plan(
     hotel: HotelData, party: Party, *, accessibility_need: bool = False
-) -> RoomPlan | None:
-    """D27: one room of the smallest type that fits; else 2 rooms of the smallest type
-    that fits; else None (no fit in 2 rooms = GROUP escalation).
+) -> RoomPlan | NeedsEscalation:
+    """The room plan to offer for this party, or why the owner must handle it.
 
-    "Smallest" = lowest max occupancy. Types flagged offer_only_if_needed (the
-    Accessible room) are candidates only with a stated accessibility need, and then
-    win a tie on size. Availability is not considered here (week 3 alternatives).
+    Without an accessibility need (D27): one room of the smallest type that fits; else
+    2 rooms of the same, smallest type that fits; else GROUP. "Smallest" = lowest max
+    occupancy. Types flagged offer_only_if_needed (the Accessible room) are not
+    candidates; offering it when nothing else is free is availability (week 3).
+    With a stated need (D33): only flagged types, one room; no fit -> ACCESSIBILITY.
+    In both cases the plan must have an adult per room (D32), else UNACCOMPANIED_CHILDREN.
+    Availability is not considered here.
     """
-    candidates = [
-        room_type
-        for room_type in hotel.room_types.values()
-        if accessibility_need or not room_type.offer_only_if_needed
-    ]
-    candidates.sort(
-        key=lambda t: (
-            t.max_occupancy,
-            not (accessibility_need and t.offer_only_if_needed),
-            t.id,  # last tie-break, so the result never depends on dict order
+    if accessibility_need:
+        plan = _first_fit(hotel, party, flagged=True, max_rooms=1)
+        if plan is None:
+            return NeedsEscalation(
+                ReasonCode.ACCESSIBILITY,
+                f"accessibility need, party of {head_count(party)} does not fit the"
+                " accessible room",
+            )
+    else:
+        plan = _first_fit(hotel, party, flagged=False, max_rooms=MAX_ROOMS_PER_REQUEST)
+        if plan is None:
+            return NeedsEscalation(
+                ReasonCode.GROUP,
+                f"party of {head_count(party)} does not fit {MAX_ROOMS_PER_REQUEST} rooms",
+            )
+    if not adults_cover_rooms(party, plan.rooms):
+        return NeedsEscalation(
+            ReasonCode.UNACCOMPANIED_CHILDREN,
+            f"{adult_count(party)} adult(s) for {plan.rooms} room(s)",
         )
+    return plan
+
+
+def _first_fit(hotel: HotelData, party: Party, *, flagged: bool, max_rooms: int) -> RoomPlan | None:
+    """Fewest rooms first, then the smallest type; all rooms of one type (D27)."""
+    candidates = sorted(
+        (t for t in hotel.room_types.values() if t.offer_only_if_needed == flagged),
+        # id is the last tie-break, so the result never depends on dict order.
+        key=lambda t: (t.max_occupancy, t.id),
     )
-    for rooms in range(1, MAX_ROOMS_PER_REQUEST + 1):
+    for rooms in range(1, max_rooms + 1):
         for room_type in candidates:
             if fits(room_type, party, rooms):
                 return RoomPlan(room_type, rooms)
