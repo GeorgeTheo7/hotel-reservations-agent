@@ -44,9 +44,13 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | D22 | Expired holds never block: availability queries treat `hold` with `expires_at < now` as free (filter, no write); approval flips them (D10); the periodic job only tidies | Read tools stay read-only; correct from week 3 |
 | D23 | Timestamps stored as `timestamptz` in **UTC**; the clock (D20) returns timezone-aware UTC; calendar logic (stay dates, < 48 h notice, check-in by 22:00, "next weekend", hold expiry shown to guests) uses hotel time **`Europe/Athens`** | One unambiguous storage format; guests and owner think in hotel local time |
 | D24 | **Accommodation subtotal** = room nights + extra beds; city tax excluded. The deposit (D14) is 30% of it, rounded up to a whole euro | "Accommodation" is everything the hotel charges for the stay itself; city tax is collected on arrival |
-| D25 | **Extra-bed payers:** leave out infants < 2 (D13), sort the rest by age, oldest first; the first `standard_occupancy` guests fill the standard places, every other guest pays the extra-bed rate for their own age | One deterministic rule; the youngest guests are the extra ones, the cheaper result for the guest |
+| D25 | **Extra-bed payers:** leave out infants < 2 (D13), sort the rest by age, oldest first; the first `standard_occupancy` guests fill the standard places, every other guest pays the extra-bed rate for their own age. **Several rooms:** standard places = rooms × `standard_occupancy`, and the ordering runs over the whole party, not room by room (pricing-examples Ex 12) | One deterministic rule; the youngest guests are the extra ones, the cheaper result for the guest |
 | D26 | **Free-cancellation period** (14 d, or 30 d in High) is decided by the **arrival date's** season, even if later nights fall in High | Same principle as minimum stay, which also goes by arrival date |
 | D27 | **Over capacity:** first a single room of the smallest type that fits everyone; only if no single type fits, split across 2 rooms | One room keeps a party together and is one booking; the cheaper 2-room option is not offered first, the owner can still propose it |
+| D28 | **Holidays:** v1 knows **Easter only**. A holiday `DateSpec` resolves to the Easter ±3 d window and follows D7 (stay starts in the window; without length → ask). Any other holiday → `NEEDS_INFO` (ask the guest for dates) | Easter is the one moving holiday that matters to a Greek hotel; guessing other holidays would invent dates |
+| D29 | **Weekends** (hotel date of `received_at`, D23): a weekend stay is check-in Friday, check-out Sunday (2 nights). "Next weekend" = the coming Friday; if received Fri–Sun, the Friday after. "This weekend" = the Friday of the current Mon–Sun week; if received Fri–Sun that arrival is always `SHORT_NOTICE` (D31). A weekend with a stated night count other than 2 → `NEEDS_INFO`. *Known limitation:* a Greek guest may mean "Saturday night only" by a weekend; without a stated count it still resolves to Fri→Sun, and only `{{REQUEST_SUMMARY}}` lets the guest correct it | One fixed reading per phrase; the guest sees the resolved dates in `{{REQUEST_SUMMARY}}` and can correct them |
+| D30 | **Year inference** (D21): "next future occurrence" includes today's hotel date | A same-day request is real; `SHORT_NOTICE` (D31) escalates it |
+| D31 | **`SHORT_NOTICE`:** less than 48 real hours from `received_at` to **15:00 Europe/Athens on the arrival date** (the check-in time). Exactly 48 h is not short notice. Computed in UTC, so DST changes count real hours (e.g. arrival 31 Oct 2027 → cut-off 29 Oct 16:00 Athens). **`GROUP`:** 3+ rooms | Real elapsed time is what the owner needs to prepare; wall-clock arithmetic is off by an hour around DST |
 
 ## Domain data
 | Type | Rooms | Std/max | Extra bed | Notes |
@@ -110,7 +114,7 @@ flowchart LR
 ```
 
 ## Escalation rules
-Reason codes (enum, raised by code or by `escalate(reason_code, note)`): `COMPLAINT`, `DISCOUNT`, `GROUP` (3+ rooms / no fit in 2), `CHANGE`, `CANCELLATION`, `THREAD_REPLY`, `LANGUAGE` (not EN/EL), `SHORT_NOTICE` (< 48 h), `LATE_ARRIVAL` (> 22:00), `NO_POLICY`, `GUARDRAIL_FAIL`, `LOOP_LIMIT`, `LEGAL`, `BILLING`, `MEDICAL`, `INJECTION`, `MODEL` (model judgement).
+Reason codes (enum, raised by code or by `escalate(reason_code, note)`): `COMPLAINT`, `DISCOUNT`, `GROUP` (3+ rooms / no fit in 2), `CHANGE`, `CANCELLATION`, `THREAD_REPLY`, `LANGUAGE` (not EN/EL), `SHORT_NOTICE` (< 48 h, D31), `LATE_ARRIVAL` (> 22:00), `NO_POLICY`, `GUARDRAIL_FAIL`, `LOOP_LIMIT`, `LEGAL`, `BILLING`, `MEDICAL`, `INJECTION`, `MODEL` (model judgement).
 Owner gets: codes, 2–3 line English summary, extracted request, tool results so far; no draft. Pets and accessibility are handled, not escalated.
 Extraction carries `flags: legal_threat | billing_request | medical_need | accessibility_need | injection_suspected` and `script: greek | latin`.
 
@@ -151,8 +155,8 @@ Held-out numbers are indicative (±~10 pts at n = 30). Budget: dev $2 · dev eva
 | Wk | Milestone |
 |---|---|
 | 1 | Skeleton, compose (Postgres only), schema + migrations, seed data, clock, CI |
-| 2 | `reservations/` core: availability, pricing, rules, `DateSpec`, Easter, formatting, quote template — unit-tested |
-| 3 | Emails/drafts/outbox/bookings, fake adapter, approval txn (incl. expiring stale holds), holds, API with stub draft; first 30 test emails |
+| 2 | `reservations/` core: money (int cents), calendar, rules (incl. `SHORT_NOTICE`, `GROUP`), pricing, `DateSpec`, Easter, formatting, quote template — pure, unit-tested; `HotelData` loader + availability query — integration-tested |
+| 3 | Tool functions with typed errors (`check_availability`, `quote_price`, `suggest_alternatives` incl. ±7 d and other-type search; moved from wk 2), `quotes` table; emails/drafts/outbox/bookings, fake adapter, approval txn (incl. expiring stale holds), holds, API with stub draft; first 30 test emails |
 | 4 | LLM adapter, extraction, routing, Greek + Greeklish check, smoke set, extraction eval; +12 test emails |
 | 5 | Policies + retrieval + retrieval eval; agent loop; +12 test emails |
 | 6 | Guardrails, redraft, summaries, checkpoints/interrupt, audit log; end-to-end; **measure cost, re-plan**; +12 test emails |
@@ -170,5 +174,5 @@ Overruns cut buffer, then week-10 extras; never weeks 1–3 or the evaluation.
 - Exact OpenAI model chosen in week 4.
 
 ## Later
-Real mailbox (v2) · changes/cancellations + `find_reservation` · thread replies handled by agent · B (free agent) vs C baseline evaluation · German/other languages · repeat-guest history · local-model fallback · Batches API · MCP `request_hold` (creates pending approval only) · hosted demo · prices per year · special rates outside the three seasons.
+Real mailbox (v2) · changes/cancellations + `find_reservation` · thread replies handled by agent · B (free agent) vs C baseline evaluation · German/other languages · repeat-guest history · local-model fallback · Batches API · MCP `request_hold` (creates pending approval only) · hosted demo · prices per year · special rates outside the three seasons · holidays other than Easter (D28) · relative dates like "in N weeks" (D29) · cot limit per room (D13 sets none).
 *Why not in v1:* rates are keyed by room type + season with no dates of their own (`room_rates`), so rates and the season calendar cannot disagree; v1 quotes a single season of prices (D21), so neither feature is needed yet.

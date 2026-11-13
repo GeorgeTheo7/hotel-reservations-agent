@@ -24,9 +24,12 @@ check-out 16 July, nights of 12, 13, 14 and 15 July.
 - Deposit: 30% of the accommodation subtotal, rounded up to a whole euro.
 - Free cancellation until 14 days before arrival (30 days in High season).
 
-## Decisions these examples assume (confirm, then copy into the spec)
+## Decisions these examples use (now spec D24–D27)
 
-| # | Question | Assumed answer | Why |
+Q1–Q4 were confirmed and copied into `docs/SPEC.md` as D24 (Q1), D25 (Q2), D26 (Q3) and D27 (Q4).
+The spec is the authority; this table is kept as the record of what the examples were calculated with.
+
+| # | Question | Answer | Why |
 |---|---|---|---|
 | Q1 | Deposit base | Room nights **plus** extra beds; city tax excluded | "Accommodation subtotal" is everything the hotel charges for the stay itself; city tax is collected on arrival (D14) |
 | Q2 | Who pays the extra bed | Sort guests by age, oldest first. The first `standard_occupancy` guests fill the standard places. Every other guest pays the extra-bed rate for their own age. Infants under 2 are left out before sorting | One deterministic rule; the youngest guests are the "extra" ones, which is the cheaper result for the guest |
@@ -235,6 +238,28 @@ Request: 2 × Standard Double, 24–27 August, 4 adults (2 per room).
 - Free cancellation until: **25 July** (30 days).
 - Expected result: quote; hold allowed for both rooms.
 
+## Example 12: extra bed across two rooms
+
+Request: 2 × Sea View Double, 4–7 October, 2 adults + children aged 16, 12 and 4.
+
+- Standard places: 2 rooms × 2 = 4 (D25, several rooms). Sorted over the whole party by age:
+  adult, adult, 16, 12, 4. The first 4 fill the standard places; the 4-year-old is extra.
+- Why "whole party": ordering room by room (e.g. adult + 16 + 12 in one room) would make the
+  12-year-old pay 35 instead of the 4-year-old paying 20 (subtotal 675, deposit 203: wrong).
+
+| Night | Season | Room rate (per room) | Rooms | Extra bed (4) | City tax (per room) |
+|---|---|---|---|---|---|
+| 4 Oct | Low | 95 | 2 | 20 | 1.50 |
+| 5 Oct | Low | 95 | 2 | 20 | 1.50 |
+| 6 Oct | Low | 95 | 2 | 20 | 1.50 |
+
+- Rooms: 3 × 95 × 2 = 570. Extra beds: 3 × 20 = 60. Accommodation subtotal: **630**.
+- City tax: 3 × 1.50 × 2 = **9.00**.
+- Deposit: 30% of 630 = **189**.
+- Minimum stay: arrival in Low, minimum 1, stay is 3: OK.
+- Free cancellation until: **20 September** (14 days).
+- Expected result: quote; hold allowed for both rooms.
+
 ---
 
 ## Summary
@@ -252,3 +277,4 @@ Request: 2 × Standard Double, 24–27 August, 4 adults (2 per room).
 | 9 | Sea View, 3–5 Oct, 1A + 13 + 8 | 230 | 3.00 | 69 | 19 Sep | quote |
 | 10 | Standard, 13–17 Jul, 2A | 470 | 16.00 | 141 | 29 Jun | quote |
 | 11 | 2 × Standard, 24–27 Aug, 4A | 840 | 24.00 | 252 | 25 Jul | quote |
+| 12 | 2 × Sea View, 4–7 Oct, 2A + 16 + 12 + 4 | 630 | 9.00 | 189 | 20 Sep | quote |
