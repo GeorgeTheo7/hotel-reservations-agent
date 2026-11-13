@@ -14,9 +14,11 @@ from anemos.reservations.money import Cents
 
 def load_hotel_data(conn: psycopg.Connection[TupleRow]) -> HotelData:
     room_types = {
-        str(row[0]): RoomType(str(row[0]), str(row[1]), int(row[2]), int(row[3]), row[4], row[5])
+        str(row[0]): RoomType(
+            str(row[0]), str(row[1]), str(row[2]), int(row[3]), int(row[4]), row[5], row[6]
+        )
         for row in conn.execute(
-            "SELECT id, name, standard_occupancy, max_occupancy, extra_beds,"
+            "SELECT id, name, name_el, standard_occupancy, max_occupancy, extra_beds,"
             " offer_only_if_needed FROM room_types"
         )
     }

@@ -22,13 +22,13 @@ from anemos.reservations.money import Cents
 
 SEASON_YEAR = 2027
 
-# id, name, standard occupancy, max occupancy, extra beds, offer only if needed.
-# The annotation lets mypy check each extra-beds value against the allowed ones.
-ROOM_TYPES: list[tuple[str, str, int, int, ExtraBeds, bool]] = [
-    ("standard", "Standard Double", 2, 2, "cot_only", False),
-    ("sea_view", "Sea View Double", 2, 3, "extra_bed", False),
-    ("family_suite", "Family Suite", 2, 4, "sofa_beds", False),
-    ("accessible", "Accessible Double", 2, 2, "cot_only", True),
+# id, English name, Greek name, standard occupancy, max occupancy, extra beds,
+# offer only if needed. The annotation lets mypy check each extra-beds value.
+ROOM_TYPES: list[tuple[str, str, str, int, int, ExtraBeds, bool]] = [
+    ("standard", "Standard Double", "Δίκλινο Standard", 2, 2, "cot_only", False),
+    ("sea_view", "Sea View Double", "Δίκλινο με θέα θάλασσα", 2, 3, "extra_bed", False),
+    ("family_suite", "Family Suite", "Οικογενειακή Σουίτα", 2, 4, "sofa_beds", False),
+    ("accessible", "Accessible Double", "Προσβάσιμο Δίκλινο", 2, 2, "cot_only", True),
 ]
 
 # room number -> room type
@@ -82,9 +82,10 @@ def seed(conn: psycopg.Connection[TupleRow]) -> None:
     with conn.transaction(), conn.cursor() as cur:
         cur.executemany(
             "INSERT INTO room_types"
-            " (id, name, standard_occupancy, max_occupancy, extra_beds, offer_only_if_needed)"
-            " VALUES (%s, %s, %s, %s, %s, %s)"
-            " ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,"
+            " (id, name, name_el, standard_occupancy, max_occupancy, extra_beds,"
+            " offer_only_if_needed)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s)"
+            " ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, name_el = EXCLUDED.name_el,"
             " standard_occupancy = EXCLUDED.standard_occupancy,"
             " max_occupancy = EXCLUDED.max_occupancy, extra_beds = EXCLUDED.extra_beds,"
             " offer_only_if_needed = EXCLUDED.offer_only_if_needed",

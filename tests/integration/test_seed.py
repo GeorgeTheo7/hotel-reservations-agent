@@ -100,6 +100,16 @@ def test_room_types_match_spec(db: Conn) -> None:
     ]
 
 
+def test_room_type_names_en_and_el(db: Conn) -> None:
+    rows = db.execute("SELECT id, name, name_el FROM room_types ORDER BY id").fetchall()
+    assert rows == [
+        ("accessible", "Accessible Double", "Προσβάσιμο Δίκλινο"),
+        ("family_suite", "Family Suite", "Οικογενειακή Σουίτα"),
+        ("sea_view", "Sea View Double", "Δίκλινο με θέα θάλασσα"),
+        ("standard", "Standard Double", "Δίκλινο Standard"),
+    ]
+
+
 # --- calendar and rates ---------------------------------------------------------------
 
 

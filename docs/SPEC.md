@@ -57,6 +57,7 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | D35 | **Exact dates** (D21, D30): (1) an explicit year is kept even if the date has passed; `SHORT_NOTICE` (D31) then escalates. (2) A check-out and a night count that disagree → `NEEDS_INFO`. (3) 29 Feb without a year → the next leap year (an unseeded year then escalates `NO_CALENDAR`, D36). A check-out without a year is its first occurrence on or after check-in (28 Dec–3 Jan crosses the year) | Never silently rewrite what the guest wrote; ask when two stated facts conflict |
 | D36 | **No calendar for a year:** a stay with any night in a year that has no season periods at all is not `CLOSED`; escalate `NO_CALENDAR`. `CLOSED` is only for nights outside the periods of a year that has some. Checked before `CLOSED` | Before the owner sets up a season, "we are closed" would be a false statement to the guest |
 | D37 | **Ambiguous day/month order:** the model marks a written date like 03/04 as `ambiguous_order`; code returns `NEEDS_INFO` only if both readings are real and differ (day and month both 1–12, day ≠ month). Otherwise the flag is ignored (13/04, 04/04) | The model notices the ambiguity, code decides it; no guessing between 3 April and 4 March |
+| D38 | **Room choice:** when several rooms of the chosen type are free for the whole stay, the hold takes the **lowest room number** (for 2 rooms: the two lowest). Availability (`free_rooms`) is a snapshot; approval re-validates before holding (D10) | Deterministic and testable; the owner can still move guests between rooms |
 
 ## Domain data
 | Type | Rooms | Std/max | Extra bed | Notes |
@@ -75,7 +76,7 @@ Unmet requests: other type free → ≤ 2 alternatives cheapest first · all boo
 ## Data model
 | Table | Key fields |
 |---|---|
-| `room_types`, `rooms` | type, std/max occupancy, extra-bed rule; room number |
+| `room_types`, `rooms` | type, name (EN) and `name_el` (EL, migration 0004), std/max occupancy, extra-bed rule; room number |
 | `seasons`, `season_periods` | season id (`low/mid/high`), `city_tax_cents`; season, date range. No overlap; a night in no period = closed |
 | `room_rates` | type, season, `rate_cents`; one row per type × season, no dates |
 | `min_stay_rules` | arrival range, nights; no overlap; dated (the 10–20 Aug rule cuts across High) |

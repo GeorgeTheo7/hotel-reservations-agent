@@ -36,7 +36,8 @@ ExtraBeds = Literal["cot_only", "extra_bed", "sofa_beds"]
 @dataclass(frozen=True)
 class RoomType:
     id: str
-    name: str
+    name: str  # English, e.g. 'Sea View Double'
+    name_el: str  # Greek, e.g. 'Δίκλινο με θέα θάλασσα'
     standard_occupancy: int
     max_occupancy: int
     extra_beds: ExtraBeds

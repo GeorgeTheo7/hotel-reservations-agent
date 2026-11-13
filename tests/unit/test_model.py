@@ -78,4 +78,4 @@ def test_child_rejects_bad_ages(age: object) -> None:
 
 def test_room_type_rejects_standard_above_max() -> None:
     with pytest.raises(ValueError, match="standard"):
-        RoomType("x", "X", 3, 2, "cot_only")
+        RoomType("x", "X", "Δοκιμή", 3, 2, "cot_only")

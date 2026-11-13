@@ -10,7 +10,13 @@ from datetime import UTC, datetime, timedelta
 
 import psycopg
 import pytest
-from psycopg.errors import CheckViolation, ExclusionViolation, ForeignKeyViolation, UniqueViolation
+from psycopg.errors import (
+    CheckViolation,
+    ExclusionViolation,
+    ForeignKeyViolation,
+    NotNullViolation,
+    UniqueViolation,
+)
 from psycopg.rows import TupleRow
 
 pytestmark = pytest.mark.integration
@@ -26,8 +32,9 @@ OVERLAPPING = "[2027-07-14,2027-07-17)"  # shares the night of 14 Jul with STAY
 @pytest.fixture
 def rooms(db: Conn) -> None:
     db.execute(
-        "INSERT INTO room_types (id, name, standard_occupancy, max_occupancy, extra_beds)"
-        " VALUES ('test_double', 'Test Double', 2, 2, 'cot_only')"
+        "INSERT INTO room_types (id, name, name_el, standard_occupancy, max_occupancy,"
+        " extra_beds)"
+        " VALUES ('test_double', 'Test Double', 'Δοκιμαστικό', 2, 2, 'cot_only')"
     )
     db.execute(
         "INSERT INTO rooms (id, room_type_id) VALUES (901, 'test_double'), (902, 'test_double')"
@@ -186,8 +193,9 @@ def test_invalid_occupancy_rejected(
 ) -> None:
     with expect_violation(CheckViolation, "room_types_occupancy_valid"):
         db.execute(
-            "INSERT INTO room_types (id, name, standard_occupancy, max_occupancy, extra_beds)"
-            " VALUES ('bad', 'Bad', %s, %s, 'cot_only')",
+            "INSERT INTO room_types (id, name, name_el, standard_occupancy, max_occupancy,"
+            " extra_beds)"
+            " VALUES ('bad', 'Bad', 'Κακό', %s, %s, 'cot_only')",
             (standard, maximum),
         )
 
@@ -195,8 +203,9 @@ def test_invalid_occupancy_rejected(
 def test_unknown_extra_beds_rejected(db: Conn, expect_violation: ExpectViolation) -> None:
     with expect_violation(CheckViolation, "room_types_extra_beds_valid"):
         db.execute(
-            "INSERT INTO room_types (id, name, standard_occupancy, max_occupancy, extra_beds)"
-            " VALUES ('bad', 'Bad', 2, 3, 'hammock')"
+            "INSERT INTO room_types (id, name, name_el, standard_occupancy, max_occupancy,"
+            " extra_beds)"
+            " VALUES ('bad', 'Bad', 'Κακό', 2, 3, 'hammock')"
         )
 
 
@@ -277,3 +286,23 @@ def test_overlapping_min_stay_rules_rejected(db: Conn, expect_violation: ExpectV
 def test_zero_min_nights_rejected(db: Conn, expect_violation: ExpectViolation) -> None:
     with expect_violation(CheckViolation, "min_stay_rules_min_nights_positive"):
         insert_min_stay(db, "[2030-07-15,2030-09-01)", 0)
+
+
+# --- room_types.name_el (migration 0004) ----------------------------------------------
+
+
+def test_greek_name_must_not_be_blank(db: Conn, expect_violation: ExpectViolation) -> None:
+    with expect_violation(CheckViolation, "room_types_name_el_not_blank"):
+        db.execute("UPDATE room_types SET name_el = '  ' WHERE id = 'standard'")
+
+
+def test_greek_names_are_unique(db: Conn, expect_violation: ExpectViolation) -> None:
+    with expect_violation(UniqueViolation, "room_types_name_el_key"):
+        db.execute("UPDATE room_types SET name_el = 'Οικογενειακή Σουίτα' WHERE id = 'standard'")
+
+
+def test_greek_name_is_required(db: Conn) -> None:
+    # A NOT NULL violation names the column, not a constraint, so check that instead.
+    with pytest.raises(NotNullViolation) as caught, db.transaction():
+        db.execute("UPDATE room_types SET name_el = NULL WHERE id = 'standard'")
+    assert caught.value.diag.column_name == "name_el"
