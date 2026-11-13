@@ -45,7 +45,8 @@ def open_part(hotel: HotelData, stay: Stay) -> Stay | None:
     """The longest run of open nights in the stay (Ex 7), or None if all are closed.
 
     A stay can only cross the season's start or end, so in practice there is one run.
-    On a tie the earlier run wins. The caller checks the result with check_stay.
+    On a tie the earlier run wins. D34: the result is re-checked like any stay
+    (check_stay): trimming can make it shorter than its minimum stay.
     """
     best: Stay | None = None
     run_start: date | None = None

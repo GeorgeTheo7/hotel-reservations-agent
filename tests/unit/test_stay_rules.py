@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from anemos.clock import FixedClock
 from anemos.db.seed import hotel_data
 from anemos.reservations.errors import Closed, MinStay, ReasonCode
+from anemos.reservations.hotel_data import MinStayRule
 from anemos.reservations.hotel_time import HOTEL_TZ
 from anemos.reservations.model import RoomOffer, RoomRequest, Stay
 from anemos.reservations.stay_rules import (
@@ -124,6 +126,18 @@ def test_open_part_of_ex07_passes_the_calendar() -> None:
     assert check_stay(HOTEL, part) is None
 
 
+def test_trimmed_stay_is_rechecked_for_min_stay() -> None:
+    # D34, made-up calendar: October arrivals need 3 nights (seed: 1).
+    october = MinStayRule(d(10, 1), d(11, 1), 3)
+    rules = (*(r for r in HOTEL.min_stay_rules if r.first_arrival != d(10, 1)), october)
+    strict = replace(HOTEL, min_stay_rules=rules)
+    part = open_part(strict, stay(10, 30, 11, 2))
+    assert part == stay(10, 30, 11, 1)  # 2 open nights
+    assert check_stay(strict, part) == MinStay(3)  # too short for its arrival date
+    # Its min-stay version runs back into the closed night, and is caught again.
+    assert check_stay(strict, min_stay_version(strict, part)) == Closed((d(11, 1),))
+
+
 def test_min_stay_version_ex04() -> None:
     version = min_stay_version(HOTEL, stay(8, 10, 8, 13))
     assert version == stay(8, 10, 8, 15)
@@ -193,10 +207,18 @@ def test_no_hold_for_other_room_type_ex08() -> None:
     assert not hold_allowed(RoomRequest(s, 1, "sea_view"), [offer(s, "family_suite")])
 
 
-def test_no_hold_when_options_are_offered() -> None:
+@pytest.mark.parametrize("count", [2, 3])
+def test_no_hold_when_two_or_more_options_are_offered(count: int) -> None:
+    # Even if one option is exactly what was asked, a choice means no hold (D9).
     s = stay(5, 20, 5, 21)
-    options = [offer(s, "standard"), offer(s, "sea_view")]
+    options = [offer(s, "standard"), offer(s, "sea_view"), offer(s, "family_suite")][:count]
+    assert not hold_allowed(RoomRequest(s, 1, "standard"), options)
     assert not hold_allowed(RoomRequest(s), options)
+
+
+def test_no_hold_for_two_identical_options() -> None:
+    s = stay(5, 20, 5, 21)
+    assert not hold_allowed(RoomRequest(s), [offer(s, "standard"), offer(s, "standard")])
 
 
 def test_hold_allowed_when_guest_named_no_type() -> None:
