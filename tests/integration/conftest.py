@@ -10,14 +10,18 @@
 Run with: uv run --env-file .env pytest -m integration
 """
 
+import itertools
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
+from datetime import UTC, datetime
+from typing import Any
 
 import psycopg
 import pytest
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import TupleRow
+from psycopg.types.json import Jsonb
 
 from anemos.db.connection import connect, database_url
 from anemos.db.migrate import upgrade
@@ -75,6 +79,64 @@ def open_rolled_back(test_db: str) -> Callable[[], AbstractContextManager[Conn]]
 def db(open_rolled_back: Callable[[], AbstractContextManager[Conn]]) -> Iterator[Conn]:
     with open_rolled_back() as conn:
         yield conn
+
+
+class Rows:
+    """Inserts valid rows with defaults; tests override only the column under test.
+
+    Every insert goes through `insert`, which takes column names from the keyword
+    arguments, so a test can pass a bad value (or None) for any column.
+    """
+
+    T0 = datetime(2026, 11, 13, 7, 0, tzinfo=UTC)
+    STAY = "[2027-07-12,2027-07-15)"  # 3 nights
+
+    def __init__(self, db: Conn) -> None:
+        self.db = db
+        self._message_ids = itertools.count(1)
+
+    def insert(self, table: str, columns: dict[str, Any], returning: str = "id") -> int:
+        query = sql.SQL("INSERT INTO {} ({}) VALUES ({}) RETURNING {}").format(
+            sql.Identifier(table),
+            sql.SQL(", ").join(map(sql.Identifier, columns)),
+            sql.SQL(", ").join(sql.Placeholder(name) for name in columns),
+            sql.Identifier(returning),
+        )
+        row = self.db.execute(query, columns).fetchone()
+        assert row is not None
+        return int(row[0])
+
+    def email(self, **overrides: Any) -> int:
+        return self.insert(
+            "emails",
+            {
+                "message_id": f"<test-{next(self._message_ids)}@example.test>",
+                "from_address": "guest@example.test",
+                "subject": "Room in July",
+                "raw_body": "Hello, do you have a room?",
+                "clean_body": "Hello, do you have a room?",
+                "received_at": self.T0,
+                "created_at": self.T0,
+                "status": "received",
+            }
+            | overrides,
+        )
+
+    def request(self, email_id: int | None = None, **overrides: Any) -> int:
+        return self.insert(
+            "requests",
+            {
+                "email_id": self.email() if email_id is None else email_id,
+                "extracted": Jsonb({"date_spec": {"kind": "exact"}}),
+                "created_at": self.T0,
+            }
+            | overrides,
+        )
+
+
+@pytest.fixture
+def rows(db: Conn) -> Rows:
+    return Rows(db)
 
 
 type ExpectViolation = Callable[[type[psycopg.Error], str], AbstractContextManager[None]]
