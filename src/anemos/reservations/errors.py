@@ -65,6 +65,27 @@ class FullyBooked:
 
 
 @dataclass(frozen=True)
+class OriginalAvailable:
+    """suggest_alternatives was called, but the offer's own plan is free (D60): there is
+    nothing to substitute; the next step is quote_price. Nothing is stored."""
+
+    code: ClassVar[str] = "ORIGINAL_AVAILABLE"
+    room_type_id: str
+    rooms: int
+
+
+@dataclass(frozen=True)
+class NoneFound:
+    """suggest_alternatives found nothing free: no other room type for the stay, and no
+    same-length stay within +-`days_searched` days (spec Unmet requests: decline)."""
+
+    code: ClassVar[str] = "NONE_FOUND"
+    check_in: date  # of the stay searched around (dates, not Stay: model imports errors)
+    check_out: date
+    days_searched: int
+
+
+@dataclass(frozen=True)
 class OverCapacity:
     """The party does not fit the requested rooms (D13 head count vs max occupancy)."""
 

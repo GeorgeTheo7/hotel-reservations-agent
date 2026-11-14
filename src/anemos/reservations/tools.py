@@ -11,7 +11,7 @@ database row is a bug and raises.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import psycopg
@@ -28,13 +28,16 @@ from anemos.reservations.errors import (
     MinStayIntoClosed,
     NeedsEscalation,
     NeedsInfo,
+    NoneFound,
     NoRate,
+    OriginalAvailable,
 )
 from anemos.reservations.hotel_data import HotelData
-from anemos.reservations.model import RoomRequest, Stay, party_from_counts, stay_or_error
-from anemos.reservations.offer import Offer, build_offer
+from anemos.reservations.model import Party, RoomRequest, Stay, party_from_counts, stay_or_error
+from anemos.reservations.occupancy import fits
+from anemos.reservations.offer import Offer, OfferChange, build_offer
 from anemos.reservations.pricing import NightLine, Quote
-from anemos.reservations.stay_rules import check_stay
+from anemos.reservations.stay_rules import check_stay, short_notice
 
 type Conn = psycopg.Connection[TupleRow]
 
@@ -116,6 +119,31 @@ def quote_price(
     stored; the model's next step is suggest_alternatives. Approval still re-checks
     (D47), because this is a snapshot.
     """
+    loaded = _load_request(conn, request_id)
+    if isinstance(loaded, NeedsInfo):
+        return loaded
+    result = build_offer(
+        hotel, loaded.request, loaded.party, accessibility_need=loaded.accessibility_need
+    )
+    if not isinstance(result, Offer):
+        return result
+    plan = result.quote
+    rooms = rooms_for_plan(conn, clock, plan.room_type_id, plan.stay, plan.rooms)
+    if isinstance(rooms, FullyBooked):
+        return rooms
+    quote_id = _store_quote(conn, clock, request_id, result)
+    return StoredQuote(quote_id, result)
+
+
+@dataclass(frozen=True)
+class _LoadedRequest:
+    request: RoomRequest
+    party: Party
+    accessibility_need: bool
+
+
+def _load_request(conn: Conn, request_id: int) -> _LoadedRequest | NeedsInfo:
+    """The stored request as build_offer's inputs, or what must be asked first."""
     row = conn.execute(REQUEST_SQL, (request_id,)).fetchone()
     if row is None:
         raise LookupError(f"no request {request_id}")
@@ -132,18 +160,7 @@ def quote_price(
         rooms=1 if rooms is None else rooms,
         room_type_id=room_type_id,
     )
-
-    result = build_offer(
-        hotel, request, party, accessibility_need=_has_flag(extracted, ACCESSIBILITY_FLAG)
-    )
-    if not isinstance(result, Offer):
-        return result
-    plan = result.quote
-    rooms = rooms_for_plan(conn, clock, plan.room_type_id, plan.stay, plan.rooms)
-    if isinstance(rooms, FullyBooked):
-        return rooms
-    quote_id = _store_quote(conn, clock, request_id, result)
-    return StoredQuote(quote_id, result)
+    return _LoadedRequest(request, party, _has_flag(extracted, ACCESSIBILITY_FLAG))
 
 
 def _has_flag(extracted: Mapping[str, Any], flag: str) -> bool:
@@ -187,3 +204,155 @@ def _line_json(line: NightLine) -> dict[str, Any]:
         "extra_bed_cents": line.extra_bed_cents,
         "city_tax_cents": line.city_tax_cents,
     }
+
+
+# --- suggest_alternatives -----------------------------------------------------------
+
+MAX_ALTERNATIVES = 2  # spec Unmet requests: <= 2 alternatives
+DATE_SEARCH_DAYS = 7  # spec Unmet requests: nearest same-length ranges within +-7 d
+
+
+@dataclass(frozen=True)
+class Alternatives:
+    """Free alternatives to the offer build_offer would make, each priced and stored.
+
+    kind OTHER_TYPE: other room types for the same stay, cheapest first.
+    kind OTHER_DATES: the same plan on same-length stays within +-7 d, nearest first.
+    """
+
+    kind: OfferChange
+    options: tuple[StoredQuote, ...]
+
+
+def suggest_alternatives(
+    conn: Conn, hotel: HotelData, clock: Clock, request_id: int
+) -> (
+    Alternatives
+    | OriginalAvailable
+    | NoneFound
+    | NeedsInfo
+    | Closed
+    | MinStayIntoClosed
+    | NoRate
+    | NeedsEscalation
+):
+    """What to offer when the plan is FULLY_BOOKED (spec Unmet requests).
+
+    1. Other room types for the same stay: types the party fits in the same number of
+       rooms, free for the whole stay (rooms_for_plan, D59), at most 2, cheapest first
+       (accommodation subtotal, then type id). The Accessible room only if no other
+       type is free (D33). Skipped for an accessibility need: no other type meets it.
+    2. Only if no other type is free: the same plan on same-length stays shifted by
+       1..7 days, nearest first, earlier first on a tie, at most 2. A shifted stay must
+       pass the calendar unchanged (check_stay) and not be SHORT_NOTICE (D31).
+    3. Nothing -> NONE_FOUND (decline).
+
+    Each option is stored as a quote (D58) whose `changes` say how it differs from the
+    request; with options offered, no hold (D9, guardrail 7). The plan's own type is
+    never an alternative: if that plan is free, the result is ORIGINAL_AVAILABLE (next
+    step quote_price) and nothing is stored (D60). Errors of the base offer
+    (NEEDS_INFO, CLOSED, escalations) are returned unchanged and nothing is stored.
+    """
+    loaded = _load_request(conn, request_id)
+    if isinstance(loaded, NeedsInfo):
+        return loaded
+    base = build_offer(
+        hotel, loaded.request, loaded.party, accessibility_need=loaded.accessibility_need
+    )
+    if not isinstance(base, Offer):
+        return base
+    plan = base.quote
+    if not isinstance(
+        rooms_for_plan(conn, clock, plan.room_type_id, plan.stay, plan.rooms), FullyBooked
+    ):
+        return OriginalAvailable(plan.room_type_id, plan.rooms)
+
+    options: list[Offer] = []
+    kind = OfferChange.OTHER_TYPE
+    if not loaded.accessibility_need:
+        options = _other_types(conn, hotel, clock, loaded, base, flagged=False)
+        if not options:
+            options = _other_types(conn, hotel, clock, loaded, base, flagged=True)
+    if not options:
+        kind = OfferChange.OTHER_DATES
+        options = _other_dates(conn, hotel, clock, loaded, base)
+    if not options:
+        stay = base.quote.stay
+        return NoneFound(stay.check_in, stay.check_out, DATE_SEARCH_DAYS)
+
+    stored = tuple(
+        StoredQuote(_store_quote(conn, clock, request_id, offer), offer) for offer in options
+    )
+    return Alternatives(kind, stored)
+
+
+def _other_types(
+    conn: Conn,
+    hotel: HotelData,
+    clock: Clock,
+    loaded: _LoadedRequest,
+    base: Offer,
+    *,
+    flagged: bool,
+) -> list[Offer]:
+    rooms = base.quote.rooms
+    found: list[Offer] = []
+    for room_type in hotel.room_types.values():
+        if (
+            room_type.id == base.quote.room_type_id
+            or room_type.offer_only_if_needed != flagged
+            or not fits(room_type, loaded.party, rooms)
+        ):
+            continue
+        priced = build_offer(
+            hotel, RoomRequest(loaded.request.stay, rooms, room_type.id), loaded.party
+        )
+        if not isinstance(priced, Offer):
+            continue
+        free = rooms_for_plan(conn, clock, room_type.id, priced.quote.stay, rooms)
+        if isinstance(free, FullyBooked):
+            continue
+        # Calendar changes (open part, min stay) come from build_offer; the type and
+        # room count are compared with what the guest asked, not with this request.
+        changes = set(priced.changes)
+        if loaded.request.room_type_id is not None:
+            changes.add(OfferChange.OTHER_TYPE)  # D55: no type named = any type was asked
+        if rooms > loaded.request.rooms:
+            changes.add(OfferChange.MORE_ROOMS)
+        found.append(Offer(priced.quote, frozenset(changes)))
+    found.sort(key=lambda o: (o.quote.accommodation_subtotal_cents, o.quote.room_type_id))
+    return found[:MAX_ALTERNATIVES]
+
+
+def _other_dates(
+    conn: Conn, hotel: HotelData, clock: Clock, loaded: _LoadedRequest, base: Offer
+) -> list[Offer]:
+    plan = base.quote
+    found: list[Offer] = []
+    # Nearest first; on a tie the earlier stay first: -1, +1, -2, +2, ...
+    for shift in sorted(
+        (s for s in range(-DATE_SEARCH_DAYS, DATE_SEARCH_DAYS + 1) if s != 0),
+        key=lambda s: (abs(s), s),
+    ):
+        moved = Stay(
+            plan.stay.check_in + timedelta(days=shift), plan.stay.check_out + timedelta(days=shift)
+        )
+        if short_notice(moved.check_in, clock.now()) is not None:
+            continue  # also skips stays in the past
+        if check_stay(hotel, moved) is not None:
+            continue  # same length only: no trimming or lengthening of an alternative
+        priced = build_offer(
+            hotel,
+            RoomRequest(moved, plan.rooms, plan.room_type_id),
+            loaded.party,
+            accessibility_need=loaded.accessibility_need,
+        )
+        if not isinstance(priced, Offer):
+            continue
+        free = rooms_for_plan(conn, clock, plan.room_type_id, moved, plan.rooms)
+        if isinstance(free, FullyBooked):
+            continue
+        found.append(Offer(priced.quote, base.changes | {OfferChange.OTHER_DATES}))
+        if len(found) == MAX_ALTERNATIVES:
+            break
+    return found

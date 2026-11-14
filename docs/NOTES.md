@@ -116,3 +116,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** availability lived in a separate tool, so the rule "only offer what is free" depended on the model calling tools in the right order (against D11).
 - **Evidence:** 5 of 6 Standard rooms booked, 2 asked → `FULLY_BOOKED("standard", 2, 1)`, no row; Ex 8 with all Suites booked → `FULLY_BOOKED("family_suite", 1, 0)` even though the Sea View asked for is free.
 - **Fix:** shared `rooms_for_plan` (lowest free numbers or `FULLY_BOOKED`), called after `build_offer`, before storing; the same function serves `suggest_alternatives` and approval. Trade-off: two tools ask the database the same question; still a snapshot, so approval re-checks.
+
+## 2026-11-14 · suggest_alternatives: what "≤ 2 alternatives, ±7 d" means in code (D60)
+- **Symptom:** the spec's one line ("other type free → ≤ 2 cheapest first · all booked → nearest same-length ranges ±7 d, else decline") left open: cheapest by what, ties, mixing types with dates, shifted stays that hit closed days or short notice, and a call made while the original plan is still free.
+- **Cause:** written as a policy sentence, not an algorithm.
+- **Evidence:** 15 tests in `test_suggest_alternatives.py`; flipping the date tie-break or letting the Accessible room compete freely makes 5 of them fail.
+- **Fix:** D60: free original plan → `ORIGINAL_AVAILABLE` (store nothing); other types first (fit, free, cheapest by accommodation subtotal, Accessible last resort); dates only if no type is free (same plan, nearest, earlier on tie, unchanged length, no short notice); else `NONE_FOUND`. Trade-off: a guest who would rather move dates than change room type is not offered that when another type is free (Later).
