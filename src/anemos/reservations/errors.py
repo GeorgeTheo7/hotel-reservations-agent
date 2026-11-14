@@ -54,6 +54,17 @@ class MinStayIntoClosed:
 
 
 @dataclass(frozen=True)
+class FullyBooked:
+    """Too few rooms of the offered type are free for the whole stay (D59). Not an
+    offer: the next step is suggest_alternatives (other types, other dates)."""
+
+    code: ClassVar[str] = "FULLY_BOOKED"
+    room_type_id: str
+    rooms_needed: int
+    rooms_free: int
+
+
+@dataclass(frozen=True)
 class OverCapacity:
     """The party does not fit the requested rooms (D13 head count vs max occupancy)."""
 

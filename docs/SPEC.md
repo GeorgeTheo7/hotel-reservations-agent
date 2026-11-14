@@ -77,6 +77,8 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | D55 | **No room type named:** offer the smallest type (lowest max occupancy, D27 ordering) that fits the party in the number of rooms the guest asked for, never the Accessible room without a stated need (D33); if none fits, the D27 plan. Any type counts as "what was asked", so an exact fit may be held (D9) | The D27 ordering applied to the guest's own room count; consistent with `hold_allowed` ("any type if none was named") |
 | D56 | **Accessibility need with 2 rooms requested:** escalate `ACCESSIBILITY` | There is one Accessible room; D33 escalates rather than substitutes a room that does not meet the need |
 | D57 | **Min-stay version reaching closed nights:** if a stay (or its open part, D34) is shorter than its minimum and the min-stay version includes closed nights, there is no offer; the result is `MIN_STAY_CLOSED` with the minimum (n nights) and the closed nights, so the reply can say both. Not plain `CLOSED` | The nights the guest asked for may all be open; "we are closed" would be untrue. Cannot happen with the 2027 seed (1-night minimum at opening and closing), only if season data changes |
+| D58 | **Every `quote_price` call stores a new quote**; quotes are never reused or updated (write-once, D51). A draft offers exactly the quotes linked in `draft_offers`; a quote no draft links stays as the record of what was priced, and when | A quote is a priced snapshot with its own `created_at`: reusing one would need a lookup key and could return a price from before a rate change; extra rows are cheap and bounded by the 8-call loop limit (D11), and guardrail 7 plus the one-hold index keep a draft from offering or holding the wrong one |
+| D59 | **`quote_price` checks availability** for the plan `build_offer` chose (a D27 substitute, not the type asked): too few free rooms for the whole stay → `FULLY_BOOKED(room_type, rooms_needed, rooms_free)`, nothing stored, next step `suggest_alternatives`. One shared function (`rooms_for_plan`: the lowest free room numbers, D38, or `FULLY_BOOKED`) is the only definition of "available", used by `quote_price`, `suggest_alternatives` and approval's re-validation (D47). Expired holds count as free (D22); the Accessible-room fallback (D33) belongs to `suggest_alternatives` | D11: rules inside tools, so the model cannot offer a full room type even if it skips `check_availability`; one definition keeps the three callers from disagreeing. Still a snapshot: approval re-checks, and the exclusion constraint is final |
 
 ## Domain data
 | Type | Rooms | Std/max | Extra bed | Notes |
@@ -116,8 +118,8 @@ Tables are created by migrations in the week they are first needed. Week 1: inve
 ## Tools
 | Tool | Reads/writes | Approval | Errors |
 |---|---|---|---|
-| `check_availability` | reads | no | `CLOSED`, `INVALID_DATES`, `MIN_STAY(n)` |
-| `quote_price` | reads; stores quote (no inventory effect) | no | `OVER_CAPACITY`, `NO_RATE` (+ valid alternative attached) |
+| `check_availability` | reads (dates → free rooms per type) | no | `INVALID_DATES`, `CLOSED`, `MIN_STAY(n)`; escalation `NO_CALENDAR` (D36) |
+| `quote_price` | reads the stored request (dates, party, type: never from the caller); stores a quote (no inventory effect, D58) | no | `FULLY_BOOKED(room_type, rooms_needed, rooms_free)` (D59: the chosen plan is not free; next step `suggest_alternatives`, nothing stored), `NEEDS_INFO` (dates, adults, children's ages), `CLOSED`, `MIN_STAY_CLOSED` (D57), `NO_RATE`; escalations `NO_CALENDAR`, `GROUP`, `ACCESSIBILITY`, `UNACCOMPANIED_CHILDREN`. Over capacity is not an error: the D27 plan is substituted and recorded in the quote's `changes` (the valid alternative) |
 | `suggest_alternatives` | reads | no | `NONE_FOUND` |
 | `search_policies` (English query) | reads | no | `NO_MATCH` |
 | `hold_room` | **writes bookings** | **yes**, approval handler only | `NO_LONGER_AVAILABLE` |

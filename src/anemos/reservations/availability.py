@@ -13,6 +13,7 @@ import psycopg
 from psycopg.rows import TupleRow
 
 from anemos.clock import Clock
+from anemos.reservations.errors import FullyBooked
 from anemos.reservations.model import Stay
 
 # A room is free if no active booking overlaps the stay. `&&` = "ranges overlap";
@@ -57,3 +58,23 @@ def free_rooms(
         if free:
             rooms.append(int(room_id))
     return MappingProxyType({type_id: tuple(ids) for type_id, ids in result.items()})
+
+
+def rooms_for_plan(
+    conn: psycopg.Connection[TupleRow], clock: Clock, room_type_id: str, stay: Stay, rooms: int
+) -> tuple[int, ...] | FullyBooked:
+    """The one definition of "this plan is available" (D59): the `rooms` lowest free
+    room numbers of the type for the whole stay (D38), or FULLY_BOOKED.
+
+    Used by quote_price (before storing a quote), suggest_alternatives (which options
+    to offer) and approval's re-validation (D47, which then holds exactly these rooms).
+    Same snapshot caveat as free_rooms: only the database constraint is final.
+    """
+    if rooms < 1:
+        raise ValueError(f"rooms must be >= 1, got {rooms}")
+    free = free_rooms(conn, stay, clock).get(room_type_id)
+    if free is None:
+        raise ValueError(f"unknown room type {room_type_id!r}")
+    if len(free) < rooms:
+        return FullyBooked(room_type_id, rooms_needed=rooms, rooms_free=len(free))
+    return free[:rooms]

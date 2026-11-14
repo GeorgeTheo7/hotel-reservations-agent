@@ -2,8 +2,16 @@ from datetime import date, datetime
 
 import pytest
 
-from anemos.reservations.errors import InvalidDates
-from anemos.reservations.model import Adult, Child, Party, RoomType, Stay, stay_or_error
+from anemos.reservations.errors import InvalidDates, NeedsInfo
+from anemos.reservations.model import (
+    Adult,
+    Child,
+    Party,
+    RoomType,
+    Stay,
+    party_from_counts,
+    stay_or_error,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -79,3 +87,38 @@ def test_child_rejects_bad_ages(age: object) -> None:
 def test_room_type_rejects_standard_above_max() -> None:
     with pytest.raises(ValueError, match="standard"):
         RoomType("x", "X", "Δοκιμή", 3, 2, "cot_only")
+
+
+# --- party_from_counts: a stored request's counts -> Party, or what to ask -----------
+
+
+def test_party_from_complete_counts() -> None:
+    assert party_from_counts(2, 2, [8, 1]) == Party.of(2, (8, 1))
+
+
+def test_children_not_mentioned_means_none() -> None:
+    assert party_from_counts(2, None, []) == Party.of(2)
+
+
+@pytest.mark.parametrize(("children", "ages"), [(2, []), (2, [8])])
+def test_children_without_ages_needs_info(children: int, ages: list[int]) -> None:
+    """Spec Unmet requests: children without ages -> ask."""
+    assert party_from_counts(2, children, ages) == NeedsInfo("children's ages")
+
+
+def test_adults_unknown_needs_info() -> None:
+    assert party_from_counts(None, 1, [5]) == NeedsInfo("number of adults")
+
+
+def test_nobody_needs_info() -> None:
+    assert party_from_counts(0, 0, []) == NeedsInfo("number of guests")
+
+
+def test_children_only_party_is_built() -> None:
+    """D32 (an adult in every room) is a pricing rule, not a missing fact."""
+    assert party_from_counts(0, 2, [15, 13]) == Party.of(0, (15, 13))
+
+
+def test_more_ages_than_children_is_a_bug() -> None:
+    with pytest.raises(ValueError, match="2 ages for 1 children"):
+        party_from_counts(2, 1, [4, 6])

@@ -104,3 +104,15 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** D27/D33/D34 describe substitutions for a named type and a single stay; the combinations were open.
 - **Evidence:** 3 adults, no type → Sea View (1 room, may be held); need + 2 rooms → `ACCESSIBILITY`; with a 3-night minimum, 31 Oct for 1 night → `MIN_STAY_CLOSED(3, [1 Nov, 2 Nov])` (tests in `tests/unit/test_offer.py`, using a copy of the hotel with a changed minimum).
 - **Fix:** D55 smallest type that fits the rooms asked; D56 escalate; D57 a typed `MinStayIntoClosed` that carries both facts, not `Closed`. Trade-off: one more error type the reply templates must render (week 6); plain "closed" would have been simpler but untrue for the nights asked.
+
+## 2026-11-14 · quote_price prices the stored request, and stores every call (D58)
+- **Symptom:** a tool that took dates and a party as arguments would let the model price a party the guest never described; calling it twice for one request stored two quotes, and it was unclear if that was a bug.
+- **Cause:** the tool's inputs and its write behaviour were not decided by the spec.
+- **Evidence:** `test_missing_facts_need_info_and_store_nothing` (missing dates/adults/ages → NEEDS_INFO, no row); a second call returns a new `quote_id` with its own `created_at`.
+- **Fix:** `quote_price(request_id)` reads dates, party and type from `requests` (rooms not stated = 1; accessibility from the extraction flags); every call stores a new write-once quote, never reused (D58). Trade-off: unlinked quotes accumulate (bounded by the 8-call loop); reuse would risk handing back a price from before a rate change.
+
+## 2026-11-14 · quote_price refuses a full room type (D59)
+- **Symptom:** `quote_price` priced and stored a quote for a fully booked type; in week 5 the model could skip `check_availability`, put that quote in a draft, and approval would invalidate it (D44).
+- **Cause:** availability lived in a separate tool, so the rule "only offer what is free" depended on the model calling tools in the right order (against D11).
+- **Evidence:** 5 of 6 Standard rooms booked, 2 asked → `FULLY_BOOKED("standard", 2, 1)`, no row; Ex 8 with all Suites booked → `FULLY_BOOKED("family_suite", 1, 0)` even though the Sea View asked for is free.
+- **Fix:** shared `rooms_for_plan` (lowest free numbers or `FULLY_BOOKED`), called after `build_offer`, before storing; the same function serves `suggest_alternatives` and approval. Trade-off: two tools ask the database the same question; still a snapshot, so approval re-checks.

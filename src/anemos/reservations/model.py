@@ -5,12 +5,13 @@ own invariants, so a `Stay` or `Child` that exists is always valid: code that re
 one does not need to check it again ("parse, don't validate").
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import StrEnum
 from typing import Literal
 
-from anemos.reservations.errors import InvalidDates
+from anemos.reservations.errors import InvalidDates, NeedsInfo
 
 
 class Season(StrEnum):
@@ -137,6 +138,27 @@ class RoomOffer:
     stay: Stay
     rooms: int
     room_type_id: str
+
+
+def party_from_counts(
+    adults: int | None, children: int | None, child_ages: Sequence[int]
+) -> Party | NeedsInfo:
+    """Build a Party from a stored request's counts (requests table), or say what to ask.
+
+    This is where "children without ages" becomes NEEDS_INFO (spec Unmet requests):
+    a Party cannot hold a child without an age, so the gap must be caught here, before
+    pricing. `children` None means none were mentioned. Called by the quote_price tool.
+    """
+    if adults is None:
+        return NeedsInfo("number of adults")
+    children = children or 0
+    if len(child_ages) < children:
+        return NeedsInfo("children's ages")
+    if len(child_ages) > children:
+        raise ValueError(f"{len(child_ages)} ages for {children} children")  # DB CHECK
+    if adults + children == 0:
+        return NeedsInfo("number of guests")
+    return Party.of(adults, tuple(child_ages))
 
 
 def stay_or_error(check_in: date, check_out: date) -> Stay | InvalidDates:

@@ -11,7 +11,8 @@ import pytest
 from psycopg.rows import TupleRow
 
 from anemos.clock import FixedClock
-from anemos.reservations.availability import FREE_ROOMS_SQL, free_rooms
+from anemos.reservations.availability import FREE_ROOMS_SQL, free_rooms, rooms_for_plan
+from anemos.reservations.errors import FullyBooked
 from anemos.reservations.model import Stay
 
 pytestmark = pytest.mark.integration
@@ -113,3 +114,24 @@ def test_sql_never_reads_the_database_clock() -> None:
     sql = FREE_ROOMS_SQL.lower()
     assert "now()" not in sql
     assert "current_timestamp" not in sql
+
+
+# --- rooms_for_plan: the shared "is this plan available" check (D59) ----------------
+
+
+def test_rooms_for_plan_gives_the_lowest_free_numbers(db: Conn) -> None:
+    """D38: the lowest free room numbers, which approval will hold."""
+    book(db, 101, date(2027, 7, 12), date(2027, 7, 15), "confirmed")
+    assert rooms_for_plan(db, FixedClock(NOW), "standard", STAY, 2) == (102, 103)
+
+
+def test_rooms_for_plan_short_of_rooms(db: Conn) -> None:
+    for room in ALL_STANDARD[:5]:
+        book(db, room, date(2027, 7, 12), date(2027, 7, 15), "confirmed")
+    result = rooms_for_plan(db, FixedClock(NOW), "standard", STAY, 2)
+    assert result == FullyBooked("standard", rooms_needed=2, rooms_free=1)
+
+
+def test_rooms_for_plan_unknown_type_is_a_bug(db: Conn) -> None:
+    with pytest.raises(ValueError, match="unknown room type"):
+        rooms_for_plan(db, FixedClock(NOW), "penthouse", STAY, 1)
