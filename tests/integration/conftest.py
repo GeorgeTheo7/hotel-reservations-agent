@@ -204,6 +204,7 @@ class Rows:
                 "quote_id": quote_id,
                 "quote_hold_allowed": allowed[0] if allowed else False,
                 "hold": hold,
+                "rendered_block": f"Our offer: quote {quote_id}\nAccommodation total: €390.00",
             }
             | overrides,
             returning="draft_id",

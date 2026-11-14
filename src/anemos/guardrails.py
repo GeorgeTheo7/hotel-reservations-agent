@@ -9,6 +9,7 @@ from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 
 QUOTE_BLOCK = "{{QUOTE_BLOCK}}"
+PRICE_CHECK = "price_check"  # guardrail result key of an owner edit (D63)
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,18 @@ def holds_valid(
     if not hold_allowed.get(held[0].quote_id, False):
         return f"quote {held[0].quote_id} differs from the request; it cannot be held (D9)"
     return True
+
+
+def rendered_blocks_unchanged(text: str, blocks: Sequence[str]) -> bool | str:
+    """Price check on an owner edit (D63, D10): every quote block of the agent's
+    version must still appear verbatim. A changed amount, a reworded line or a deleted
+    block is the edited-price warning, which approval refuses unless confirm_warnings.
+    """
+    missing = [i + 1 for i, block in enumerate(blocks) if block not in text]
+    if not missing:
+        return True
+    which = ", ".join(map(str, missing))
+    return f"edited-price warning: quote block {which} of {len(blocks)} changed or removed"
 
 
 def all_passed(results: dict[str, bool | str]) -> bool:

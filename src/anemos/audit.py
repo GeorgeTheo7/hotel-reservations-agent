@@ -21,8 +21,17 @@ class AuditEvent(StrEnum):
     EMAIL_STORED = "email.stored"
     EMAIL_PROCESSING = "email.processing"
     EMAIL_ESCALATED = "email.escalated"
+    EMAIL_CLOSED = "email.closed"
+    EMAIL_REOPENED = "email.reopened"
     DRAFT_CREATED = "draft.created"
+    DRAFT_EDITED = "draft.edited"
+    DRAFT_REJECTED = "draft.rejected"
+    DRAFT_EXPIRED = "draft.expired"
+    DRAFT_ACTION_REFUSED = "draft.action_refused"
     DRAFT_SUPERSEDED = "draft.superseded"
+    HOLD_CONFIRMED = "hold.confirmed"
+    HOLD_RELEASED = "hold.released"
+    BOOKING_CANCELLED = "booking.cancelled"
 
 
 def write_audit(

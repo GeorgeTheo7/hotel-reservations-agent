@@ -121,6 +121,12 @@ def test_exact_request_gives_a_held_quote_waiting_for_approval(
     assert "{{HOLD_UNTIL}}" in body  # filled at approval (D8)
     assert "{{QUOTE_BLOCK}}" not in body
     assert "{{REQUEST_SUMMARY}}" not in body
+    stored = db.execute(
+        "SELECT rendered_block FROM draft_offers WHERE draft_id = %s", (result.draft_id,)
+    ).fetchall()
+    assert len(stored) == 1
+    assert stored[0][0] in body  # the block the owner-edit price check compares (D63)
+    assert stored[0][0].startswith("Our offer: Sea View Double")
 
 
 def test_changed_offer_is_quoted_without_hold_and_with_its_note(

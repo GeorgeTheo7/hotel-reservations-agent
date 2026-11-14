@@ -123,6 +123,7 @@ def draft_reply(conn: Conn, hotel: HotelData, clock: Clock, email_id: int) -> Dr
 
     offers: list[ProposedOffer] = []
     quotes: list[StoredQuote] = []
+    blocks: dict[int, str] = {}  # quote id -> rendered block, kept for the price check
     if isinstance(outcome, NeedsInfo):
         route, text = "ask_info", _ask_info_text(outcome, lang)
         rendered = text
@@ -140,7 +141,7 @@ def draft_reply(conn: Conn, hotel: HotelData, clock: Clock, email_id: int) -> Dr
         if len(offers) > 1:  # D9: options are never held
             offers = [ProposedOffer(o.quote_id, hold=False) for o in offers]
         text = _quote_text(lang, alternatives=isinstance(outcome, Alternatives))
-        rendered = _render(hotel, text, loaded, quotes, offers, lang)
+        rendered, blocks = _render(hotel, text, loaded, quotes, offers, lang)
 
     results: dict[str, bool | str] = {
         "g1_quote_block_once": quote_block_once(text, route),
@@ -165,8 +166,9 @@ def draft_reply(conn: Conn, hotel: HotelData, clock: Clock, email_id: int) -> Dr
     for offer in offers:
         conn.execute(
             "INSERT INTO draft_offers (draft_id, request_id, quote_id, quote_hold_allowed,"
-            " hold) SELECT %s, %s, id, hold_allowed, %s FROM quotes WHERE id = %s",
-            (draft_id, request_id, offer.hold, offer.quote_id),
+            " hold, rendered_block) SELECT %s, %s, id, hold_allowed, %s, %s"
+            " FROM quotes WHERE id = %s",
+            (draft_id, request_id, offer.hold, blocks[offer.quote_id], offer.quote_id),
         )
     _set_email(conn, email_id, EmailStatus.SUPERSEDED if newer else EmailStatus.AWAITING_APPROVAL)
     write_audit(
@@ -265,18 +267,20 @@ def _render(
     quotes: list[StoredQuote],
     offers: list[ProposedOffer],
     lang: Lang,
-) -> str:
-    """Replace the placeholders with code-rendered blocks (D8). {{HOLD_UNTIL}} inside a
-    held block stays for the approval transaction to fill."""
+) -> tuple[str, dict[int, str]]:
+    """Replace the placeholders with code-rendered blocks (D8). Returns the text and
+    each quote's block, stored with its offer for the owner-edit price check (D63).
+    {{HOLD_UNTIL}} inside a held block stays for the approval transaction to fill."""
     hold = {o.quote_id: o.hold for o in offers}
-    blocks = "\n\n".join(
-        render_quote_block(
+    blocks = {
+        q.quote_id: render_quote_block(
             hotel, q.offer.quote, lang, hold=hold[q.quote_id], changes=_notes(hotel, loaded, q)
         )
         for q in quotes
-    )
+    }
     summary = render_request_summary(hotel, loaded.request, loaded.party, lang)
-    return text.replace(REQUEST_SUMMARY, summary).replace(QUOTE_BLOCK, blocks)
+    text = text.replace(REQUEST_SUMMARY, summary)
+    return text.replace(QUOTE_BLOCK, "\n\n".join(blocks.values())), blocks
 
 
 def _notes(hotel: HotelData, loaded: LoadedRequest, stored: StoredQuote) -> list[NoteChange]:

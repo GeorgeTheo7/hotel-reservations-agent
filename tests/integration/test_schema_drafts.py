@@ -364,6 +364,16 @@ def test_at_most_one_held_offer_per_draft(
         rows.offer(draft_id, request_id, rows.quote(request_id), hold=True)
 
 
+@pytest.mark.parametrize("blank", [" ", "\t", "\n"], ids=["space", "tab", "newline"])
+def test_rendered_block_not_blank(
+    rows: Rows, expect_violation: ExpectViolation, quote_draft: tuple[int, int], blank: str
+) -> None:
+    """Migration 0010 (D63): the block the price check compares against."""
+    draft_id, request_id = quote_draft
+    with expect_violation(CheckViolation, "draft_offers_rendered_block_not_blank"):
+        rows.offer(draft_id, request_id, rows.quote(request_id), hold=False, rendered_block=blank)
+
+
 def test_same_quote_offered_once(
     rows: Rows, expect_violation: ExpectViolation, quote_draft: tuple[int, int]
 ) -> None:

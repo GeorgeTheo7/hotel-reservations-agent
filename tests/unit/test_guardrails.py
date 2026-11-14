@@ -2,7 +2,13 @@
 
 import pytest
 
-from anemos.guardrails import ProposedOffer, all_passed, holds_valid, quote_block_once
+from anemos.guardrails import (
+    ProposedOffer,
+    all_passed,
+    holds_valid,
+    quote_block_once,
+    rendered_blocks_unchanged,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -62,3 +68,30 @@ def test_hold_on_a_changed_quote_fails() -> None:
 def test_all_passed() -> None:
     assert all_passed({"g1": True, "g7": True}) is True
     assert all_passed({"g1": True, "g7": "a hold with 2 offers"}) is False
+
+
+# --- price check on owner edits (D63) ---------------------------------------------
+
+BLOCK = "Our offer: Sea View Double, 1 room\nAccommodation total: €390.00"
+
+
+def test_block_kept_verbatim_passes() -> None:
+    assert rendered_blocks_unchanged(f"Dear Maria,\n{BLOCK}\nThanks!", [BLOCK]) is True
+
+
+def test_changed_price_warns() -> None:
+    edited = BLOCK.replace("€390.00", "€350.00")
+    result = rendered_blocks_unchanged(f"Dear guest,\n{edited}", [BLOCK])
+    assert result == "edited-price warning: quote block 1 of 1 changed or removed"
+
+
+def test_deleted_block_warns_and_names_it() -> None:
+    other = "Our offer: Family Suite, 1 room\nAccommodation total: €540.00"
+    result = rendered_blocks_unchanged(f"Dear guest,\n{BLOCK}", [BLOCK, other])
+    assert result == "edited-price warning: quote block 2 of 2 changed or removed"
+
+
+def test_no_blocks_nothing_to_check() -> None:
+    """ask_info and decline drafts offer nothing; guardrail 2 (week 6) covers numbers
+    an owner might add to free text."""
+    assert rendered_blocks_unchanged("Could you tell us the ages?", []) is True
