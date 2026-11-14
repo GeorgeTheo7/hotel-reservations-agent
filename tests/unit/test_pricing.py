@@ -11,18 +11,11 @@ from datetime import date
 import pytest
 
 from anemos.db.seed import hotel_data
-from anemos.reservations.errors import (
-    Closed,
-    MinStay,
-    NeedsEscalation,
-    NoRate,
-    OverCapacity,
-    ReasonCode,
-)
+from anemos.reservations.errors import NeedsEscalation, NoRate, OverCapacity, ReasonCode
 from anemos.reservations.model import ExtraBedBand, Party, RoomOffer, RoomRequest, Season, Stay
-from anemos.reservations.occupancy import RoomPlan, smallest_fitting_plan
+from anemos.reservations.offer import Offer, build_offer
 from anemos.reservations.pricing import Quote, price_stay
-from anemos.reservations.stay_rules import check_stay, hold_allowed, min_stay_version, open_part
+from anemos.reservations.stay_rules import hold_allowed
 
 pytestmark = pytest.mark.unit
 
@@ -93,38 +86,17 @@ EXAMPLES = [
 ]  # fmt: skip
 
 
-def offer_for(ex: Example) -> Quote:
-    """The documented path from request to offer: rules first, then price.
-
-    A test-side sketch of what the week-3 tools will do: a closed part is trimmed
-    (D34: then re-checked), a short stay gets its min-stay version, an over-capacity
-    party gets the smallest fitting plan (D27).
-    """
-    stay = ex.stay
-    for _ in range(3):  # each fix-up is re-checked; never more than a couple of rounds
-        problem = check_stay(HOTEL, stay)
-        if isinstance(problem, Closed):
-            part = open_part(HOTEL, stay)
-            assert part is not None
-            stay = part
-        elif isinstance(problem, MinStay):
-            stay = min_stay_version(HOTEL, stay)
-        else:
-            break
-    assert check_stay(HOTEL, stay) is None
-
-    result = price_stay(HOTEL, ex.room_type_id, stay, ex.party, ex.rooms)
-    if isinstance(result, OverCapacity):
-        plan = smallest_fitting_plan(HOTEL, ex.party)
-        assert isinstance(plan, RoomPlan)
-        result = price_stay(HOTEL, plan.room_type.id, stay, ex.party, plan.rooms)
-    assert isinstance(result, Quote), result
-    return result
+def built_offer(ex: Example) -> Offer:
+    """The production request-to-offer path (anemos.reservations.offer.build_offer)."""
+    offer = build_offer(HOTEL, RoomRequest(ex.stay, ex.rooms, ex.room_type_id), ex.party)
+    assert isinstance(offer, Offer), offer
+    return offer
 
 
 @pytest.mark.parametrize("ex", EXAMPLES, ids=lambda ex: ex.id)
 def test_example(ex: Example) -> None:
-    quote = offer_for(ex)
+    offer = built_offer(ex)
+    quote = offer.quote
     got = {
         "offered_type_id": quote.room_type_id,
         "offered_stay": quote.stay,
@@ -134,10 +106,7 @@ def test_example(ex: Example) -> None:
         "city_tax": quote.city_tax_cents,
         "deposit": quote.deposit_cents,
         "cancel_until": quote.free_cancellation_until,
-        "hold": hold_allowed(
-            RoomRequest(ex.stay, ex.rooms, ex.room_type_id),
-            [RoomOffer(quote.stay, quote.rooms, quote.room_type_id)],
-        ),
+        "hold": offer.hold_allowed,
     }
     expected = {key: getattr(ex, key) for key in got}
     assert got == expected
@@ -145,7 +114,7 @@ def test_example(ex: Example) -> None:
 
 @pytest.mark.parametrize("ex", EXAMPLES, ids=lambda ex: ex.id)
 def test_every_amount_is_int(ex: Example) -> None:
-    quote = offer_for(ex)
+    quote = built_offer(ex).quote
     amounts = [getattr(quote, f.name) for f in fields(quote) if f.name.endswith("_cents")]
     for line in quote.lines:
         amounts += [getattr(line, f.name) for f in fields(line) if f.name.endswith("_cents")]
@@ -153,9 +122,21 @@ def test_every_amount_is_int(ex: Example) -> None:
     assert all(type(cents) is int for cents in amounts)
 
 
+@pytest.mark.parametrize("ex", EXAMPLES, ids=lambda ex: ex.id)
+def test_offer_hold_agrees_with_stay_rules_hold_allowed(ex: Example) -> None:
+    """Two statements of D9 must agree for a single offer: "no changes" (offer.py) and
+    "same dates, rooms and type" (stay_rules.hold_allowed)."""
+    offer = built_offer(ex)
+    q = offer.quote
+    requested = RoomRequest(ex.stay, ex.rooms, ex.room_type_id)
+    assert offer.hold_allowed == hold_allowed(
+        requested, [RoomOffer(q.stay, q.rooms, q.room_type_id)]
+    )
+
+
 def test_totals_are_sums_of_the_nightly_lines() -> None:
     for ex in EXAMPLES:
-        q = offer_for(ex)
+        q = built_offer(ex).quote
         assert q.room_subtotal_cents == sum(line.room_cents for line in q.lines)
         assert q.extra_bed_subtotal_cents == sum(line.extra_bed_cents for line in q.lines)
         assert q.city_tax_cents == sum(line.city_tax_cents for line in q.lines)

@@ -98,3 +98,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** isolation by rollback is exactly what makes a race untestable.
 - **Evidence:** `test_a_commit_is_visible_on_a_second_connection` (invisible before commit, visible after); `test_wait_until_blocked_sees_a_lock_wait` (B provably waits on A's `FOR UPDATE`, then reads A's committed change).
 - **Fix:** own database `<dev>_commit_test`, operational tables truncated before and after each test (`TRUNCATE` skips the D51 triggers; a test checks every table is either reset or seed); lock waits detected by polling `pg_stat_activity.wait_event_type = 'Lock'`, never by sleeping. Trade-off: one more migrate + seed per session (~1 s), and races use threads, so a hung test fails by timeout (5 s) rather than instantly.
+
+## 2026-11-14 · Three gaps in the request-to-offer path (D55–D57)
+- **Symptom:** writing `build_offer` as one function hit three cases the spec did not decide: no room type named, an accessibility need with 2 rooms, and a min-stay version that runs into closed nights.
+- **Cause:** D27/D33/D34 describe substitutions for a named type and a single stay; the combinations were open.
+- **Evidence:** 3 adults, no type → Sea View (1 room, may be held); need + 2 rooms → `ACCESSIBILITY`; with a 3-night minimum, 31 Oct for 1 night → `MIN_STAY_CLOSED(3, [1 Nov, 2 Nov])` (tests in `tests/unit/test_offer.py`, using a copy of the hotel with a changed minimum).
+- **Fix:** D55 smallest type that fits the rooms asked; D56 escalate; D57 a typed `MinStayIntoClosed` that carries both facts, not `Closed`. Trade-off: one more error type the reply templates must render (week 6); plain "closed" would have been simpler but untrue for the nights asked.

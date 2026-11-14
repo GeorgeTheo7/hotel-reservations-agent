@@ -43,6 +43,17 @@ class MinStay:
 
 
 @dataclass(frozen=True)
+class MinStayIntoClosed:
+    """The stay is shorter than its minimum, and the min-stay version would include
+    closed nights (D57). Neither can be offered; the reply states both facts, because
+    plain CLOSED would be untrue for the nights the guest asked for."""
+
+    code: ClassVar[str] = "MIN_STAY_CLOSED"
+    min_nights: int
+    closed_nights: tuple[date, ...]  # nights of the min-stay version that are closed
+
+
+@dataclass(frozen=True)
 class OverCapacity:
     """The party does not fit the requested rooms (D13 head count vs max occupancy)."""
 

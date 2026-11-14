@@ -22,6 +22,7 @@ from psycopg.errors import (
 from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 
+from anemos.reservations.offer import OfferChange
 from anemos.states import DraftStatus
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's class is for mypy only
@@ -34,9 +35,8 @@ type ExpectViolation = Callable[[type[psycopg.Error], str], AbstractContextManag
 
 # docs/states.md, Draft; the CHECK list must equal the enum.
 DRAFT_STATUSES = [status.value for status in DraftStatus]
-QUOTE_CHANGES = [
-    "open_part", "min_stay", "other_type", "more_rooms", "other_dates", "window_option",
-]  # fmt: skip
+# The CHECK on quotes.changes must accept exactly the values build_offer can produce.
+QUOTE_CHANGES = [change.value for change in OfferChange]
 
 
 def hold_allowed(db: Conn, quote_id: int) -> bool:
