@@ -9,6 +9,7 @@ season and rate are grouped into one line; the Quote keeps the nightly lines.
 """
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import cache
@@ -53,11 +54,55 @@ class OpenPartChange:
 
 @dataclass(frozen=True)
 class RoomTypeChange:
+    """The type asked cannot hold the party (D27)."""
+
     requested_type_id: str
     max_people: int
 
 
-type OfferChange = MinStayChange | OpenPartChange | RoomTypeChange
+@dataclass(frozen=True)
+class RoomTypeUnavailableChange:
+    """The type asked is not free for these dates (an alternative, D60)."""
+
+    requested_type_id: str
+
+
+@dataclass(frozen=True)
+class MoreRoomsChange:
+    rooms: int
+
+
+@dataclass(frozen=True)
+class OtherDatesChange:
+    pass
+
+
+@dataclass(frozen=True)
+class WindowOptionChange:
+    pass
+
+
+type OfferChange = (
+    OpenPartChange
+    | MinStayChange
+    | RoomTypeChange
+    | RoomTypeUnavailableChange
+    | MoreRoomsChange
+    | OtherDatesChange
+    | WindowOptionChange
+)
+
+# One note line per change, always in this order (the order build_offer applies them:
+# trim, lengthen, then type, rooms, dates), whatever order the caller passes.
+NOTE_ORDER: tuple[type, ...] = (
+    OpenPartChange,
+    MinStayChange,
+    RoomTypeChange,
+    RoomTypeUnavailableChange,
+    MoreRoomsChange,
+    OtherDatesChange,
+    WindowOptionChange,
+)
 
 
 def render_quote_block(
@@ -66,7 +111,7 @@ def render_quote_block(
     lang: Lang,
     *,
     hold: bool,
-    change: OfferChange | None = None,
+    changes: Sequence[OfferChange] = (),
 ) -> str:
     phrases = _phrases(lang)
     room_type = hotel.room_types[quote.room_type_id]
@@ -74,7 +119,10 @@ def render_quote_block(
         "heading": f"{room_type_name(room_type, lang)}, {count(quote.rooms, 'room', lang)}",
         "dates": format_stay(quote.stay, lang),
         "party": format_party(quote.party, lang),
-        "note": "" if change is None else _note(hotel, quote, change, lang),
+        "note": "\n".join(
+            _note(hotel, quote, change, lang)
+            for change in sorted(changes, key=lambda c: NOTE_ORDER.index(type(c)))
+        ),
         "lines": "\n".join([*_room_lines(quote, lang), *_extra_bed_lines(hotel, quote, lang)]),
         "subtotal": format_money(quote.accommodation_subtotal_cents, lang),
         "city_tax": format_money(quote.city_tax_cents, lang),
@@ -84,7 +132,7 @@ def render_quote_block(
             "deposit_held" if hold else "deposit_quote",
             amount=format_money(quote.deposit_cents, lang),
         ),
-        "cancel_until": _with_article(quote.free_cancellation_until, lang),
+        "cancel_until": date_with_article(quote.free_cancellation_until, lang),
         "cot": _cot_line(quote.party, lang),
         "hold": str(phrases["hold_one" if quote.rooms == 1 else "hold_many"])
         if hold
@@ -179,7 +227,7 @@ def _note(hotel: HotelData, quote: Quote, change: OfferChange, lang: Lang) -> st
             return _phrase(
                 lang,
                 "note_min_stay",
-                arrival=_with_article(arrival, lang),
+                arrival=date_with_article(arrival, lang),
                 nights=count(min_nights, "night", lang),
             )
         case OpenPartChange():
@@ -192,6 +240,19 @@ def _note(hotel: HotelData, quote: Quote, change: OfferChange, lang: Lang) -> st
                 max_people=str(max_people),
                 offered=room_type_name(hotel.room_types[quote.room_type_id], lang),
             )
+        case RoomTypeUnavailableChange(requested_type_id):
+            return _phrase(
+                lang,
+                "note_room_unavailable",
+                asked=room_type_name(hotel.room_types[requested_type_id], lang),
+                offered=room_type_name(hotel.room_types[quote.room_type_id], lang),
+            )
+        case MoreRoomsChange(rooms):
+            return _phrase(lang, "note_more_rooms", rooms=count(rooms, "room", lang))
+        case OtherDatesChange():
+            return _phrase(lang, "note_other_dates")
+        case WindowOptionChange():
+            return _phrase(lang, "note_window_option")
 
 
 def render_hold_until(at: datetime, lang: Lang) -> str:
@@ -200,7 +261,7 @@ def render_hold_until(at: datetime, lang: Lang) -> str:
     return f"{_article(at.astimezone(HOTEL_TZ).date(), lang)}{format_hold_until(at, lang)}"
 
 
-def _with_article(day: date, lang: Lang) -> str:
+def date_with_article(day: date, lang: Lang) -> str:
     """A full date with the Greek article before the weekday; English has none."""
     return f"{_article(day, lang)}{format_date(day, lang)}"
 

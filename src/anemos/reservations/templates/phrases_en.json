@@ -15,6 +15,10 @@
   "note_min_stay": "Please note: the minimum stay for arrival on $arrival is $nights, so this quote is for $nights.",
   "note_open_part": "Please note: the hotel is closed on some of the nights you asked for, so this quote covers only the nights we are open.",
   "note_room_type": "Please note: the $asked sleeps at most $max_people people, so this quote is for the $offered.",
+  "note_room_unavailable": "Please note: the $asked is not available for these dates, so this quote is for the $offered.",
+  "note_more_rooms": "Please note: no single room fits your whole party, so this quote is for $rooms.",
+  "note_other_dates": "Please note: your dates are fully booked, so this quote is for the nearest dates we have free.",
+  "note_window_option": "Please note: this is one of the options within the dates you gave us.",
   "window": "check-in between $first and $last, $nights",
   "weekday_articles": [
     "",

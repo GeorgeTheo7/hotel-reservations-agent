@@ -55,3 +55,13 @@ FINAL_DRAFT_STATUSES = frozenset(
 )
 FINAL_BOOKING_STATUSES = frozenset({BookingStatus.CANCELLED, BookingStatus.EXPIRED})
 FINAL_OUTBOX_STATUSES = frozenset({OutboxStatus.SENT})
+
+
+class TransitionRefused(Exception):
+    """An action asked for a transition docs/states.md does not allow from the row's
+    current status. Nothing was changed; the API turns this into 409."""
+
+    def __init__(self, what: str, current: str, wanted: str) -> None:
+        super().__init__(f"{what} is {current!r}; it cannot become {wanted!r}")
+        self.current = current
+        self.wanted = wanted

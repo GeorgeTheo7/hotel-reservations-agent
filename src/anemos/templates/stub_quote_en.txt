@@ -1,0 +1,10 @@
+Dear guest,
+
+Thank you for your email.
+
+{{REQUEST_SUMMARY}}
+
+$intro{{QUOTE_BLOCK}}
+
+Kind regards,
+Hotel Anemos

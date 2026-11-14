@@ -19,6 +19,9 @@ type Actor = Literal["owner", "agent", "system"]
 
 class AuditEvent(StrEnum):
     EMAIL_STORED = "email.stored"
+    EMAIL_PROCESSING = "email.processing"
+    EMAIL_ESCALATED = "email.escalated"
+    DRAFT_CREATED = "draft.created"
     DRAFT_SUPERSEDED = "draft.superseded"
 
 

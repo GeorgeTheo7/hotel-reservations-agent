@@ -1,0 +1,10 @@
+{
+  "alternatives_intro": "These are the closest options we can offer:\n\n",
+  "missing": {
+    "dates of the stay": "the dates of your stay",
+    "number of adults": "the number of adults",
+    "children's ages": "the ages of the children",
+    "number of guests": "the number of guests"
+  },
+  "missing_fallback": "a few details about your stay"
+}

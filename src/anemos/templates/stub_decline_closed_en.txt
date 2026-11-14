@@ -1,0 +1,10 @@
+Dear guest,
+
+Thank you for your email.
+
+{{REQUEST_SUMMARY}}
+
+Unfortunately the hotel is closed on these dates. Our season runs from $opens to $closes, and we would be happy to welcome you then.
+
+Kind regards,
+Hotel Anemos

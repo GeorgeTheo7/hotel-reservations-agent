@@ -119,7 +119,7 @@ def quote_price(
     stored; the model's next step is suggest_alternatives. Approval still re-checks
     (D47), because this is a snapshot.
     """
-    loaded = _load_request(conn, request_id)
+    loaded = load_request(conn, request_id)
     if isinstance(loaded, NeedsInfo):
         return loaded
     result = build_offer(
@@ -136,13 +136,13 @@ def quote_price(
 
 
 @dataclass(frozen=True)
-class _LoadedRequest:
+class LoadedRequest:
     request: RoomRequest
     party: Party
     accessibility_need: bool
 
 
-def _load_request(conn: Conn, request_id: int) -> _LoadedRequest | NeedsInfo:
+def load_request(conn: Conn, request_id: int) -> LoadedRequest | NeedsInfo:
     """The stored request as build_offer's inputs, or what must be asked first."""
     row = conn.execute(REQUEST_SQL, (request_id,)).fetchone()
     if row is None:
@@ -160,7 +160,7 @@ def _load_request(conn: Conn, request_id: int) -> _LoadedRequest | NeedsInfo:
         rooms=1 if rooms is None else rooms,
         room_type_id=room_type_id,
     )
-    return _LoadedRequest(request, party, _has_flag(extracted, ACCESSIBILITY_FLAG))
+    return LoadedRequest(request, party, _has_flag(extracted, ACCESSIBILITY_FLAG))
 
 
 def _has_flag(extracted: Mapping[str, Any], flag: str) -> bool:
@@ -253,7 +253,7 @@ def suggest_alternatives(
     step quote_price) and nothing is stored (D60). Errors of the base offer
     (NEEDS_INFO, CLOSED, escalations) are returned unchanged and nothing is stored.
     """
-    loaded = _load_request(conn, request_id)
+    loaded = load_request(conn, request_id)
     if isinstance(loaded, NeedsInfo):
         return loaded
     base = build_offer(
@@ -290,7 +290,7 @@ def _other_types(
     conn: Conn,
     hotel: HotelData,
     clock: Clock,
-    loaded: _LoadedRequest,
+    loaded: LoadedRequest,
     base: Offer,
     *,
     flagged: bool,
@@ -325,7 +325,7 @@ def _other_types(
 
 
 def _other_dates(
-    conn: Conn, hotel: HotelData, clock: Clock, loaded: _LoadedRequest, base: Offer
+    conn: Conn, hotel: HotelData, clock: Clock, loaded: LoadedRequest, base: Offer
 ) -> list[Offer]:
     plan = base.quote
     found: list[Offer] = []

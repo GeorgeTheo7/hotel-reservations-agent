@@ -128,3 +128,15 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** the rule spans two tables written by two different code paths (storing an email, creating a draft), and no single row is shared that a `FOR UPDATE` could lock.
 - **Evidence:** `test_storing_waits_for_the_senders_lock` (committed_db): with the sender's lock held, `store_email` provably waits; another sender goes straight through.
 - **Fix:** `lock_sender` = `pg_advisory_xact_lock(hashtextextended(address, 0))`, taken first by `store_email` and (step 10) by draft creation; released at commit. Trade-off: two addresses can share a hash (64-bit, so rarely); they then only wait briefly for each other's transaction, never deadlock or mix data. A code path that forgets the lock reopens the race, so the step 10 tests must cover it. Recorded as D61.
+
+## 2026-11-14 · What the stub drafter does not write, and why it escalates instead
+- **Symptom:** some tool results had no reply template: CLOSED, MIN_STAY_CLOSED, NONE_FOUND (a decline), and ORIGINAL_AVAILABLE appearing between two tool calls.
+- **Cause:** decline wording and its guardrails belong to the agent (week 5) and the guardrail work (week 6); the quote templates cover quotes only.
+- **Evidence:** `test_min_stay_closed_still_escalates`: email `escalated` with `MODEL`, no draft row; `NO_RATE` escalates `SYSTEM_ERROR` (a data error).
+- **Fix:** CLOSED and NONE_FOUND got a `decline` route with EN/EL templates (D62, migration 0009); the rest escalate `MODEL` (the stub stands in for the model, which may escalate, D11). Every change in a quote gets its own note line, in a fixed order (`test_open_part_and_min_stay_give_both_notes`). Trade-off: the NONE_FOUND decline says the same stay a week either side is not available (booked, closed or too short), which is checked for the plan's room type only (other types on other dates are not searched: Later); the 30 test emails' labels must expect the agent's behaviour, not the stub's.
+
+## 2026-11-14 · For week 6: guardrails on owner edits see rendered text, not placeholders
+- **Symptom:** a stored draft version is the rendered text (prices visible); `{{QUOTE_BLOCK}}` and `{{REQUEST_SUMMARY}}` exist only before rendering, and only `{{HOLD_UNTIL}}` survives until approval. Guardrail 1 counts placeholders, so it cannot judge an owner's edit.
+- **Cause:** the owner edits what the guest will read; the model writes text with placeholders (D8).
+- **Evidence:** `test_exact_request_gives_a_held_quote_waiting_for_approval`: the body has "Our offer: ..." and no `{{QUOTE_BLOCK}}`.
+- **Fix (week 6):** guardrails on an owner edit recognise the rendered blocks. **An edit passes the price check if each rendered quote block still appears verbatim; otherwise it is the edited-price warning the owner must confirm (D10, `confirm_warnings`).** Trade-off: harmless wording changes inside a block also trigger the warning; the owner confirms once.

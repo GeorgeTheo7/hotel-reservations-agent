@@ -176,6 +176,12 @@ def test_draft_request_must_belong_to_its_email(
         rows.draft(rows.email(), other_request)
 
 
+@pytest.mark.parametrize("route", ["quote", "ask_info", "policy", "decline"])
+def test_every_route_accepted(rows: Rows, route: str) -> None:
+    """decline added by migration 0009 (D62)."""
+    rows.draft(rows.email(), None, route=route)
+
+
 def test_unknown_route_rejected(rows: Rows, expect_violation: ExpectViolation) -> None:
     with expect_violation(CheckViolation, "drafts_route_valid"):
         rows.draft(rows.email(), None, route="escalate")

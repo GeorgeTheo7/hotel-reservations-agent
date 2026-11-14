@@ -20,9 +20,13 @@ from anemos.reservations.model import Party, RoomRequest, Stay
 from anemos.reservations.pricing import Quote, price_stay
 from anemos.reservations.quote_template import (
     MinStayChange,
+    MoreRoomsChange,
     OfferChange,
     OpenPartChange,
+    OtherDatesChange,
     RoomTypeChange,
+    RoomTypeUnavailableChange,
+    WindowOptionChange,
     render_hold_until,
     render_quote_block,
     render_request_summary,
@@ -79,7 +83,9 @@ def rendered(name: str, lang: Lang) -> tuple[str, str, Quote]:
     assert request.room_type_id is not None
     q = quote(request.room_type_id, offered or request.stay, party, request.rooms)
     summary = render_request_summary(HOTEL, request, party, lang)
-    block = render_quote_block(HOTEL, q, lang, hold=hold, change=change)
+    block = render_quote_block(
+        HOTEL, q, lang, hold=hold, changes=() if change is None else (change,)
+    )
     return summary, block, q
 
 
@@ -154,15 +160,15 @@ def test_no_cot_line_without_infants() -> None:
 
 def test_open_part_note_ex07() -> None:
     q = quote("standard", Stay(date(2027, 10, 30), date(2027, 11, 1)), Party.of(2))
-    block = render_quote_block(HOTEL, q, "en", hold=False, change=OpenPartChange())
+    block = render_quote_block(HOTEL, q, "en", hold=False, changes=(OpenPartChange(),))
     assert "closed on some of the nights" in block
 
 
 def test_room_type_note_ex08() -> None:
     q = quote("family_suite", Stay(date(2027, 6, 5), date(2027, 6, 8)), Party.of(4))
     change = RoomTypeChange("sea_view", 3)
-    en = render_quote_block(HOTEL, q, "en", hold=False, change=change)
-    el = render_quote_block(HOTEL, q, "el", hold=False, change=change)
+    en = render_quote_block(HOTEL, q, "en", hold=False, changes=(change,))
+    el = render_quote_block(HOTEL, q, "el", hold=False, changes=(change,))
     assert (
         "the Sea View Double sleeps at most 3 people, so this quote is for the Family Suite" in en
     )
@@ -174,7 +180,7 @@ def test_greek_weekday_article_for_saturday() -> None:
     q = quote("sea_view", Stay(date(2027, 8, 14), date(2027, 8, 19)), Party.of(2))
     change = MinStayChange(date(2027, 8, 14), 5)  # a Saturday
     assert "για άφιξη το Σάββατο 14 Αυγούστου 2027" in render_quote_block(
-        HOTEL, q, "el", hold=False, change=change
+        HOTEL, q, "el", hold=False, changes=(change,)
     )
 
 
@@ -243,3 +249,38 @@ def test_hold_until_text_for_approval() -> None:
     assert held.replace("{{HOLD_UNTIL}}", render_hold_until(at, "el")) == (
         "Κρατάμε το δωμάτιο για εσάς έως την Κυριακή 13 Ιουνίου 2027, στις 09:30 (ώρα Ελλάδας)."
     )
+
+
+# --- one note per change, in a fixed order --------------------------------------------
+
+
+def test_open_part_and_min_stay_give_two_notes_in_fixed_order() -> None:
+    """D34's two-step path: trimmed to the open part, then lengthened to the minimum.
+    Each change has its own line; the order does not depend on the caller's order."""
+    q = quote("standard", Stay(date(2027, 4, 15), date(2027, 4, 18)), Party.of(2))
+    reversed_input = (MinStayChange(date(2027, 4, 15), 3), OpenPartChange())
+    block = render_quote_block(HOTEL, q, "en", hold=False, changes=reversed_input)
+    lines = block.splitlines()
+    open_part = next(i for i, line in enumerate(lines) if "closed on some of the nights" in line)
+    min_stay = next(i for i, line in enumerate(lines) if "the minimum stay for arrival" in line)
+    assert min_stay == open_part + 1
+
+
+@pytest.mark.parametrize(
+    ("change", "en", "el"),
+    [
+        (RoomTypeUnavailableChange("sea_view"),
+         "the Sea View Double is not available for these dates, so this quote is for the Standard",
+         "«Δίκλινο με θέα θάλασσα» δεν είναι διαθέσιμο"),
+        (MoreRoomsChange(2), "no single room fits your whole party, so this quote is for 2 rooms",
+         "κανένα δωμάτιο δεν χωράει όλη την παρέα σας"),
+        (OtherDatesChange(), "your dates are fully booked, so this quote is for the nearest dates",
+         "οι ημερομηνίες σας είναι πλήρεις"),
+        (WindowOptionChange(), "one of the options within the dates you gave us",
+         "μία από τις επιλογές μέσα στις ημερομηνίες"),
+    ],
+)  # fmt: skip
+def test_every_change_has_a_note_in_both_languages(change: OfferChange, en: str, el: str) -> None:
+    q = quote("standard", Stay(date(2027, 6, 1), date(2027, 6, 4)), Party.of(2))
+    assert en in render_quote_block(HOTEL, q, "en", hold=False, changes=(change,))
+    assert el in render_quote_block(HOTEL, q, "el", hold=False, changes=(change,))
