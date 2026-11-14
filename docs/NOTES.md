@@ -92,3 +92,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** the triggers protect the audit trail against bugs and manual edits; erasing a guest's data is also a change to those rows.
 - **Evidence:** a `DELETE FROM emails` on a `closed` email is refused by `emails_final_status`; `TRUNCATE` is not, because it skips row triggers (the `committed_db` fixture relies on that).
 - **Fix:** none in v1 (all data is fictional). Spec "Later": a controlled, audited erasure/anonymisation procedure that bypasses the triggers on purpose, and an application DB role without `TRUNCATE` (week 9, roles). Trade-off: integrity now, a documented gap for real data.
+
+## 2026-11-14 · A second test harness for real commits (`committed_db`)
+- **Symptom:** the `db` fixture rolls every test back and refuses `commit()`, so it cannot test the approval transaction: a second connection never sees the first one's work, and no lock is ever held across connections.
+- **Cause:** isolation by rollback is exactly what makes a race untestable.
+- **Evidence:** `test_a_commit_is_visible_on_a_second_connection` (invisible before commit, visible after); `test_wait_until_blocked_sees_a_lock_wait` (B provably waits on A's `FOR UPDATE`, then reads A's committed change).
+- **Fix:** own database `<dev>_commit_test`, operational tables truncated before and after each test (`TRUNCATE` skips the D51 triggers; a test checks every table is either reset or seed); lock waits detected by polling `pg_stat_activity.wait_event_type = 'Lock'`, never by sleeping. Trade-off: one more migrate + seed per session (~1 s), and races use threads, so a hung test fails by timeout (5 s) rather than instantly.

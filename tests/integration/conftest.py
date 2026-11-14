@@ -6,11 +6,16 @@
   always rolled back, so tests cannot leave data behind for each other.
 - Inside that transaction, `db.commit()` raises, and `with db.transaction():` becomes a
   SAVEPOINT (used by tests that expect a constraint violation).
+- `committed_db` is the second harness, for tests that need real commits and several
+  connections at once (the approval transaction, races). It uses its own database
+  `<dev db>_commit_test`, so leftovers can never reach the rolled-back tests; the
+  operational tables are truncated before and after every test, the 2027 seed stays.
 
 Run with: uv run --env-file .env pytest -m integration
 """
 
 import itertools
+import time
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, date, datetime, timedelta
@@ -23,6 +28,7 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 
+from anemos.clock import FixedClock
 from anemos.db.connection import connect, database_url
 from anemos.db.migrate import upgrade
 from anemos.db.seed import seed
@@ -250,6 +256,101 @@ class Rows:
         """Run a DEFERRABLE constraint's pending check now instead of at COMMIT (the
         rollback fixture never commits)."""
         self.db.execute(sql.SQL("SET CONSTRAINTS {} IMMEDIATE").format(sql.Identifier(constraint)))
+
+
+@pytest.fixture(scope="session")
+def commit_test_db() -> str:
+    """Conninfo of `<dev db>_commit_test`, migrated to head and seeded, once per session."""
+    conninfo = recreate_database(f"{dev_database_name()}_commit_test")
+    upgrade(conninfo)
+    with connect(conninfo) as conn:
+        seed(conn)
+    return conninfo
+
+
+# Every table the system writes while running; inventory and seed tables are kept.
+# Listed explicitly (no CASCADE): a new table that references one of these makes the
+# TRUNCATE fail loudly, and a harness test checks this list covers every non-seed table.
+OPERATIONAL_TABLES = (
+    "audit_log", "outbox", "draft_offers", "draft_versions", "drafts", "quotes",
+    "requests", "emails", "bookings",
+)  # fmt: skip
+SEED_TABLES = (
+    "room_types", "rooms", "seasons", "season_periods", "room_rates", "min_stay_rules",
+    "extra_bed_rates",
+)  # fmt: skip
+
+LOCK_WAIT_TIMEOUT_S = 5.0
+
+
+class CommittedDb:
+    """Real connections to the commit-test database; every commit is real.
+
+    `connect()` opens a new connection (closed after the test). `reset()` empties the
+    operational tables: TRUNCATE skips row triggers, so even frozen rows (D51) go.
+    `wait_until_blocked(conn)` returns once `conn` is waiting for a lock held by
+    another transaction, so a race test knows for certain where each side stands.
+    """
+
+    T0 = datetime(2026, 11, 13, 7, 0, tzinfo=UTC)
+    OPERATIONAL_TABLES = OPERATIONAL_TABLES
+    SEED_TABLES = SEED_TABLES
+
+    def __init__(self, conninfo: str) -> None:
+        self.conninfo = conninfo
+        self.clock = FixedClock(self.T0)
+        self._conns: list[Conn] = []
+
+    def connect(self) -> Conn:
+        conn = connect(self.conninfo)
+        self._conns.append(conn)
+        return conn
+
+    def rows(self, conn: Conn) -> "Rows":
+        """The same row helpers as the `rows` fixture, on a committed connection."""
+        return Rows(conn)
+
+    def reset(self) -> None:
+        with connect(self.conninfo, autocommit=True) as admin:
+            admin.execute(
+                sql.SQL("TRUNCATE {} RESTART IDENTITY").format(
+                    sql.SQL(", ").join(map(sql.Identifier, OPERATIONAL_TABLES))
+                )
+            )
+
+    def wait_until_blocked(self, conn: Conn, timeout_s: float = LOCK_WAIT_TIMEOUT_S) -> None:
+        """Poll pg_stat_activity until `conn`'s server process waits on a lock.
+
+        Read `conn.info.backend_pid` here, before `conn` is handed to another thread:
+        a connection that is blocked cannot be asked anything itself.
+        """
+        pid = conn.info.backend_pid
+        deadline = time.monotonic() + timeout_s
+        with connect(self.conninfo, autocommit=True) as admin:
+            while time.monotonic() < deadline:
+                row = admin.execute(
+                    "SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s", (pid,)
+                ).fetchone()
+                if row is not None and row[0] == "Lock":
+                    return
+                time.sleep(0.01)
+        raise TimeoutError(f"connection {pid} did not block on a lock within {timeout_s} s")
+
+    def close_all(self) -> None:
+        for conn in self._conns:
+            conn.close()
+        self._conns.clear()
+
+
+@pytest.fixture
+def committed_db(commit_test_db: str) -> Iterator[CommittedDb]:
+    harness = CommittedDb(commit_test_db)
+    harness.reset()  # in case an earlier run stopped before its teardown
+    try:
+        yield harness
+    finally:
+        harness.close_all()
+        harness.reset()
 
 
 @pytest.fixture
