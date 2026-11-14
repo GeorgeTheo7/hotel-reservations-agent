@@ -17,6 +17,7 @@ APP_TABLES = (
     " AND tablename <> 'alembic_version' ORDER BY 1"
 )
 APP_TABLES_AT_HEAD = [
+    ("audit_log",),
     ("bookings",),
     ("draft_offers",),
     ("draft_versions",),
@@ -24,6 +25,7 @@ APP_TABLES_AT_HEAD = [
     ("emails",),
     ("extra_bed_rates",),
     ("min_stay_rules",),
+    ("outbox",),
     ("quotes",),
     ("requests",),
     ("room_rates",),

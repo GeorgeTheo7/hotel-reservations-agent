@@ -22,6 +22,8 @@ from psycopg.errors import (
 from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 
+from anemos.states import DraftStatus
+
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's class is for mypy only
     from conftest import Rows
 
@@ -30,10 +32,8 @@ pytestmark = pytest.mark.integration
 type Conn = psycopg.Connection[TupleRow]
 type ExpectViolation = Callable[[type[psycopg.Error], str], AbstractContextManager[None]]
 
-# docs/states.md, Draft.
-DRAFT_STATUSES = [
-    "pending_approval", "approved", "rejected", "expired", "superseded", "invalidated",
-]  # fmt: skip
+# docs/states.md, Draft; the CHECK list must equal the enum.
+DRAFT_STATUSES = [status.value for status in DraftStatus]
 QUOTE_CHANGES = [
     "open_part", "min_stay", "other_type", "more_rooms", "other_dates", "window_option",
 ]  # fmt: skip

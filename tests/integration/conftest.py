@@ -13,7 +13,7 @@ Run with: uv run --env-file .env pytest -m integration
 import itertools
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import psycopg
@@ -202,6 +202,54 @@ class Rows:
             | overrides,
             returning="draft_id",
         )
+
+    def outbox(self, draft_id: int, **overrides: Any) -> int:
+        return self.insert(
+            "outbox",
+            {
+                "draft_id": draft_id,
+                "to_address": "guest@example.test",
+                "subject": "Re: Room in July",
+                "body": "Dear guest, here is our offer.",
+                "status": "pending",
+                "created_at": self.T0,
+            }
+            | overrides,
+        )
+
+    def booking(self, **overrides: Any) -> int:
+        """A confirmed booking in the lowest-numbered room, no email/request/draft."""
+        return self.insert(
+            "bookings",
+            {
+                "room_id": self.db.execute("SELECT min(id) FROM rooms").fetchone()[0],  # type: ignore[index]
+                "stay": self.STAY,
+                "status": "confirmed",
+                "price_cents": 39000,
+                "created_at": self.T0,
+            }
+            | overrides,
+        )
+
+    def audit(self, **overrides: Any) -> int:
+        return self.insert(
+            "audit_log",
+            {"at": self.T0, "actor": "owner", "event": "draft.approved"} | overrides,
+        )
+
+    def approved_draft(self) -> tuple[int, int, int]:
+        """(email id, request id, draft id) of an approved quote-route draft."""
+        email_id = self.email(status="answered")
+        request_id = self.request(email_id)
+        draft_id = self.draft(
+            email_id, request_id, status="approved", decided_at=self.T0 + timedelta(hours=1)
+        )
+        return email_id, request_id, draft_id
+
+    def check_deferred_now(self, constraint: str) -> None:
+        """Run a DEFERRABLE constraint's pending check now instead of at COMMIT (the
+        rollback fixture never commits)."""
+        self.db.execute(sql.SQL("SET CONSTRAINTS {} IMMEDIATE").format(sql.Identifier(constraint)))
 
 
 @pytest.fixture

@@ -17,6 +17,7 @@ from psycopg.errors import CheckViolation, ForeignKeyViolation, NotNullViolation
 from psycopg.rows import TupleRow
 
 from anemos.reservations.errors import ReasonCode
+from anemos.states import EmailStatus
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's class is for mypy only
     from conftest import Rows
@@ -29,11 +30,8 @@ type ExpectViolation = Callable[[type[psycopg.Error], str], AbstractContextManag
 T0 = datetime(2026, 11, 13, 7, 0, tzinfo=UTC)
 STAY = "[2027-07-12,2027-07-15)"
 
-# docs/states.md, Email.
-EMAIL_STATUSES = [
-    "received", "processing", "set_aside", "escalated", "awaiting_approval",
-    "answered", "expired", "superseded", "closed",
-]  # fmt: skip
+# docs/states.md, Email; the CHECK list must equal the enum.
+EMAIL_STATUSES = [status.value for status in EmailStatus]
 
 
 def insert_booking(db: Conn, *, email_id: int | None, request_id: int | None) -> None:
@@ -338,8 +336,9 @@ def test_booking_with_unknown_email_and_request_rejected(
 
 
 def test_bookings_have_only_the_two_column_foreign_key_to_requests(db: Conn) -> None:
+    """No one-column keys to requests or emails next to it (docs/NOTES.md)."""
     rows = db.execute(
-        "SELECT conname FROM pg_constraint"
-        " WHERE conrelid = 'bookings'::regclass AND contype = 'f' ORDER BY 1"
+        "SELECT conname FROM pg_constraint WHERE conrelid = 'bookings'::regclass"
+        " AND contype = 'f' AND confrelid IN ('requests'::regclass, 'emails'::regclass)"
     ).fetchall()
-    assert rows == [("bookings_request_of_email_fkey",), ("bookings_room_id_fkey",)]
+    assert rows == [("bookings_request_of_email_fkey",)]

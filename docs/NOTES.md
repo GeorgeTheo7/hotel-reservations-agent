@@ -86,3 +86,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** the reason is a fact about a quote against its request; `hold_allowed(request, offers)` mixes that with a per-draft fact ("the only offer").
 - **Evidence:** changes combine (open part + min stay, D34), so one enum value would lose information; on `draft_offers` the same quote could be labelled differently in two drafts.
 - **Fix:** `quotes.changes text[]` (CHECKed set), `hold_allowed` **generated** as `cardinality(changes) = 0`, so it cannot be written or disagree. Trade-off: the per-draft half of D9 ("a held offer is the only offer") needs a count across rows, which a CHECK cannot do; guardrail 7 checks it in code.
+
+## 2026-11-13 · Frozen rows vs. the right to erasure (D51)
+- **Symptom:** after D51, a final email, draft, booking or outbox row and every audit entry can never be updated or deleted, yet they hold personal data (addresses, email text).
+- **Cause:** the triggers protect the audit trail against bugs and manual edits; erasing a guest's data is also a change to those rows.
+- **Evidence:** a `DELETE FROM emails` on a `closed` email is refused by `emails_final_status`; `TRUNCATE` is not, because it skips row triggers (the `committed_db` fixture relies on that).
+- **Fix:** none in v1 (all data is fictional). Spec "Later": a controlled, audited erasure/anonymisation procedure that bypasses the triggers on purpose, and an application DB role without `TRUNCATE` (week 9, roles). Trade-off: integrity now, a documented gap for real data.

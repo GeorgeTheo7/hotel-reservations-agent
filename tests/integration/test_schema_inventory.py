@@ -15,6 +15,7 @@ from psycopg.errors import (
     ExclusionViolation,
     ForeignKeyViolation,
     NotNullViolation,
+    RestrictViolation,
     UniqueViolation,
 )
 from psycopg.rows import TupleRow
@@ -90,13 +91,26 @@ def test_inactive_booking_does_not_block_a_new_one(db: Conn, inactive: str) -> N
 
 
 @pytest.mark.usefixtures("rooms")
-def test_reactivating_cancelled_booking_onto_occupied_stay_rejected(
+def test_moving_a_booking_onto_an_occupied_stay_rejected(
     db: Conn, expect_violation: ExpectViolation
 ) -> None:
-    """The constraint also guards UPDATE, not only INSERT."""
+    """The constraint also guards UPDATE, not only INSERT. (Until migration 0008 this
+    test reactivated a cancelled booking; that is now refused earlier, by the
+    bookings_final_status trigger, so a legal UPDATE is used to reach the constraint.)"""
+    insert_booking(db, status="confirmed")
+    other = insert_booking(db, stay="[2027-08-01,2027-08-04)", status="confirmed")
+    with expect_violation(ExclusionViolation, "bookings_no_double_booking"):
+        db.execute("UPDATE bookings SET stay = %s::daterange WHERE id = %s", (OVERLAPPING, other))
+
+
+@pytest.mark.usefixtures("rooms")
+def test_reactivating_a_cancelled_booking_rejected(
+    db: Conn, expect_violation: ExpectViolation
+) -> None:
+    """D51: cancelled is final; the trigger refuses before the exclusion check runs."""
     insert_booking(db, status="confirmed")
     cancelled = insert_booking(db, stay=OVERLAPPING, status="cancelled")
-    with expect_violation(ExclusionViolation, "bookings_no_double_booking"):
+    with expect_violation(RestrictViolation, "bookings_final_status"):
         db.execute("UPDATE bookings SET status = 'confirmed' WHERE id = %s", (cancelled,))
 
 
