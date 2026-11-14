@@ -17,6 +17,7 @@ import pytest
 from psycopg.errors import CheckViolation, ForeignKeyViolation, GeneratedAlways, UniqueViolation
 from psycopg.rows import TupleRow
 
+from anemos.audit import AuditEvent
 from anemos.states import OutboxStatus
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's class is for mypy only
@@ -286,3 +287,9 @@ def test_audit_log_is_indexed_by_email(db: Conn) -> None:
     ).fetchone()
     assert row is not None
     assert row[0].endswith("USING btree (email_id)")
+
+
+@pytest.mark.parametrize("event", list(AuditEvent), ids=str)
+def test_every_audit_event_in_code_is_accepted(rows: Rows, event: AuditEvent) -> None:
+    """Event names live in anemos.audit.AuditEvent; each must pass the format CHECK."""
+    rows.audit(event=event.value)

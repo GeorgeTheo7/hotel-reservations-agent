@@ -122,3 +122,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** written as a policy sentence, not an algorithm.
 - **Evidence:** 15 tests in `test_suggest_alternatives.py`; flipping the date tie-break or letting the Accessible room compete freely makes 5 of them fail.
 - **Fix:** D60: free original plan → `ORIGINAL_AVAILABLE` (store nothing); other types first (fit, free, cheapest by accommodation subtotal, Accessible last resort); dates only if no type is free (same plan, nearest, earlier on tie, unchanged length, no short notice); else `NONE_FOUND`. Trade-off: a guest who would rather move dates than change room type is not offered that when another type is free (Later).
+
+## 2026-11-14 · Superseding needs a per-sender lock, not just a transaction (D48)
+- **Symptom:** "a newer email supersedes the waiting draft" and "a draft created after a newer email is born superseded" can each miss the other: under READ COMMITTED, neither transaction sees the other's uncommitted row, so a draft could stay pending although a newer email exists.
+- **Cause:** the rule spans two tables written by two different code paths (storing an email, creating a draft), and no single row is shared that a `FOR UPDATE` could lock.
+- **Evidence:** `test_storing_waits_for_the_senders_lock` (committed_db): with the sender's lock held, `store_email` provably waits; another sender goes straight through.
+- **Fix:** `lock_sender` = `pg_advisory_xact_lock(hashtextextended(address, 0))`, taken first by `store_email` and (step 10) by draft creation; released at commit. Trade-off: two addresses can share a hash (64-bit, so rarely); they then only wait briefly for each other's transaction, never deadlock or mix data. A code path that forgets the lock reopens the race, so the step 10 tests must cover it. Recorded as D61.
