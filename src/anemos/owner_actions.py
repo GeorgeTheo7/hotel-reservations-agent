@@ -63,7 +63,7 @@ def edit_draft(conn: Conn, clock: Clock, draft_id: int, body: str) -> Edited | D
     if not body.strip():
         raise ValueError("an edited draft cannot be blank")
     now = clock.now()
-    draft = _lock_pending_draft(conn, now, draft_id, action="edit")
+    draft = lock_pending_draft(conn, now, draft_id, action="edit")
     if isinstance(draft, DraftExpired):
         return draft
     email_id = draft
@@ -95,12 +95,12 @@ def edit_draft(conn: Conn, clock: Clock, draft_id: int, body: str) -> Edited | D
 def reject_draft(conn: Conn, clock: Clock, draft_id: int) -> DraftExpired | None:
     """pending_approval -> rejected; email awaiting_approval -> closed (D40)."""
     now = clock.now()
-    draft = _lock_pending_draft(conn, now, draft_id, action="reject")
+    draft = lock_pending_draft(conn, now, draft_id, action="reject")
     if isinstance(draft, DraftExpired):
         return draft
     email_id = draft
-    _decide_draft(conn, draft_id, DraftStatus.REJECTED, now)
-    _set_email(conn, email_id, EmailStatus.CLOSED)
+    decide_draft(conn, draft_id, DraftStatus.REJECTED, now)
+    set_email(conn, email_id, EmailStatus.CLOSED)
     write_audit(conn, now, "owner", AuditEvent.DRAFT_REJECTED, email_id=email_id, draft_id=draft_id)
     return None
 
@@ -127,7 +127,7 @@ def close_email(conn: Conn, clock: Clock, email_id: int) -> None:
     status = _lock_email(conn, email_id)
     if status not in (EmailStatus.ESCALATED, EmailStatus.EXPIRED):
         raise TransitionRefused(f"email {email_id}", status, EmailStatus.CLOSED)
-    _set_email(conn, email_id, EmailStatus.CLOSED)
+    set_email(conn, email_id, EmailStatus.CLOSED)
     write_audit(
         conn, now, "owner", AuditEvent.EMAIL_CLOSED, email_id=email_id, output={"was": status}
     )
@@ -212,10 +212,14 @@ def _draft_status(conn: Conn, draft_id: int) -> tuple[str, datetime]:
 
 
 # The status each owner draft action would set (for TransitionRefused messages).
-_ACTION_TARGET = {"edit": DraftStatus.PENDING_APPROVAL, "reject": DraftStatus.REJECTED}
+_ACTION_TARGET = {
+    "edit": DraftStatus.PENDING_APPROVAL,
+    "reject": DraftStatus.REJECTED,
+    "approve": DraftStatus.APPROVED,
+}
 
 
-def _lock_pending_draft(
+def lock_pending_draft(
     conn: Conn, now: datetime, draft_id: int, *, action: str
 ) -> int | DraftExpired:
     """Lock the draft; refuse unless pending_approval; expire it if past 72 h.
@@ -239,12 +243,12 @@ def _lock_pending_draft(
 
 
 def _expire(conn: Conn, now: datetime, draft_id: int, email_id: int) -> None:
-    _decide_draft(conn, draft_id, DraftStatus.EXPIRED, now)
-    _set_email(conn, email_id, EmailStatus.EXPIRED)
+    decide_draft(conn, draft_id, DraftStatus.EXPIRED, now)
+    set_email(conn, email_id, EmailStatus.EXPIRED)
     write_audit(conn, now, "system", AuditEvent.DRAFT_EXPIRED, email_id=email_id, draft_id=draft_id)
 
 
-def _decide_draft(conn: Conn, draft_id: int, status: DraftStatus, now: datetime) -> None:
+def decide_draft(conn: Conn, draft_id: int, status: DraftStatus, now: datetime) -> None:
     conn.execute(
         "UPDATE drafts SET status = %s, decided_at = %s WHERE id = %s", (status, now, draft_id)
     )
@@ -263,7 +267,7 @@ def _lock_email(conn: Conn, email_id: int) -> str:
     return str(status[0])
 
 
-def _set_email(conn: Conn, email_id: int, status: EmailStatus) -> None:
+def set_email(conn: Conn, email_id: int, status: EmailStatus) -> None:
     conn.execute("UPDATE emails SET status = %s WHERE id = %s", (status, email_id))
 
 

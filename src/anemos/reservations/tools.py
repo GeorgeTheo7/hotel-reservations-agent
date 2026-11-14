@@ -178,7 +178,7 @@ def _store_quote(conn: Conn, clock: Clock, request_id: int, offer: Offer) -> int
             "check_in": quote.stay.check_in,
             "check_out": quote.stay.check_out,
             "rooms": quote.rooms,
-            "lines": Jsonb([_line_json(line) for line in quote.lines]),
+            "lines": Jsonb([line_json(line) for line in quote.lines]),
             "extra_bed_bands": [band.value for band in quote.extra_bed_bands],
             "room_subtotal_cents": quote.room_subtotal_cents,
             "extra_bed_subtotal_cents": quote.extra_bed_subtotal_cents,
@@ -195,7 +195,7 @@ def _store_quote(conn: Conn, clock: Clock, request_id: int, offer: Offer) -> int
     return int(row[0])
 
 
-def _line_json(line: NightLine) -> dict[str, Any]:
+def line_json(line: NightLine) -> dict[str, Any]:
     return {
         "night": line.night.isoformat(),
         "season": line.season.value,
