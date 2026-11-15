@@ -40,6 +40,9 @@ class AuditEvent(StrEnum):
     BOOKING_ACTION_REFUSED = "booking.action_refused"
     OUTBOX_SENT = "outbox.sent"
     OUTBOX_SEND_FAILED = "outbox.send_failed"
+    LLM_CALLED = "llm.called"
+    LLM_FAILED = "llm.failed"
+    LLM_REFUSED_BUDGET = "llm.refused_budget"
 
 
 # Written only by the API, after it rolled back a refused or unconfirmed action
@@ -52,6 +55,12 @@ API_ONLY_EVENTS = frozenset(
         AuditEvent.BOOKING_ACTION_REFUSED,
         AuditEvent.DRAFT_PRICE_WARNING_SHOWN,
     }
+)
+
+# Written only by model calls (anemos.llm). The cross-rules scenario makes no model
+# call, so it never writes them; tests/integration/test_llm_audit.py covers them.
+LLM_EVENTS = frozenset(
+    {AuditEvent.LLM_CALLED, AuditEvent.LLM_FAILED, AuditEvent.LLM_REFUSED_BUDGET}
 )
 
 
@@ -71,3 +80,31 @@ def write_audit(
         " VALUES (%s, %s, %s, %s, %s, %s)",
         (at, actor, event.value, email_id, draft_id, None if output is None else Jsonb(output)),
     )
+
+
+def write_llm_audit(
+    conn: psycopg.Connection[TupleRow],
+    at: datetime,
+    event: AuditEvent,
+    *,
+    email_id: int | None,
+    step: str,
+    model: str,
+    prompt_version: str,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cost_micro_usd: int | None = None,
+    latency_ms: int | None = None,
+    error: str | None = None,
+    output: Mapping[str, object] | None = None,
+) -> None:
+    """One model-call attempt (actor agent), in the caller's transaction (no commit)."""
+    if event not in LLM_EVENTS:
+        raise ValueError(f"{event} is not a model-call event")
+    conn.execute(
+        "INSERT INTO audit_log (at, actor, event, email_id, step, model, prompt_version,"
+        " input_tokens, output_tokens, cost_micro_usd, latency_ms, error, output)"
+        " VALUES (%s, 'agent', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        (at, event.value, email_id, step, model, prompt_version, input_tokens, output_tokens,
+         cost_micro_usd, latency_ms, error, None if output is None else Jsonb(output)),
+    )  # fmt: skip

@@ -26,7 +26,7 @@ from psycopg.errors import ForeignKeyViolation, RestrictViolation
 from psycopg.rows import TupleRow
 
 from anemos.approval import Approved, Invalidated, _flip_stale_holds, approve_draft
-from anemos.audit import API_ONLY_EVENTS, AuditEvent
+from anemos.audit import API_ONLY_EVENTS, LLM_EVENTS, AuditEvent
 from anemos.clock import FixedClock
 from anemos.inbox import store_email
 from anemos.mailbox import incoming
@@ -234,10 +234,12 @@ def test_the_scenario_reaches_every_status_the_database_allows(world: World) -> 
 def test_the_scenario_performs_every_audited_transition(world: World) -> None:
     """Every AuditEvent appears, so every transition with an audit entry was run
     (including booking confirmed -> cancelled and email expired -> closed). Except the
-    API-only events: the scenario calls the domain directly (test_api_actions.py)."""
+    API-only events (the scenario calls the domain directly, test_api_actions.py) and
+    model-call events (the scenario makes no model call, test_llm_audit.py)."""
     events = {e for (e,) in world.conn.execute("SELECT DISTINCT event FROM audit_log")}
     world.conn.commit()
-    assert {event.value for event in set(AuditEvent) - API_ONLY_EVENTS} - events == set()
+    not_in_the_scenario = API_ONLY_EVENTS | LLM_EVENTS  # the API; model calls
+    assert {event.value for event in set(AuditEvent) - not_in_the_scenario} - events == set()
     cancelled_after_confirm = world.conn.execute(
         "SELECT count(*) FROM bookings WHERE status = 'cancelled' AND id IN ("
         " SELECT (output->>'booking_id')::bigint FROM audit_log WHERE event = 'hold.confirmed')"
