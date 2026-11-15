@@ -204,3 +204,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** it skips unless every `test_api_*` test ran; `tests/unit/test_api_app.py` has the same prefix, and `-m integration` deselects it, so the run looked partial.
 - **Evidence:** `SKIPPED … not every API test ran` in the full integration run; after the fix it runs and passes there, and both guard mutations (no test writes `booking.action_refused`; an untested event added to `API_ONLY_EVENTS`) fail under `-m integration`.
 - **Fix:** only API test files in `tests/integration/` count, and with `CI=true` an incomplete run fails instead of skipping. Lesson: a guard that can skip must be shown running in the exact CI command.
+
+## 2026-11-15 · Week 3 done: a mutation run is only valid if every mutation was undone
+- **Symptom:** in step 16a, the first run of seven mutations reported plausible-looking failures that were wrong: they piled up from run to run.
+- **Cause:** the mutations were undone with `git checkout`, which cannot restore files git does not track yet; the new API files were untracked, so each mutation stayed in place.
+- **Evidence:** the failure counts only grew (9, 11, 12, … 15) and every later mutation also failed the status-filter tests; checking the source showed all seven mutations still in it. Re-run from a clean source, each mutation failed only the test meant for it.
+- **Fix:** 16a's re-run restored from backup copies; from 16b on, new files are `git add`-ed first, each mutation is undone with `git checkout`, `git diff` must show exactly the one changed line, and the tree must be clean at the end.
