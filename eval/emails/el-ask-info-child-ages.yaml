@@ -1,0 +1,32 @@
+schema_version: 1
+id: el-ask-info-child-ages
+split: dev
+tags: [missing_ages]
+
+email:
+  from: "Eleni Fictional <eleni@example.test>"
+  subject: "Οικογενειακές διακοπές τον Σεπτέμβριο"
+  received_at: "2026-11-25T18:40:00+00:00"
+  body: |
+    Καλησπέρα σας,
+
+    Είμαστε δύο ενήλικες με δύο παιδιά και θα θέλαμε ένα δωμάτιο
+    από 5 έως 8 Σεπτεμβρίου 2027. Το ένα παιδί είναι 8 ετών.
+
+    Ευχαριστώ,
+    Ελένη
+
+labels:
+  language: el
+  script: greek
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 5, month: 9, year: 2027}
+      check_out: {day: 8, month: 9, year: 2027}
+    adults: 2
+    children: 2
+    child_ages: [8]
+    rooms: 1
+    room_type: null
+  route: ask_info

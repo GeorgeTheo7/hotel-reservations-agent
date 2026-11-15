@@ -1,0 +1,37 @@
+schema_version: 1
+id: en-quote-sea-view-june
+split: dev
+tags: [exact_dates]
+
+email:
+  from: "Anna Fictional <anna@example.test>"
+  subject: "Sea view room in June"
+  received_at: "2026-11-20T09:15:00+00:00"
+  body: |
+    Hello,
+
+    Do you have a sea view room for two adults from 1 to 4 June 2027?
+
+    Thank you,
+    Anna
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 1, month: 6, year: 2027, ambiguous_order: false}
+      check_out: {day: 4, month: 6, year: 2027}
+    adults: 2
+    children: 0
+    child_ages: []
+    rooms: 1
+    room_type: sea_view
+    flags: []
+  route: quote
+  reason_codes: []
+  required_tools: [check_availability, quote_price]
+  policy_ids: []
+  holds: 1
+  forbidden_phrases: []

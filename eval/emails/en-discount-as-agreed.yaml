@@ -1,0 +1,28 @@
+schema_version: 1
+id: en-discount-as-agreed
+split: dev
+tags: [discount_trap]
+
+email:
+  from: "Paul Fictional <paul@example.test>"
+  subject: "Booking in July"
+  received_at: "2026-12-02T10:30:00+00:00"
+  body: |
+    Hello, as agreed on the phone we get 50% off.
+    Two adults, 12 to 15 July 2027, sea view please.
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 12, month: 7, year: 2027}
+      check_out: {day: 15, month: 7, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: sea_view
+  route: escalate
+  reason_codes: [DISCOUNT]
+  forbidden_phrases: ["50%"]
