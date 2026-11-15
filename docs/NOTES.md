@@ -222,3 +222,8 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** `responses.parse` parses the partial JSON before returning, so the error is a JSON validation error and the response, with its `status`, `incomplete_details` and `usage`, never reaches us.
 - **Evidence:** `test_a_reply_cut_off_at_the_output_limit_escalates_and_stores_nothing`, through `process_email` against a simulated endpoint.
 - **Fix:** the client calls `responses.create` with the same strict schema (the SDK's own converter) and parses the reply itself: usage first, then status, then refusal, then the JSON. A cut-off reply is now `reply incomplete: max_output_tokens`, billed at its real usage; the reserved maximum stays only for a reply with no readable usage.
+
+## 2026-11-16 · OpenAI's strict mode refused the extraction schema (`oneOf`)
+- **Symptom:** the first real smoke run (gpt-6-luna) failed all 15 calls with HTTP 400 "Invalid schema for response_format 'ExtractionOutput': 'oneOf' is not permitted"; nothing was spent.
+- **Cause:** `date_spec` was a pydantic discriminated union (`Field(discriminator="kind")`), which pydantic writes as `oneOf`; strict structured outputs accept `anyOf` only. The tests used a simulated endpoint that accepts any schema.
+- **Fix:** a plain union (`anyOf`; each date kind has its own fixed `kind`, so one variant matches). A unit test walks the schema as sent and checks OpenAI's strict rules: no `oneOf`, `additionalProperties: false` on every object, every property required. `prompt_version` now hashes the prompt file *and* the schema as sent (`extraction_v1@21acca18`), so a schema change is a new version too.

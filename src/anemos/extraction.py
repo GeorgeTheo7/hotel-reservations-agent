@@ -104,9 +104,10 @@ class OutApproximate(_Out):
         return ApproximateDates(self.part, self.month, self.year, self.nights)
 
 
-type OutDateSpec = Annotated[
-    OutExact | OutRelative | OutHoliday | OutApproximate, Field(discriminator="kind")
-]
+# A plain union, not Field(discriminator=...): pydantic writes a discriminated union as
+# `oneOf`, which OpenAI's strict mode refuses; a plain union is `anyOf`. Each kind has
+# its own fixed `kind` value, so exactly one variant matches anyway.
+type OutDateSpec = OutExact | OutRelative | OutHoliday | OutApproximate
 
 
 class ExtractionOutput(_Out):

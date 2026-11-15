@@ -17,7 +17,7 @@ from anemos.email_cases import EmailCase, Extraction, demo_cases, load_cases
 from anemos.extraction import ExtractionOutput, OutApproximate, OutExact, OutHoliday, OutRelative
 from anemos.extraction_run import EMAIL_CLOSE, EMAIL_OPEN, build_prompt, delimited_email
 from anemos.llm.adapter import Settings
-from anemos.llm.openai_client import OpenAIClient
+from anemos.llm.openai_client import OpenAIClient, text_format
 from anemos.prompts import EXTRACTION_V1, PROMPTS, content_hash
 
 pytestmark = pytest.mark.unit
@@ -96,13 +96,42 @@ def test_every_field_is_required_as_strict_mode_needs() -> None:
         ExtractionOutput.model_validate(data)
 
 
+def schema_objects(node: Any, path: str = "$") -> list[tuple[str, dict[str, Any]]]:
+    """Every JSON-schema object node (dict) in the schema, with its path."""
+    found: list[tuple[str, dict[str, Any]]] = []
+    if isinstance(node, dict):
+        found.append((path, node))
+        for key, value in node.items():
+            found += schema_objects(value, f"{path}.{key}")
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            found += schema_objects(value, f"{path}[{i}]")
+    return found
+
+
+def test_the_schema_sent_obeys_openais_strict_rules() -> None:
+    """OpenAI's strict structured outputs refuse a schema that breaks any of these:
+    1. no `oneOf` anywhere (only `anyOf`); 2. every object has
+    additionalProperties: false; 3. every property of an object is required.
+    A simulated endpoint accepts anything, so this checks the schema itself."""
+    sent = json.loads(json.dumps(text_format(ExtractionOutput)))["format"]["schema"]  # as sent
+    nodes = schema_objects(sent)
+    assert not [p for p, n in nodes if "oneOf" in n], "oneOf is refused"
+    objects = [(p, n) for p, n in nodes if n.get("type") == "object" and "properties" in n]
+    assert len(objects) >= 6  # the output, a date, and the four date kinds
+    for path, node in objects:
+        assert node.get("additionalProperties") is False, path
+        assert set(node.get("required", [])) == set(node["properties"]), path
+
+
 # --- the prompt -----------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("spec", PROMPTS, ids=lambda s: s.name)
 def test_a_pinned_prompt_file_is_never_edited(spec: Any) -> None:
-    """A change is a new file and a new version, so prompt_version names the text sent."""
-    assert content_hash(spec.text()) == spec.sha256_8, (
+    """A change to the prompt or its schema is a new version, so prompt_version names
+    exactly what the model was sent."""
+    assert content_hash(spec.text(), spec.schema) == spec.sha256_8, (
         f"{spec.file} changed: add a new version instead of editing it"
     )
 
