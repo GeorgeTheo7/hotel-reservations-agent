@@ -48,7 +48,7 @@ from anemos.extraction import ExtractionFlag, ExtractionOutput
 from anemos.reservations.datespec import FixedHoliday, Window
 from anemos.reservations.errors import InvalidDates, NeedsEscalation, NeedsInfo, ReasonCode
 from anemos.reservations.hotel_data import HotelData
-from anemos.reservations.model import Party, Stay, party_from_counts
+from anemos.reservations.model import Party, Stay, party_from_counts, rooms_or_default
 from anemos.reservations.occupancy import RoomPlan, smallest_fitting_plan
 from anemos.reservations.seasons import is_open
 from anemos.reservations.stay_rules import group, late_arrival, short_notice
@@ -186,8 +186,8 @@ def _calendar_rule(
 def _rooms_rule(
     hotel: HotelData, extraction: ExtractionOutput, party: Party | NeedsInfo
 ) -> NeedsEscalation | None:
-    """Rules 10-12 in order. Not stated = one room (as `tools.load_request`)."""
-    rooms = extraction.rooms or 1
+    """Rules 10-12 in order. Not stated = one room (D5, `rooms_or_default`)."""
+    rooms = rooms_or_default(extraction.rooms)
     need = ExtractionFlag.ACCESSIBILITY_NEED in extraction.flags
 
     # 10. GROUP: 3+ rooms; or, with a complete party and no accessibility need (a need

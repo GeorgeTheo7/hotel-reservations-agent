@@ -1,0 +1,307 @@
+{
+  "source": "20261115T140459Z-smoke-gpt-6-luna.json",
+  "run": {
+    "set_name": "smoke",
+    "model": "gpt-6-luna",
+    "settings": {
+      "model": "gpt-6-luna",
+      "max_output_tokens": 600,
+      "reasoning_effort": "none",
+      "timeout_s": 30.0
+    },
+    "prompt_version": "extraction_v2@b37c0d57",
+    "commit": "29cdf29126cdf184ad865c814dadc806b0818956",
+    "dirty": false,
+    "started_at": "2026-11-15T14:04:59.363990+00:00",
+    "repeat": 3
+  },
+  "scorer": {
+    "commit": "29cdf29126cdf184ad865c814dadc806b0818956",
+    "dirty": true
+  },
+  "summary": {
+    "calls": 15,
+    "failed": 0,
+    "cost_micro_usd": 1370,
+    "mean_latency_ms": 2042,
+    "accuracy": {
+      "kind": 1.0,
+      "language": 1.0,
+      "script": 1.0,
+      "flags": 1.0,
+      "date_spec": 1.0,
+      "stay": 1.0,
+      "adults": 1.0,
+      "children": 1.0,
+      "child_ages": 1.0,
+      "rooms": 1.0,
+      "room_type": 1.0,
+      "arrival_time": 1.0
+    },
+    "consistency": {
+      "el-greeklish-quote-june": [],
+      "el-greeklish-family-ages": [],
+      "el-ask-info-child-ages": [],
+      "el-approximate-late-june": [],
+      "el-injection-greek": []
+    },
+    "consistent_cases": 5
+  },
+  "calls": [
+    {
+      "case_id": "el-greeklish-quote-june",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-greeklish-quote-june",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-greeklish-quote-june",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-greeklish-family-ages",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-greeklish-family-ages",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-greeklish-family-ages",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-ask-info-child-ages",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-ask-info-child-ages",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-ask-info-child-ages",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-approximate-late-june",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-approximate-late-june",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-approximate-late-june",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-injection-greek",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-injection-greek",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-injection-greek",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    }
+  ]
+}

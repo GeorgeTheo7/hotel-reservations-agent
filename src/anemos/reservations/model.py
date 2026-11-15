@@ -140,6 +140,15 @@ class RoomOffer:
     room_type_id: str
 
 
+ROOMS_NOT_STATED = 1
+
+
+def rooms_or_default(rooms: int | None) -> int:
+    """D5: a request that states no number of rooms is for one room (3+ escalates as
+    GROUP). The one definition: the tools, the router and the evaluation scorer use it."""
+    return ROOMS_NOT_STATED if rooms is None else rooms
+
+
 def party_from_counts(
     adults: int | None, children: int | None, child_ages: Sequence[int]
 ) -> Party | NeedsInfo:

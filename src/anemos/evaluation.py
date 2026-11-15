@@ -5,6 +5,9 @@ under eval/ pass in a real `LLM`, the tests a scripted one.
 Scoring compares what the model returned with the case's gold extraction, field by
 field. Dates are scored twice: `date_spec` (what the model wrote down) and `stay`
 (both specs resolved by code at the email's received_at: what matters for the reply).
+`rooms` is compared after the D5 default (not stated = one room, `rooms_or_default`):
+null and 1 give the same draft, so they count as the same answer, in the score and in
+the repeat check. (Changed after the first v2 smoke run, 2026-11-16; see D2.)
 
 A results file records the model, the call settings, the prompt version, the commit
 (and whether the working tree was dirty: then the run is not comparable), the time,
@@ -27,6 +30,7 @@ from anemos.llm.adapter import LLM, ClientError, LLMError
 from anemos.llm.budget import BudgetExceeded
 from anemos.prompts import PromptSpec
 from anemos.reservations.datespec import resolve
+from anemos.reservations.model import rooms_or_default
 
 FIELDS = ("kind", "language", "script", "flags", "date_spec", "stay", "adults", "children",
           "child_ages", "rooms", "room_type", "arrival_time")  # fmt: skip
@@ -72,7 +76,7 @@ def score(gold: ExtractionOutput, got: ExtractionOutput, received_at: datetime) 
         "adults": got.adults == gold.adults,
         "children": got.children == gold.children,
         "child_ages": sorted(got.child_ages) == sorted(gold.child_ages),
-        "rooms": got.rooms == gold.rooms,
+        "rooms": rooms_or_default(got.rooms) == rooms_or_default(gold.rooms),
         "room_type": got.room_type == gold.room_type,
         "arrival_time": got.arrival_time == gold.arrival_time,
     }
@@ -151,10 +155,20 @@ class Summary:
         return sum(not differed for differed in self.consistency.values())
 
 
+# Fields compared after the default the code applies, as in `score`.
+_AS_USED: dict[str, Any] = {"rooms": rooms_or_default}
+
+
+def _as_used(key: str, value: Any) -> Any:
+    convert = _AS_USED.get(key)
+    return value if convert is None else convert(value)
+
+
 def consistency(rows: Sequence[Row]) -> dict[str, list[str]]:
     """Per case: the output fields whose values differed between its repeats, plus
     "failed call" if a repeat failed. A model that answers the same email differently
-    from one call to the next is a risk even when one of its answers is right."""
+    from one call to the next is a risk even when one of its answers is right. Values
+    are compared as the code uses them (`rooms` after the D5 default)."""
     by_case: dict[str, list[Row]] = {}
     for row in rows:
         by_case.setdefault(row.case_id, []).append(row)
@@ -162,7 +176,7 @@ def consistency(rows: Sequence[Row]) -> dict[str, list[str]]:
     for case_id, repeats in by_case.items():
         outputs = [r.output for r in repeats if r.output is not None]
         keys = sorted({k for out in outputs for k in out})
-        differed = [k for k in keys if len({repr(out.get(k)) for out in outputs}) > 1]
+        differed = [k for k in keys if len({repr(_as_used(k, out.get(k))) for out in outputs}) > 1]
         if len(outputs) < len(repeats):
             differed.append("failed call")
         result[case_id] = differed
@@ -248,3 +262,20 @@ def write_results(results_dir: Path, info: RunInfo, rows: Sequence[Row], summary
             "calls": [asdict(r) for r in rows]}  # fmt: skip
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def rescore(data: dict[str, Any], cases: Sequence[EmailCase]) -> tuple[list[Row], Summary]:
+    """A results file's calls scored again with today's scorer, from the outputs it
+    recorded: no model call. Failed calls stay failed."""
+    gold = {case.id: case for case in cases}
+    rows = []
+    for call in data["calls"]:
+        row = Row(**call)
+        if row.output is not None:
+            case = gold[row.case_id]
+            expected = case.gold_output()
+            assert expected is not None, case.id
+            got = ExtractionOutput.model_validate(row.output)
+            row = replace(row, fields=score(expected, got, case.email.received_at))
+        rows.append(row)
+    return rows, summarise(rows)

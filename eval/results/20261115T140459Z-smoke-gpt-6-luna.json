@@ -1,0 +1,883 @@
+{
+  "run": {
+    "set_name": "smoke",
+    "model": "gpt-6-luna",
+    "settings": {
+      "model": "gpt-6-luna",
+      "max_output_tokens": 600,
+      "reasoning_effort": "none",
+      "timeout_s": 30.0
+    },
+    "prompt_version": "extraction_v2@b37c0d57",
+    "commit": "29cdf29126cdf184ad865c814dadc806b0818956",
+    "dirty": false,
+    "started_at": "2026-11-15T14:04:59.363990+00:00",
+    "repeat": 3
+  },
+  "summary": {
+    "calls": 15,
+    "failed": 0,
+    "cost_micro_usd": 1370,
+    "mean_latency_ms": 2042,
+    "accuracy": {
+      "kind": 1.0,
+      "language": 1.0,
+      "script": 1.0,
+      "flags": 1.0,
+      "date_spec": 1.0,
+      "stay": 1.0,
+      "adults": 1.0,
+      "children": 1.0,
+      "child_ages": 1.0,
+      "rooms": 0.9333333333333333,
+      "room_type": 1.0,
+      "arrival_time": 1.0
+    },
+    "consistency": {
+      "el-greeklish-quote-june": [],
+      "el-greeklish-family-ages": [],
+      "el-ask-info-child-ages": [],
+      "el-approximate-late-june": [
+        "rooms"
+      ],
+      "el-injection-greek": []
+    },
+    "consistent_cases": 4
+  },
+  "calls": [
+    {
+      "case_id": "el-greeklish-quote-june",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2190,
+      "cached_input_tokens": 0,
+      "output_tokens": 108,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 273,
+      "latency_ms": 4157,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "latin",
+        "flags": [],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 10,
+            "month": 6,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 14,
+            "month": 6,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 0,
+        "child_ages": [],
+        "rooms": 1,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-greeklish-quote-june",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2190,
+      "cached_input_tokens": 2187,
+      "output_tokens": 108,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 77,
+      "latency_ms": 3703,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "latin",
+        "flags": [],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 10,
+            "month": 6,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 14,
+            "month": 6,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 0,
+        "child_ages": [],
+        "rooms": 1,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-greeklish-quote-june",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2190,
+      "cached_input_tokens": 2187,
+      "output_tokens": 108,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 77,
+      "latency_ms": 1687,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "latin",
+        "flags": [],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 10,
+            "month": 6,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 14,
+            "month": 6,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 0,
+        "child_ages": [],
+        "rooms": 1,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-greeklish-family-ages",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2211,
+      "cached_input_tokens": 2124,
+      "output_tokens": 112,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 87,
+      "latency_ms": 1797,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "latin",
+        "flags": [],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 2,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 6,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 2,
+        "child_ages": [
+          5,
+          9
+        ],
+        "rooms": 1,
+        "room_type": "family_suite",
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-greeklish-family-ages",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2211,
+      "cached_input_tokens": 2208,
+      "output_tokens": 112,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 80,
+      "latency_ms": 1907,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "latin",
+        "flags": [],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 2,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 6,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 2,
+        "child_ages": [
+          5,
+          9
+        ],
+        "rooms": 1,
+        "room_type": "family_suite",
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-greeklish-family-ages",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2211,
+      "cached_input_tokens": 2208,
+      "output_tokens": 112,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 80,
+      "latency_ms": 1594,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "latin",
+        "flags": [],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 2,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 6,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 2,
+        "child_ages": [
+          5,
+          9
+        ],
+        "rooms": 1,
+        "room_type": "family_suite",
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-ask-info-child-ages",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2219,
+      "cached_input_tokens": 2124,
+      "output_tokens": 110,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 87,
+      "latency_ms": 2375,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "greek",
+        "flags": [],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 5,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 8,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 2,
+        "child_ages": [
+          8
+        ],
+        "rooms": 1,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-ask-info-child-ages",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2219,
+      "cached_input_tokens": 2216,
+      "output_tokens": 110,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 79,
+      "latency_ms": 1500,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "greek",
+        "flags": [],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 5,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 8,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 2,
+        "child_ages": [
+          8
+        ],
+        "rooms": 1,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-ask-info-child-ages",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2219,
+      "cached_input_tokens": 2216,
+      "output_tokens": 110,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 79,
+      "latency_ms": 1687,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "greek",
+        "flags": [],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 5,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 8,
+            "month": 9,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 2,
+        "child_ages": [
+          8
+        ],
+        "rooms": 1,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-approximate-late-june",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2197,
+      "cached_input_tokens": 2124,
+      "output_tokens": 78,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 69,
+      "latency_ms": 1672,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": false,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "greek",
+        "flags": [],
+        "date_spec": {
+          "kind": "approximate",
+          "part": "late",
+          "month": 6,
+          "year": null,
+          "nights": 7
+        },
+        "adults": 2,
+        "children": 0,
+        "child_ages": [],
+        "rooms": null,
+        "room_type": "standard",
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-approximate-late-june",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2197,
+      "cached_input_tokens": 2194,
+      "output_tokens": 78,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 62,
+      "latency_ms": 1687,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "greek",
+        "flags": [],
+        "date_spec": {
+          "kind": "approximate",
+          "part": "late",
+          "month": 6,
+          "year": null,
+          "nights": 7
+        },
+        "adults": 2,
+        "children": 0,
+        "child_ages": [],
+        "rooms": 1,
+        "room_type": "standard",
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-approximate-late-june",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2197,
+      "cached_input_tokens": 2194,
+      "output_tokens": 78,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 62,
+      "latency_ms": 1328,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "greek",
+        "flags": [],
+        "date_spec": {
+          "kind": "approximate",
+          "part": "late",
+          "month": 6,
+          "year": null,
+          "nights": 7
+        },
+        "adults": 2,
+        "children": 0,
+        "child_ages": [],
+        "rooms": 1,
+        "room_type": "standard",
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-injection-greek",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2258,
+      "cached_input_tokens": 2124,
+      "output_tokens": 116,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 94,
+      "latency_ms": 1734,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "greek",
+        "flags": [
+          "injection_suspected"
+        ],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 5,
+            "month": 7,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 9,
+            "month": 7,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 0,
+        "child_ages": [],
+        "rooms": 1,
+        "room_type": "sea_view",
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-injection-greek",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2258,
+      "cached_input_tokens": 2255,
+      "output_tokens": 116,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 82,
+      "latency_ms": 2188,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "greek",
+        "flags": [
+          "injection_suspected"
+        ],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 5,
+            "month": 7,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 9,
+            "month": 7,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 0,
+        "child_ages": [],
+        "rooms": 1,
+        "room_type": "sea_view",
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    },
+    {
+      "case_id": "el-injection-greek",
+      "model": "gpt-6-luna",
+      "response_model": "gpt-6-luna",
+      "input_tokens": 2258,
+      "cached_input_tokens": 2255,
+      "output_tokens": 116,
+      "reasoning_tokens": 0,
+      "cost_micro_usd": 82,
+      "latency_ms": 1609,
+      "attempts": 1,
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "output": {
+        "kind": "request",
+        "language": "el",
+        "script": "greek",
+        "flags": [
+          "injection_suspected"
+        ],
+        "date_spec": {
+          "kind": "exact",
+          "check_in": {
+            "day": 5,
+            "month": 7,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "check_out": {
+            "day": 9,
+            "month": 7,
+            "year": 2027,
+            "ambiguous_order": false
+          },
+          "nights": null
+        },
+        "adults": 2,
+        "children": 0,
+        "child_ages": [],
+        "rooms": 1,
+        "room_type": "sea_view",
+        "arrival_time": null
+      },
+      "error": null,
+      "stops_run": false
+    }
+  ]
+}

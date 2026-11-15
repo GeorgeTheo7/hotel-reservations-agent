@@ -15,10 +15,13 @@ from anemos.clock import FixedClock
 from anemos.email_cases import EmailCase
 from anemos.evaluation import (
     FIELDS,
+    Row,
     SetError,
+    consistency,
     git_state,
     load_set,
     report,
+    rescore,
     run_cases,
     score,
     summarise,
@@ -324,3 +327,40 @@ def test_a_bad_reply_does_not_stop_the_run(tmp_path: Path) -> None:
     rows = run_cases(llm(steps, tmp_path), cases, EXTRACTION_V1, step="eval-smoke")
     assert [r.stops_run for r in rows] == [False, False]
     assert rows[1].fields == dict.fromkeys(FIELDS, True)
+
+
+# --- rooms compared after the D5 default (not stated = one room) ------------------------
+
+LATE_JUNE = "el-approximate-late-june"  # gold rooms 1; the email names no number
+
+
+def with_rooms(case: EmailCase, rooms: int | None) -> ExtractionOutput:
+    return gold(case).model_copy(update={"rooms": rooms})
+
+
+@pytest.mark.parametrize(("got", "right"), [(None, True), (1, True), (2, False)])
+def test_rooms_are_scored_after_the_d5_default(got: int | None, right: bool) -> None:
+    case = next(c for c in smoke() if c.id == LATE_JUNE)
+    assert score(gold(case), with_rooms(case, got), case.email.received_at)["rooms"] is right
+
+
+def row(case_id: str, rooms: int | None) -> Row:
+    return Row(case_id, "m", fields={}, output={"rooms": rooms, "adults": 2})
+
+
+def test_null_and_one_room_are_the_same_answer_across_repeats() -> None:
+    rows = [row("a", None), row("a", 1), row("a", 1), row("b", 1), row("b", 2)]
+    assert consistency(rows) == {"a": [], "b": ["rooms"]}
+
+
+def test_rescore_uses_todays_scorer_without_a_model_call() -> None:
+    case = next(c for c in smoke() if c.id == LATE_JUNE)
+    raw = {"calls": [
+        {"case_id": LATE_JUNE, "model": "m", "fields": {"rooms": False},
+         "output": with_rooms(case, None).model_dump(mode="json")},
+        {"case_id": LATE_JUNE, "model": "m", "error": "boom"},
+    ]}  # fmt: skip
+    rows, summary = rescore(raw, smoke())
+    assert rows[0].fields is not None and all(rows[0].fields.values())
+    assert rows[1].fields is None  # a failed call stays failed
+    assert (summary.calls, summary.failed, summary.accuracy["rooms"]) == (2, 1, 1.0)

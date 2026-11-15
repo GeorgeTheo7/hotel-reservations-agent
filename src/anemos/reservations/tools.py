@@ -35,7 +35,14 @@ from anemos.reservations.errors import (
     ReasonCode,
 )
 from anemos.reservations.hotel_data import HotelData
-from anemos.reservations.model import Party, RoomRequest, Stay, party_from_counts, stay_or_error
+from anemos.reservations.model import (
+    Party,
+    RoomRequest,
+    Stay,
+    party_from_counts,
+    rooms_or_default,
+    stay_or_error,
+)
 from anemos.reservations.occupancy import fits
 from anemos.reservations.offer import Offer, OfferChange, build_offer
 from anemos.reservations.options import window_options
@@ -219,8 +226,7 @@ def load_request(conn: Conn, request_id: int) -> Loaded | NeedsInfo:
     party = party_from_counts(adults, children, child_ages)
     if isinstance(party, NeedsInfo):
         return party
-    # Not stated = one room (D5: one stay, at most 2 rooms; 3+ escalates as GROUP).
-    rooms = 1 if rooms is None else rooms
+    rooms = rooms_or_default(rooms)  # D5: not stated = one room
     need = _has_flag(extracted, ACCESSIBILITY_FLAG)
     if isinstance(dates, Window):
         return LoadedWindow(dates, rooms, room_type_id, party, need)
