@@ -21,7 +21,7 @@ from anemos.llm.adapter import LLM, Prompt, Settings, TransientError
 from anemos.llm.budget import Budget
 from anemos.llm.fake import Answer, ScriptedClient, Step
 from anemos.llm.openai_client import OpenAIClient
-from anemos.prompts import EXTRACTION_V1
+from anemos.prompts import CURRENT_EXTRACTION
 from anemos.reservations.datespec import resolve
 from anemos.reservations.model import Stay
 from anemos.states import NotFound, TransitionRefused
@@ -88,10 +88,10 @@ def test_a_gold_extraction_is_stored(
 
     assert (result.outcome, result.extraction) == ("finished", gold)
     [sent] = client.sent
-    assert sent.settings.max_output_tokens == EXTRACTION_V1.max_output_tokens  # the prompt's
+    assert sent.settings.max_output_tokens == CURRENT_EXTRACTION.max_output_tokens  # the prompt's
     # D6: the model gets exactly the prompt file and the guest's subject and body;
     # nothing else, so never today's date or received_at.
-    assert sent.prompt.instructions == EXTRACTION_V1.text()
+    assert sent.prompt.instructions == CURRENT_EXTRACTION.text()
     assert sent.prompt.input == delimited_email(case.email.subject, case.email.body.strip())
     assert one(committed_db, "SELECT status, language FROM emails WHERE id = %s", email_id) == (
         "processing", case.labels.language,
@@ -111,7 +111,7 @@ def test_a_gold_extraction_is_stored(
     assert ExtractionOutput.model_validate(request[6]) == gold
     audit = one(committed_db, "SELECT prompt_version, output->'result' FROM audit_log"
                 " WHERE event = 'llm.called'")  # fmt: skip
-    assert audit == (EXTRACTION_V1.version, gold.model_dump(mode="json"))
+    assert audit == (CURRENT_EXTRACTION.version, gold.model_dump(mode="json"))
 
 
 # --- D65: nothing held during the call; the email may change meanwhile ---------------

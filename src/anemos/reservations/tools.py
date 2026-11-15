@@ -20,7 +20,7 @@ from psycopg.types.json import Jsonb
 
 from anemos.clock import Clock
 from anemos.reservations.availability import free_rooms, rooms_for_plan
-from anemos.reservations.datespec import Window, date_spec_from_json, resolve
+from anemos.reservations.datespec import FixedHoliday, Window, date_spec_from_json, resolve
 from anemos.reservations.errors import (
     Closed,
     FullyBooked,
@@ -144,13 +144,16 @@ def quote_price(
     (D47), because this is a snapshot.
 
     A window request (Easter, part of a month; D7, D28) is priced by `quote_window`:
-    up to 3 options, never held, or why there are none.
+    up to 3 options, never held, or why there are none. A fixed-date holiday (D68) is
+    never priced: `holiday_outcome` says NO_CALENDAR, CLOSED or NEEDS_INFO.
     """
     loaded = load_request(conn, request_id)
     if isinstance(loaded, NeedsInfo):
         return loaded
     if isinstance(loaded, LoadedWindow):
         return quote_window(conn, hotel, clock, request_id, loaded)
+    if isinstance(loaded, LoadedHoliday):
+        return holiday_outcome(hotel, loaded.holiday)
     result = build_offer(
         hotel, loaded.request, loaded.party, accessibility_need=loaded.accessibility_need
     )
@@ -182,7 +185,21 @@ class LoadedWindow:
     accessibility_need: bool
 
 
-def load_request(conn: Conn, request_id: int) -> LoadedRequest | LoadedWindow | NeedsInfo:
+@dataclass(frozen=True)
+class LoadedHoliday:
+    """A stored request for a fixed-date holiday (D68): no stay and no window; the
+    calendar decides (NO_CALENDAR, CLOSED, else NEEDS_INFO)."""
+
+    holiday: FixedHoliday
+    rooms: int
+    room_type_id: str | None
+    party: Party
+
+
+type Loaded = LoadedRequest | LoadedWindow | LoadedHoliday
+
+
+def load_request(conn: Conn, request_id: int) -> Loaded | NeedsInfo:
     """The stored request as build_offer's inputs, or what must be asked first.
 
     A window (Easter, part of a month) is not stored as a stay: `requests.stay` stays
@@ -194,10 +211,10 @@ def load_request(conn: Conn, request_id: int) -> LoadedRequest | LoadedWindow | 
         raise LookupError(f"no request {request_id}")
     stay_range, adults, children, child_ages, rooms, room_type_id, extracted, received_at = row
 
-    window = None
+    dates = None
     if stay_range is None:
-        window = _stored_window(extracted, received_at)
-        if window is None:
+        dates = _stored_dates(extracted, received_at)
+        if dates is None:
             return NeedsInfo("dates of the stay")
     party = party_from_counts(adults, children, child_ages)
     if isinstance(party, NeedsInfo):
@@ -205,20 +222,25 @@ def load_request(conn: Conn, request_id: int) -> LoadedRequest | LoadedWindow | 
     # Not stated = one room (D5: one stay, at most 2 rooms; 3+ escalates as GROUP).
     rooms = 1 if rooms is None else rooms
     need = _has_flag(extracted, ACCESSIBILITY_FLAG)
-    if window is not None:
-        return LoadedWindow(window, rooms, room_type_id, party, need)
+    if isinstance(dates, Window):
+        return LoadedWindow(dates, rooms, room_type_id, party, need)
+    if isinstance(dates, FixedHoliday):
+        return LoadedHoliday(dates, rooms, room_type_id, party)
     request = RoomRequest(Stay(stay_range.lower, stay_range.upper), rooms, room_type_id)
     return LoadedRequest(request, party, need)
 
 
-def _stored_window(extracted: Mapping[str, Any], received_at: datetime) -> Window | None:
-    """The window of a stored DateSpec, or None if it has none (no dates, or dates that
-    need asking). A DateSpec that does not parse is a bug in what we stored: it raises."""
+def _stored_dates(
+    extracted: Mapping[str, Any], received_at: datetime
+) -> Window | FixedHoliday | None:
+    """The window or fixed-date holiday of a stored DateSpec, or None if it has neither
+    (no dates, or dates that need asking). A DateSpec that does not parse is a bug in
+    what we stored: it raises."""
     raw = extracted.get("date_spec")
     if raw is None:
         return None
     resolved = resolve(date_spec_from_json(raw), received_at)
-    return resolved if isinstance(resolved, Window) else None
+    return resolved if isinstance(resolved, Window | FixedHoliday) else None
 
 
 def _has_flag(extracted: Mapping[str, Any], flag: str) -> bool:
@@ -317,6 +339,8 @@ def suggest_alternatives(
     if isinstance(loaded, LoadedWindow):
         # Window options are the choice already (D7); a window has no "other dates".
         raise ValueError(f"request {request_id} is a window: options come from quote_price")
+    if isinstance(loaded, LoadedHoliday):
+        raise ValueError(f"request {request_id} is a fixed-date holiday: nothing is priced")
     base = build_offer(
         hotel, loaded.request, loaded.party, accessibility_need=loaded.accessibility_need
     )
@@ -493,3 +517,23 @@ def quote_window(
             ReasonCode.SHORT_NOTICE, f"every check-in from {window.first_check_in} is too soon"
         )
     return Closed(closed)
+
+
+# --- fixed-date holidays (D68) -----------------------------------------------------------
+
+
+def holiday_outcome(
+    hotel: HotelData, holiday: FixedHoliday
+) -> Closed | NeedsInfo | NeedsEscalation:
+    """D68: a day in a year with no calendar -> NO_CALENDAR (D36, first); every day
+    outside the open season -> CLOSED (decline with the open season, D62); else the
+    holiday is in the season and the guest is asked for dates (NEEDS_INFO, D28)."""
+    days = holiday.days()
+    missing = sorted({d.year for d in days if not hotel.has_calendar_for(d.year)})
+    if missing:
+        return NeedsEscalation(
+            ReasonCode.NO_CALENDAR, f"no season calendar for {', '.join(map(str, missing))}"
+        )
+    if not any(is_open(hotel, d) for d in days):
+        return Closed(days)
+    return NeedsInfo("dates of the stay")

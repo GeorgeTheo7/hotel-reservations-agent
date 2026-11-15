@@ -17,9 +17,16 @@ Rules:
   the Friday after if received Fri-Sun; "this weekend" = Friday of the current Mon-Sun
   week (received Fri-Sun: always SHORT_NOTICE). A stated night count other than 2 ->
   NEEDS_INFO.
-- Holiday: Easter only. Tradition `unspecified` -> Orthodox. Window = Easter +/- 3 days;
+- Holiday: easter. Tradition `unspecified` -> Orthodox. Window = Easter +/- 3 days;
   without a year, the first Easter whose window has not ended; check-ins before today
-  are cut off. No night count -> NEEDS_INFO. Any other holiday -> NEEDS_INFO.
+  are cut off. No night count -> NEEDS_INFO.
+- Fixed-date holidays (D68): Christmas 24-26 Dec, New Year 31 Dec - 1 Jan, resolve to
+  a FixedHoliday (their days, not a stay): the caller decides with the calendar
+  (NO_CALENDAR, then CLOSED if every day is outside the season, else NEEDS_INFO).
+  Without a year, the next occurrence that has not ended, days before today cut off.
+  "New Year 2028" is 31 Dec 2027 - 1 Jan 2028 (the year of 1 January). Names are
+  matched exactly (easter, christmas, new_year: the canonical names of prompt
+  extraction_v2); any other name (15 August too, deliberately) -> NEEDS_INFO.
 - Approximate: early = 1-10, mid = 11-20, late = 21-end of month. Year and cut-off as
   for Easter. No night count -> NEEDS_INFO. A whole month ("sometime in June") ->
   NEEDS_INFO in v1 (D7).
@@ -119,6 +126,14 @@ class ApproximateDates:
 
 type DateSpec = ExactDates | RelativeDates | HolidayDates | ApproximateDates
 
+# D68: holidays on fixed dates, (month, day) of the first and last day; the last day may
+# be in the next year (New Year). Keys are the canonical names extraction writes
+# (prompt extraction_v2); a name is matched exactly, anything else is NEEDS_INFO.
+FIXED_HOLIDAYS: dict[str, tuple[tuple[int, int], tuple[int, int]]] = {
+    "christmas": ((12, 24), (12, 26)),
+    "new_year": ((12, 31), (1, 1)),
+}
+
 
 @dataclass(frozen=True)
 class Window:
@@ -138,7 +153,23 @@ class Window:
         )
 
 
-def resolve(spec: DateSpec, received_at: datetime) -> Stay | Window | NeedsInfo | InvalidDates:
+@dataclass(frozen=True)
+class FixedHoliday:
+    """The days of a fixed-date holiday (D68), from today on. Not a stay: only the
+    calendar decides what happens (NO_CALENDAR, CLOSED or NEEDS_INFO)."""
+
+    key: str  # a FIXED_HOLIDAYS key
+    first_day: date
+    last_day: date
+
+    def days(self) -> tuple[date, ...]:
+        count = (self.last_day - self.first_day).days + 1
+        return tuple(self.first_day + timedelta(days=i) for i in range(count))
+
+
+def resolve(
+    spec: DateSpec, received_at: datetime
+) -> Stay | Window | FixedHoliday | NeedsInfo | InvalidDates:
     today = hotel_date(received_at)
     match spec:
         case ExactDates():
@@ -170,8 +201,12 @@ def _resolve_weekend(spec: RelativeDates, today: date) -> Stay | NeedsInfo:
     return Stay(friday, friday + timedelta(days=WEEKEND_NIGHTS))
 
 
-def _resolve_holiday(spec: HolidayDates, today: date) -> Window | NeedsInfo | InvalidDates:
-    if spec.holiday.strip().lower() != "easter":
+def _resolve_holiday(
+    spec: HolidayDates, today: date
+) -> Window | FixedHoliday | NeedsInfo | InvalidDates:
+    if spec.holiday in FIXED_HOLIDAYS:  # exact canonical names only (extraction_v2)
+        return _resolve_fixed(spec.holiday, spec.year, today)
+    if spec.holiday != "easter":
         return NeedsInfo(f"dates for {spec.holiday!r} (only Easter is known)")
     if spec.nights is None:
         return NeedsInfo("length of stay (number of nights)")
@@ -190,6 +225,27 @@ def _resolve_holiday(spec: HolidayDates, today: date) -> Window | NeedsInfo | In
     except ValueError as error:  # a year the Easter functions do not support
         return InvalidDates(str(error))
     return Window(max(sunday - window, today), sunday + window, spec.nights)
+
+
+def _resolve_fixed(key: str, year: int | None, today: date) -> FixedHoliday | InvalidDates:
+    (m1, d1), (m2, d2) = FIXED_HOLIDAYS[key]
+    crosses = (m2, d2) < (m1, d1)  # ends in the next year (New Year)
+
+    def days_of(last_year: int) -> tuple[date, date]:
+        """The occurrence whose last day is in `last_year`."""
+        return date(last_year - 1 if crosses else last_year, m1, d1), date(last_year, m2, d2)
+
+    try:
+        if year is not None:
+            first, last = days_of(year)
+            return FixedHoliday(key, first, last)
+        last_year = today.year
+        while days_of(last_year)[1] < today:  # this year's occurrence is over
+            last_year += 1
+        first, last = days_of(last_year)
+    except ValueError as error:  # a year date() cannot hold
+        return InvalidDates(str(error))
+    return FixedHoliday(key, max(first, today), last)
 
 
 def _resolve_exact(spec: ExactDates, today: date) -> Stay | NeedsInfo | InvalidDates:

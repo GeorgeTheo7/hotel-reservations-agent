@@ -17,7 +17,7 @@ from importlib.resources import files
 from itertools import groupby
 from string import Template
 
-from anemos.reservations.datespec import Window
+from anemos.reservations.datespec import FixedHoliday, Window
 from anemos.reservations.formatting import (
     Lang,
     count,
@@ -151,8 +151,20 @@ class WindowRequest:
     room_type_id: str | None = None  # None = the guest named no type
 
 
+@dataclass(frozen=True)
+class HolidayRequest:
+    """What the guest asked for when the dates are a fixed-date holiday (D68)."""
+
+    holiday: FixedHoliday
+    rooms: int = 1
+    room_type_id: str | None = None
+
+
 def render_request_summary(
-    hotel: HotelData, request: RoomRequest | WindowRequest, party: Party, lang: Lang
+    hotel: HotelData,
+    request: RoomRequest | WindowRequest | HolidayRequest,
+    party: Party,
+    lang: Lang,
 ) -> str:
     """What the guest asked for, with dates resolved in full (guardrail 3)."""
     what = count(request.rooms, "room", lang)
@@ -160,6 +172,15 @@ def render_request_summary(
         what = f"{room_type_name(hotel.room_types[request.room_type_id], lang)}, {what}"
     if isinstance(request, RoomRequest):
         dates = format_stay(request.stay, lang)
+    elif isinstance(request, HolidayRequest):
+        holiday = request.holiday
+        dates = _phrase(
+            lang,
+            "holiday",
+            holiday=str(_phrases(lang)[f"holiday_{holiday.key}"]),
+            first=format_date(holiday.first_day, lang),
+            last=format_date(holiday.last_day, lang),
+        )
     else:
         window = request.window
         dates = _phrase(

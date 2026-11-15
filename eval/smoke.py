@@ -28,7 +28,7 @@ from anemos.llm.adapter import LLM, ModelClient, Settings
 from anemos.llm.budget import Budget, cap_from_env
 from anemos.llm.openai_client import OpenAIClient
 from anemos.llm.pricing import PRICES
-from anemos.prompts import EXTRACTION_V1
+from anemos.prompts import CURRENT_EXTRACTION
 
 REPO = Path(__file__).resolve().parents[1]
 EVAL = REPO / "eval"
@@ -57,7 +57,7 @@ def main(
         return 2
     cases = load_set(args.set_name, EVAL)
     clock = clock or SystemClock()
-    spec = EXTRACTION_V1
+    spec = CURRENT_EXTRACTION
     settings = Settings(args.model, spec.max_output_tokens, spec.reasoning_effort)
     llm = LLM(client or OpenAIClient(), settings, budget or Budget(clock, cap_from_env()),
               None, clock)  # fmt: skip

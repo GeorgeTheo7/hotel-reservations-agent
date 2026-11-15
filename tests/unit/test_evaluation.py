@@ -28,7 +28,7 @@ from anemos.llm.adapter import LLM, PermanentError, Prompt, Settings, TransientE
 from anemos.llm.budget import Budget
 from anemos.llm.fake import Answer, ScriptedClient, Step
 from anemos.llm.pricing import Usage
-from anemos.prompts import EXTRACTION_V1
+from anemos.prompts import CURRENT_EXTRACTION, EXTRACTION_V1
 
 pytestmark = pytest.mark.unit
 
@@ -235,7 +235,7 @@ def test_the_smoke_command_prints_and_records_every_call(
     data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     run = data["run"]
     assert (run["model"], run["prompt_version"], run["dirty"], run["repeat"]) == (
-        "gpt-6-luna", EXTRACTION_V1.version, False, 3,
+        "gpt-6-luna", CURRENT_EXTRACTION.version, False, 3,
     )  # fmt: skip
     assert run["settings"]["max_output_tokens"] == 600 and run["commit"]
     assert run["started_at"] == NOW.isoformat()

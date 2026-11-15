@@ -18,7 +18,7 @@ from anemos.extraction import ExtractionOutput, OutApproximate, OutExact, OutHol
 from anemos.extraction_run import EMAIL_CLOSE, EMAIL_OPEN, build_prompt, delimited_email
 from anemos.llm.adapter import Settings
 from anemos.llm.openai_client import OpenAIClient, text_format
-from anemos.prompts import EXTRACTION_V1, PROMPTS
+from anemos.prompts import CURRENT_EXTRACTION, PROMPTS
 
 pytestmark = pytest.mark.unit
 
@@ -155,18 +155,33 @@ def test_no_prompt_copies_a_test_email() -> None:
 def test_the_prompt_is_english_and_carries_no_date() -> None:
     """Instructions in English (no Greek letters); no year, so the model cannot
     resolve dates itself (D6)."""
-    text = EXTRACTION_V1.text()
+    text = CURRENT_EXTRACTION.text()
     assert not re.search(r"[Ͱ-Ͽ]", text)
     assert not re.search(r"\b20\d\d\b", text)
 
 
 def test_the_prompt_states_the_null_rules() -> None:
-    text = normalised(EXTRACTION_V1.text())
+    text = normalised(CURRENT_EXTRACTION.text())
     for rule in ("no year written as a number: year is null",
                  "ages not given: child_ages is shorter than children",
                  "no room type named: room_type is null",
                  "a time only if the guest says when they arrive at the hotel"):  # fmt: skip
         assert rule in text, rule
+
+
+def test_the_prompt_names_the_canonical_holidays() -> None:
+    """D68: code matches holiday names exactly, so the prompt must give them."""
+    text = normalised(CURRENT_EXTRACTION.text())
+    assert "holiday is one of these exact names: easter, christmas, new_year" in text
+    assert "its year is the year of the 1st of january" in text.lower()
+
+
+def test_gold_holiday_labels_use_the_canonical_names() -> None:
+    names = {"easter", "christmas", "new_year"}
+    for case in CASES:
+        spec = case.labels.extraction.date_spec if case.labels.extraction else None
+        if spec is not None and spec.kind == "holiday":
+            assert spec.holiday in names, case.id
 
 
 @pytest.mark.parametrize("case", EVAL, ids=ids(EVAL))
@@ -201,7 +216,7 @@ def test_every_gold_output_fits_the_output_limit(case: EmailCase) -> None:
     out = case.gold_output()
     assert out is not None
     size = len(json.dumps(out.model_dump(mode="json"), ensure_ascii=False).encode("utf-8"))
-    assert size + 150 <= EXTRACTION_V1.max_output_tokens, (case.id, size)
+    assert size + 150 <= CURRENT_EXTRACTION.max_output_tokens, (case.id, size)
 
 
 # --- the schema through the real OpenAI client (simulated endpoint) ----------------------
@@ -229,7 +244,7 @@ def test_the_schema_is_sent_strict_and_a_gold_reply_parses() -> None:
     client = OpenAIClient(api_key="k", base_url="http://openai.invalid/v1", http_client=http)
     prompt = build_prompt(greek.email.subject, greek.email.body)
     settings = Settings(
-        "gpt-6-luna", EXTRACTION_V1.max_output_tokens, EXTRACTION_V1.reasoning_effort
+        "gpt-6-luna", CURRENT_EXTRACTION.max_output_tokens, CURRENT_EXTRACTION.reasoning_effort
     )
     reply = client.send(prompt, ExtractionOutput, settings)
     assert reply.output == gold

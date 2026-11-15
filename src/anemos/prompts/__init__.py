@@ -80,4 +80,15 @@ EXTRACTION_V1 = PromptSpec(
     reasoning_effort="none",
 )
 
-PROMPTS = (EXTRACTION_V1,)
+# v2 (D68): holiday names are canonical (easter, christmas, new_year; New Year's year is
+# the year of 1 January); code accepts only those, anything else asks for dates.
+EXTRACTION_V2 = PromptSpec(
+    name="extraction_v2",
+    schema=ExtractionOutput,
+    sha256_8="b37c0d57",
+    max_output_tokens=600,
+    reasoning_effort="none",
+)
+
+PROMPTS = (EXTRACTION_V1, EXTRACTION_V2)
+CURRENT_EXTRACTION = EXTRACTION_V2  # what runs and evaluations send (D2)

@@ -31,7 +31,7 @@ from anemos.clock import Clock
 from anemos.extraction import ExtractionOutput
 from anemos.inbox import lock_sender
 from anemos.llm.adapter import LLM, Prompt
-from anemos.prompts import EXTRACTION_V1, PromptSpec
+from anemos.prompts import CURRENT_EXTRACTION, PromptSpec
 from anemos.reservations.datespec import resolve
 from anemos.reservations.errors import ReasonCode
 from anemos.reservations.model import Stay
@@ -76,7 +76,7 @@ def delimited_email(subject: str, body: str) -> str:
     return f"{EMAIL_OPEN}\nSubject: {_neutral(subject)}\n\n{_neutral(body)}\n{EMAIL_CLOSE}"
 
 
-def build_prompt(subject: str, body: str, spec: PromptSpec = EXTRACTION_V1) -> Prompt:
+def build_prompt(subject: str, body: str, spec: PromptSpec = CURRENT_EXTRACTION) -> Prompt:
     return Prompt(instructions=spec.text(), input=delimited_email(subject, body))
 
 
@@ -127,7 +127,7 @@ def process_email(
     email_id: int,
     *,
     finish: Finish,
-    spec: PromptSpec = EXTRACTION_V1,
+    spec: PromptSpec = CURRENT_EXTRACTION,
 ) -> RunResult:
     with connect() as conn:  # 1. claim
         claimed = claim(conn, clock, email_id)

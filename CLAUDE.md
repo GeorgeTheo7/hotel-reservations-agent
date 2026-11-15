@@ -14,6 +14,7 @@ Design decisions live in `docs/SPEC.md`. If the spec and the code disagree, stop
 - Mutation checks: 2–3 per step on what matters most, each run against its target test file only.
 - Repeat race tests (--count) only when concurrency code changed.
 - Reports: short by default (what changed, test result, mutations caught, decisions needed). Give details only for findings or surprises.
+- When I approve a commit, push it too, and report the CI result.
 - Start each session with docker compose up -d --wait.
 ## Rules of the design
 - Prices and availability are computed in code from the database, never by the model.

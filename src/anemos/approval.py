@@ -50,7 +50,13 @@ from anemos.reservations.loader import load_hotel_data
 from anemos.reservations.model import Party, Stay
 from anemos.reservations.pricing import Quote, price_stay
 from anemos.reservations.quote_template import render_hold_until
-from anemos.reservations.tools import LoadedRequest, LoadedWindow, line_json, load_request
+from anemos.reservations.tools import (
+    LoadedHoliday,
+    LoadedRequest,
+    LoadedWindow,
+    line_json,
+    load_request,
+)
 from anemos.states import BookingStatus, DraftStatus, EmailStatus, StaleVersion
 
 type Conn = psycopg.Connection[TupleRow]
@@ -261,6 +267,8 @@ def _request_of(conn: Conn, draft_id: int) -> LoadedRequest | LoadedWindow:
     loaded = load_request(conn, int(row[0]))
     if isinstance(loaded, NeedsInfo):
         raise RuntimeError(f"request of draft {draft_id} is incomplete: {loaded}")
+    if isinstance(loaded, LoadedHoliday):  # D68 drafts decline or ask: no offers
+        raise RuntimeError(f"draft {draft_id} offers quotes for a fixed-date holiday")
     return loaded
 
 

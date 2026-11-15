@@ -20,6 +20,9 @@
   "note_other_dates": "Please note: your dates are fully booked, so this quote is for the nearest dates we have free.",
   "note_window_option": "Please note: this is one of the options within the dates you gave us.",
   "window": "check-in between $first and $last, $nights",
+  "holiday": "$holiday, $first – $last",
+  "holiday_christmas": "Christmas",
+  "holiday_new_year": "New Year",
   "weekday_articles": [
     "",
     "",

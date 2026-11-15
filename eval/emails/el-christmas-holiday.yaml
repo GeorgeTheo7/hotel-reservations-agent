@@ -24,4 +24,5 @@ labels:
     children: 0
     rooms: 1
     room_type: null
-  route: ask_info          # D28: a holiday other than Easter -> ask for dates (see note)
+  route: escalate          # D68: no year -> Christmas 2026, a year with no calendar
+  reason_codes: [NO_CALENDAR]  # D36: before CLOSED

@@ -46,11 +46,6 @@ BY_TOOLS: dict[str, Outcome] = {
     "en-fully-booked-decline": ("quote", ()),  # gold decline: NONE_FOUND (D60)
 }
 
-# Matched exactly today, but expected to change when D68 (fixed-date holidays) lands:
-# Christmas 2026 has no calendar (NO_CALENDAR), Christmas 2027 is outside the season
-# (decline). Until then datespec asks for dates, as the labels still say.
-D68_PENDING = frozenset({"el-christmas-holiday", "el-christmas-2027"})
-
 EXACT = sorted(set(CASES) - set(WEEK_5) - set(BY_TOOLS))
 
 
@@ -86,7 +81,6 @@ def test_every_case_is_counted_once() -> None:
     listed = set(WEEK_5) | set(BY_TOOLS)
     assert listed <= set(CASES), f"listed but no such case: {listed - set(CASES)}"
     assert not set(WEEK_5) & set(BY_TOOLS)
-    assert set(D68_PENDING) <= set(EXACT)
     assert len(EXACT) == 35
 
 

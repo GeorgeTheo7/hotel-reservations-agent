@@ -49,9 +49,11 @@ from anemos.reservations.errors import (
 )
 from anemos.reservations.formatting import Lang, room_type_name
 from anemos.reservations.hotel_data import HotelData
+from anemos.reservations.model import RoomRequest
 from anemos.reservations.occupancy import fits
 from anemos.reservations.offer import OfferChange
 from anemos.reservations.quote_template import (
+    HolidayRequest,
     MinStayChange,
     MoreRoomsChange,
     OpenPartChange,
@@ -67,7 +69,8 @@ from anemos.reservations.quote_template import (
 from anemos.reservations.quote_template import OfferChange as NoteChange
 from anemos.reservations.tools import (
     Alternatives,
-    LoadedRequest,
+    Loaded,
+    LoadedHoliday,
     LoadedWindow,
     StoredQuote,
     WindowQuotes,
@@ -242,9 +245,7 @@ def _quote_text(lang: Lang, *, intro: str | None) -> str:
     return Template(_template(f"stub_quote_{lang}.txt")).substitute(intro=text)
 
 
-def _decline_text(
-    hotel: HotelData, why: Closed | NoneFound, loaded: LoadedRequest | LoadedWindow, lang: Lang
-) -> str:
+def _decline_text(hotel: HotelData, why: Closed | NoneFound, loaded: Loaded, lang: Lang) -> str:
     """D62: a decline restates the request ({{REQUEST_SUMMARY}}, guardrail 3) and says
     why. CLOSED names the open season of the year asked for."""
     if isinstance(why, NoneFound) and why.room_type_id is not None:
@@ -256,11 +257,12 @@ def _decline_text(
         )
     if isinstance(why, NoneFound):
         return _template(f"stub_decline_full_{lang}.txt")
-    first = (
-        loaded.window.first_check_in
-        if isinstance(loaded, LoadedWindow)
-        else (loaded.request.stay.check_in)
-    )
+    if isinstance(loaded, LoadedWindow):
+        first = loaded.window.first_check_in
+    elif isinstance(loaded, LoadedHoliday):
+        first = loaded.holiday.first_day
+    else:
+        first = loaded.request.stay.check_in
     opens, closes = _open_season(hotel, first.year)
     return Template(_template(f"stub_decline_closed_{lang}.txt")).substitute(
         opens=date_with_article(opens, lang), closes=date_with_article(closes, lang)
@@ -288,7 +290,7 @@ def _ask_info_text(needs: NeedsInfo, lang: Lang) -> str:
 def _render(
     hotel: HotelData,
     text: str,
-    loaded: LoadedRequest | LoadedWindow,
+    loaded: Loaded,
     quotes: list[StoredQuote],
     offers: list[ProposedOffer],
     lang: Lang,
@@ -307,26 +309,27 @@ def _render(
     return text.replace(QUOTE_BLOCK, "\n\n".join(blocks.values())), blocks
 
 
-def _summary(hotel: HotelData, loaded: LoadedRequest | LoadedWindow, lang: Lang) -> str:
-    """{{REQUEST_SUMMARY}}: the stay, or for a window its check-in range (guardrail 3)."""
-    asked = (
-        WindowRequest(loaded.window, loaded.rooms, loaded.room_type_id)
-        if isinstance(loaded, LoadedWindow)
-        else loaded.request
-    )
+def _summary(hotel: HotelData, loaded: Loaded, lang: Lang) -> str:
+    """{{REQUEST_SUMMARY}}: the stay, a window's check-in range, or a fixed-date
+    holiday's days (guardrail 3)."""
+    asked: RoomRequest | WindowRequest | HolidayRequest
+    if isinstance(loaded, LoadedWindow):
+        asked = WindowRequest(loaded.window, loaded.rooms, loaded.room_type_id)
+    elif isinstance(loaded, LoadedHoliday):
+        asked = HolidayRequest(loaded.holiday, loaded.rooms, loaded.room_type_id)
+    else:
+        asked = loaded.request
     return render_request_summary(hotel, asked, loaded.party, lang)
 
 
-def _asked(loaded: LoadedRequest | LoadedWindow) -> tuple[str | None, int]:
+def _asked(loaded: Loaded) -> tuple[str | None, int]:
     """The room type (None = any) and the number of rooms the guest asked for."""
-    if isinstance(loaded, LoadedWindow):
+    if isinstance(loaded, LoadedWindow | LoadedHoliday):
         return loaded.room_type_id, loaded.rooms
     return loaded.request.room_type_id, loaded.request.rooms
 
 
-def _notes(
-    hotel: HotelData, loaded: LoadedRequest | LoadedWindow, stored: StoredQuote
-) -> list[NoteChange]:
+def _notes(hotel: HotelData, loaded: Loaded, stored: StoredQuote) -> list[NoteChange]:
     """One note per entry in the quote's changes (the block sorts them into a fixed
     order). A type change is a capacity note (D27) when the type asked cannot hold the
     party, else an availability note (an alternative, D60)."""
@@ -352,7 +355,7 @@ def _notes(
     return notes
 
 
-def _loaded(conn: Conn, request_id: int) -> LoadedRequest | LoadedWindow:
+def _loaded(conn: Conn, request_id: int) -> Loaded:
     loaded = load_request(conn, request_id)
     if isinstance(loaded, NeedsInfo):  # the tools just loaded it successfully
         raise RuntimeError(f"request {request_id} changed while drafting: {loaded}")

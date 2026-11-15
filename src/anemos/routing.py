@@ -33,7 +33,8 @@ ends in ask_info (rule 14), but a rule that can be decided without it still appl
 Windows (Easter, part of a month; D7, D28): rule 7 looks at every night of every stay
 the window allows; rule 8 declines only if all of those nights are closed (a partly
 closed window goes on to quote, and the window options decide); rule 9 applies to one
-stay only (window options skip short-notice check-ins).
+stay only (window options skip short-notice check-ins). Fixed-date holidays (D68):
+rules 7 and 8 look at the holiday's days; inside the season it is ask_info.
 
 Rules 10-12 reuse the occupancy helpers that `build_offer` uses, so the router and
 the quote tool cannot disagree about who fits; a unit test checks they agree.
@@ -44,7 +45,7 @@ from datetime import date, datetime, time
 from typing import Literal
 
 from anemos.extraction import ExtractionFlag, ExtractionOutput
-from anemos.reservations.datespec import Window
+from anemos.reservations.datespec import FixedHoliday, Window
 from anemos.reservations.errors import InvalidDates, NeedsEscalation, NeedsInfo, ReasonCode
 from anemos.reservations.hotel_data import HotelData
 from anemos.reservations.model import Party, Stay, party_from_counts
@@ -61,7 +62,7 @@ FLAG_CODES: tuple[tuple[ExtractionFlag, ReasonCode], ...] = (
 )
 NOT_BUILT_YET = "week 5: the agent loop does not exist yet"
 
-type Resolved = Stay | Window | NeedsInfo | InvalidDates | None
+type Resolved = Stay | Window | FixedHoliday | NeedsInfo | InvalidDates | None
 type AgentRoute = Literal["quote", "ask_info", "decline", "policy"]
 
 
@@ -120,7 +121,7 @@ def route(
         return _escalate(ReasonCode.MODEL, f"kind {extraction.kind}; {NOT_BUILT_YET}")
 
     # 7-9: the dates, if code could resolve them.
-    if isinstance(resolved, Stay | Window):
+    if isinstance(resolved, Stay | Window | FixedHoliday):
         found = _calendar_rule(hotel, resolved, email.received_at)
         if found is not None:
             return found
@@ -140,6 +141,8 @@ def route(
     # 14.
     if resolved is None:
         return ToAgent("ask_info", "dates of the stay")
+    if isinstance(resolved, FixedHoliday):  # D68: inside the season, ask for dates
+        return ToAgent("ask_info", f"dates for {resolved.key} (a holiday in the season)")
     if isinstance(resolved, NeedsInfo):
         return ToAgent("ask_info", resolved.missing)
     if isinstance(resolved, InvalidDates):
@@ -153,13 +156,19 @@ def _escalate(code: ReasonCode, detail: str) -> Escalate:
     return Escalate((code,), detail)
 
 
-def candidate_nights(dates: Stay | Window) -> tuple[date, ...]:
-    """Every night the request could include: a stay's nights, or a window's
-    candidate nights (`Window.candidate_nights`)."""
-    return dates.nights if isinstance(dates, Stay) else dates.candidate_nights()
+def candidate_nights(dates: Stay | Window | FixedHoliday) -> tuple[date, ...]:
+    """Every night the request could include: a stay's nights, a window's candidate
+    nights (`Window.candidate_nights`), or a fixed-date holiday's days (D68)."""
+    if isinstance(dates, Stay):
+        return dates.nights
+    if isinstance(dates, Window):
+        return dates.candidate_nights()
+    return dates.days()
 
 
-def _calendar_rule(hotel: HotelData, dates: Stay | Window, received_at: datetime) -> Routed | None:
+def _calendar_rule(
+    hotel: HotelData, dates: Stay | Window | FixedHoliday, received_at: datetime
+) -> Routed | None:
     nights = candidate_nights(dates)
     missing = sorted({n.year for n in nights if not hotel.has_calendar_for(n.year)})
     if missing:  # 7. D36: before "closed", which would be a guess

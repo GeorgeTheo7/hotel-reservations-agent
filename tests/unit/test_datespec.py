@@ -246,7 +246,7 @@ def test_weekend_with_other_night_count_asks(nights: int) -> None:
 
 def test_plain_easter_is_orthodox_window() -> None:
     # Eval trap: "Easter" from an English guest, received Nov 2026 -> Orthodox 2 May 2027.
-    result = resolve(HolidayDates("Easter", nights=4), received(2026, 11, 20))
+    result = resolve(HolidayDates("easter", nights=4), received(2026, 11, 20))
     assert result == Window(date(2027, 4, 29), date(2027, 5, 5), 4)
 
 
@@ -257,42 +257,45 @@ def test_orthodox_easter_named_explicitly() -> None:
 
 def test_western_easter_2027_window_is_before_opening() -> None:
     # Eval trap: "Catholic Easter" -> 28 Mar 2027, before the 15 Apr opening -> CLOSED.
-    result = resolve(HolidayDates("Easter", "western", nights=3), received(2026, 11, 20))
+    result = resolve(HolidayDates("easter", "western", nights=3), received(2026, 11, 20))
     assert result == Window(date(2027, 3, 25), date(2027, 3, 31), 3)
     on_sunday = Stay(date(2027, 3, 28), date(2027, 3, 31))
     assert isinstance(check_stay(hotel_data(), on_sunday), Closed)
 
 
 def test_easter_without_nights_asks() -> None:
-    result = resolve(HolidayDates("Easter"), received(2026, 11, 20))
+    result = resolve(HolidayDates("easter"), received(2026, 11, 20))
     assert isinstance(result, NeedsInfo)
 
 
-def test_unknown_holiday_asks_for_dates() -> None:
-    result = resolve(HolidayDates("Christmas", nights=3), received(2026, 11, 20))
+@pytest.mark.parametrize("name", ["15 August", "Dekapentavgoustos", "Halloween"])
+def test_other_holidays_ask_for_dates(name: str) -> None:
+    """D68: only Easter and the fixed-date table are known; 15 August is deliberately
+    not in it."""
+    result = resolve(HolidayDates(name, nights=3), received(2026, 11, 20))
     assert isinstance(result, NeedsInfo)
-    assert "Christmas" in result.missing
+    assert name in result.missing
 
 
 def test_window_starts_today_when_received_inside_it() -> None:
     # Received on Orthodox Easter Monday 2027 (3 May): earlier check-ins are gone.
-    result = resolve(HolidayDates("Easter", nights=2), received(2027, 5, 3))
+    result = resolve(HolidayDates("easter", nights=2), received(2027, 5, 3))
     assert result == Window(date(2027, 5, 3), date(2027, 5, 5), 2)
 
 
 def test_window_over_moves_to_next_year() -> None:
     # Received 6 May 2027, after the window: Easter 2028 (16 Apr) -> NO_CALENDAR later.
-    result = resolve(HolidayDates("Easter", nights=2), received(2027, 5, 6))
+    result = resolve(HolidayDates("easter", nights=2), received(2027, 5, 6))
     assert result == Window(date(2028, 4, 13), date(2028, 4, 19), 2)
 
 
 def test_explicit_easter_year() -> None:
-    result = resolve(HolidayDates("Easter", year=2028, nights=2), received(2026, 11, 20))
+    result = resolve(HolidayDates("easter", year=2028, nights=2), received(2026, 11, 20))
     assert result == Window(date(2028, 4, 13), date(2028, 4, 19), 2)
 
 
 @pytest.mark.parametrize(
-    "spec", [HolidayDates("Easter", year=2150, nights=2), HolidayDates("Easter", nights=0)]
+    "spec", [HolidayDates("easter", year=2150, nights=2), HolidayDates("easter", nights=0)]
 )
 def test_invalid_holiday_requests(spec: HolidayDates) -> None:
     assert isinstance(resolve(spec, received(2026, 11, 20)), InvalidDates)

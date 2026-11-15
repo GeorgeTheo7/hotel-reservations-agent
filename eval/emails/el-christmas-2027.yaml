@@ -25,4 +25,4 @@ labels:
     children: 0
     rooms: 1
     room_type: null
-  route: ask_info          # today's code (D28); becomes decline with D68 (week 4 step 6)
+  route: decline           # D68: every day outside the 2027 season -> decline with it
