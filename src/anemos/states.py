@@ -65,3 +65,12 @@ class TransitionRefused(Exception):
         super().__init__(f"{what} is {current!r}; it cannot become {wanted!r}")
         self.current = current
         self.wanted = wanted
+
+
+class NotFound(LookupError):
+    """No row with the id the caller named (the API turns this into 404).
+
+    A subclass, not plain LookupError, because code also raises LookupError for rows
+    that should exist and do not (a draft without a version): those are bugs, and the
+    API must answer 500 for them, not 404.
+    """

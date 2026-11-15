@@ -38,7 +38,7 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | D16 | MCP: tools first as plain functions in `reservations/`; in wk 9 a thin MCP server exposes **read tools + resources only**, runs under a **read-only DB role** (SELECT + INSERT quotes); agent becomes its own MCP client | Reuse + career signal + a real permission boundary |
 | D17 | One run per email (`thread_id = email_id`), LangGraph checkpoints in Postgres; unanswered 72 h → Expired; newer email from same guest → older draft *superseded*; no auto-send or auto-escalate, ever; resume in-flight runs on startup | A waiting draft is a proposal, not a promise |
 | D18 | Local-first: Docker Compose runs **only Postgres** (pgvector image) until wk 11, then all services; `DEMO_MODE=replay` shows stored runs with no API key; optional manual Azure workflow | $0 hosting; one-command repo for reviewers |
-| D19 | Shared owner password (env var + session cookie); `actor = owner` in audit | Public URL can't approve holds; no user table |
+| D19 | Shared owner password (env var + session cookie); `actor = owner` in audit. Until the password exists (week 7) every API route depends on a `require_owner` hook that lets every request through, so **the API is never deployed or bound to anything but 127.0.0.1 before week 7**; `python -m anemos.api` binds 127.0.0.1 only | Public URL can't approve holds; no user table |
 | D20 | Code uses an injected clock, never `datetime.now()` | Deterministic tests and evaluations |
 | D21 | Test world = **season 2027**: season periods and min-stay rows seeded for 2027, rates per season; test `received_at` between Nov 2026 and Sep 2027; a date without a year resolves to the next future occurrence | The first season the agent would quote; reproducible evaluations |
 | D22 | Expired holds never block: availability queries treat `hold` with `expires_at < now` as free (filter, no write); approval flips them (D10); the periodic job only tidies | Read tools stay read-only; correct from week 3 |
@@ -198,7 +198,7 @@ Held-out numbers are indicative (±~10 pts at n = 30). Budget: dev $2 · dev eva
 | 4 | LLM adapter, extraction, routing, Greek + Greeklish check, smoke set, extraction eval; +12 test emails |
 | 5 | Policies + retrieval + retrieval eval; test that template policy sentences agree with the policy chunks (D39); agent loop; +12 test emails |
 | 6 | Guardrails, redraft, summaries, checkpoints/interrupt, audit log; end-to-end; **measure cost, re-plan**; +12 test emails |
-| 7 | React inbox, detail, actions, holds, password; +12 test emails |
+| 7 | React inbox, detail, actions, holds, password (and with it: protect or switch off FastAPI's `/docs` and `/openapi.json`, which sit outside the `require_owner` hook); +12 test emails |
 | 8 | Monitoring, test set complete (~100), first full dev eval — **v1 feature-complete** |
 | 9 | Improve vs eval; MCP server + read-only role |
 | 10 | Hardening: resume, tidy-up job for expired holds and drafts (re-validation and superseded moved to week 3) |

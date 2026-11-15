@@ -5,8 +5,10 @@ description = "Reservations inbox agent for the fictional Hotel Anemos: drafts r
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",
+    "fastapi>=0.163.0",
     "psycopg[binary]>=3.3.8",
     "tzdata>=2026.6",
+    "uvicorn>=0.54.0",
 ]
 
 [build-system]
@@ -68,6 +70,7 @@ markers = [
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.16.0",
     "hypothesis>=6.170.15",
     "mypy>=2.4.1",
     "pytest>=9.2.0",

@@ -171,3 +171,20 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** `outbox_pending_due_idx` is partial (`WHERE status = 'pending'`); with sequential scans off, the planner can use it just to find pending rows, so its name appears in the plan without its key being used.
 - **Evidence:** `EXPLAIN` of the real query shows `Index Cond: (COALESCE(next_attempt_at, created_at) <= …)` under the index scan; the mutated query only filters. The tightened test fails on the mutation, passes on the real query.
 - **Fix:** the test requires the index condition on the coalesce expression, not the index name; the claim query repeats the index expression exactly in WHERE and ORDER BY. Trade-off: the test reads plan text, so a Postgres version that formats plans differently would need the string updated.
+
+## 2026-11-15 · LookupError means two different things, so the API maps only NotFound to 404
+- **Symptom:** the planned mapping "LookupError → 404" would answer 404 for bugs.
+- **Cause:** `owner_actions` raises LookupError for an unknown id, but `approval.py` also raises it for rows that must exist and do not ("draft has no version", "offers quotes but has no request").
+- **Evidence:** `test_a_plain_lookup_error_is_a_bug_not_404`; the mutation that maps LookupError to 404 fails it.
+- **Fix:** `states.NotFound(LookupError)` for "no such id" only (a subclass, so existing `pytest.raises(LookupError)` still pass); the API maps NotFound to 404 and everything unhandled to a logged 500.
+
+## 2026-11-15 · The owner-hook test calls every route instead of walking `app.routes`
+- **Symptom:** the planned test "every route in `app.routes` depends on `require_owner`" found no routes at all.
+- **Cause:** FastAPI 0.163 keeps an included router as one private `_IncludedRouter` entry instead of copying its routes into `app.routes`.
+- **Evidence:** `app.routes` lists the four documentation routes and one `_IncludedRouter`; walking it would rely on a private class.
+- **Fix:** the test replaces `require_owner` with a dependency that answers 401 and calls every path in the app's OpenAPI description: all must answer 401, before any connection is opened. It is also the week-7 401 test in miniature. Trade-off: a route left out of the OpenAPI description (`include_in_schema=False`) would escape it.
+
+## 2026-11-15 · The default inbox index is partial, so its query must repeat the predicate
+- **Decision:** `emails_visible_received_at_id_idx` covers only `status <> 'set_aside'`; set-aside rows are never read for the default view.
+- **Cost:** the planner uses a partial index only if it can prove the query's WHERE implies the index's, so `inbox_query` writes `e.status <> 'set_aside'` literally; dropping or rewording it silently falls back to another plan.
+- **Evidence:** `test_a_second_inbox_page_seeks_in_its_index` requires the index *and* the `ROW(received_at, id) < ROW(...)` index condition on a page with a cursor; replacing the predicate with TRUE, or the row comparison with an OR of two comparisons, fails it.
