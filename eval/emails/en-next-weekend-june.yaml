@@ -1,0 +1,29 @@
+schema_version: 1
+id: en-next-weekend-june
+split: dev
+tags: [next_weekend, relative_date]
+
+email:
+  from: "Sophie Fictional <sophie@example.test>"
+  subject: "This coming weekend?"
+  received_at: "2027-06-09T08:00:00+00:00"   # Wednesday 11:00 Athens
+  body: |
+    Hello,
+
+    Last-minute question: do you have a standard double for next weekend?
+    Just the two of us.
+
+    Sophie
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec: {kind: relative, phrase: next_weekend, nights: null}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: standard
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 1

@@ -1,0 +1,22 @@
+schema_version: 1
+id: el-greeklish-transfer-policy
+split: held_out
+tags: [greeklish, policy_question, transfer]
+
+email:
+  from: "Eva Fictional <eva@example.test>"
+  subject: "transfer apo to limani"
+  received_at: "2027-03-05T17:00:00+00:00"
+  body: |
+    Geia sas, yparxei transfer apo to limani mexri to ksenodoxeio?
+    Poso kostizei? Eimaste 3 atoma me valitses.
+
+    Eva
+
+labels:
+  language: el
+  script: latin
+  extraction: null
+  route: policy
+  required_tools: [search_policies]
+  # policy_ids: the transfer policy chunk, added in week 5

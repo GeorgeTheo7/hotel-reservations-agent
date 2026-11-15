@@ -1,0 +1,35 @@
+schema_version: 1
+id: en-accessible-wheelchair
+split: dev
+tags: [accessible_room]
+
+email:
+  from: "Helen Fictional <helen@example.test>"
+  subject: "Step-free room"
+  received_at: "2027-02-03T10:10:00+00:00"
+  body: |
+    Dear Hotel Anemos,
+
+    My husband uses a wheelchair, so we need a room with step-free access
+    and a bathroom he can use. We would like to stay from 14 to 18 May 2027.
+    Is that possible, and what is the price?
+
+    Thank you,
+    Helen
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 14, month: 5, year: 2027}
+      check_out: {day: 18, month: 5, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+    flags: [accessibility_need]
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 1

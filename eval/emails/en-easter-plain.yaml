@@ -1,0 +1,30 @@
+schema_version: 1
+id: en-easter-plain
+split: dev
+tags: [easter, holiday_date, window_options]
+
+email:
+  from: "Mark Fictional <mark@example.test>"
+  subject: "Easter break"
+  received_at: "2026-12-10T19:05:00+00:00"
+  body: |
+    Hi there,
+
+    My wife and I would love to spend Easter on Psymithos next year.
+    Could you tell me what a standard double room would cost for 4 nights?
+
+    Best wishes,
+    Mark
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec: {kind: holiday, holiday: easter, tradition: unspecified, year: null, nights: 4}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: standard
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 0

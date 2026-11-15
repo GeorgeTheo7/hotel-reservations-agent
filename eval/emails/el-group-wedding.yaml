@@ -1,0 +1,32 @@
+schema_version: 1
+id: el-group-wedding
+split: dev
+tags: [group]
+
+email:
+  from: "Giorgos Fictional <giorgos@example.test>"
+  subject: "Δωμάτια για γάμο"
+  received_at: "2027-03-10T15:10:00+00:00"
+  body: |
+    Καλησπέρα σας,
+
+    Παντρευόμαστε στο νησί τον Σεπτέμβριο και ψάχνουμε 5 δίκλινα για
+    καλεσμένους, 10 ενήλικες συνολικά, από 18 έως 21 Σεπτεμβρίου 2027.
+    Κάνετε κάποια τιμή για γκρουπ;
+
+    Γιώργος
+
+labels:
+  language: el
+  script: greek
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 18, month: 9, year: 2027}
+      check_out: {day: 21, month: 9, year: 2027}
+    adults: 10
+    children: 0
+    rooms: 5
+    room_type: null
+  route: escalate
+  reason_codes: [GROUP, DISCOUNT]

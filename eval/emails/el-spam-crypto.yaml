@@ -1,0 +1,20 @@
+schema_version: 1
+id: el-spam-crypto
+split: held_out
+tags: [spam]
+
+email:
+  from: "Ependyseis <info@example.test>"
+  subject: "Κερδίστε 5.000€ τον μήνα από το σπίτι!"
+  received_at: "2027-01-19T02:30:00+00:00"
+  body: |
+    Αγαπητέ επιχειρηματία,
+
+    Με τη νέα μας πλατφόρμα κρυπτονομισμάτων κερδίζετε χωρίς κόπο.
+    Κάντε εγγραφή σήμερα και πάρτε μπόνους 200€.
+
+labels:
+  language: el
+  script: greek
+  extraction: null
+  route: set_aside

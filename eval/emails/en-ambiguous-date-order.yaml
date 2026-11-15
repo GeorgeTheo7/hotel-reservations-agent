@@ -1,0 +1,31 @@
+schema_version: 1
+id: en-ambiguous-date-order
+split: held_out
+tags: [ambiguous_date_order]
+
+email:
+  from: "James Fictional <james@example.test>"
+  subject: "Availability"
+  received_at: "2026-12-05T13:00:00+00:00"
+  body: |
+    Hello,
+
+    Please let me know if you have a double room from 05/06 to 08/06/2027
+    for two adults.
+
+    Regards,
+    James
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 5, month: 6, year: 2027, ambiguous_order: true}
+      check_out: {day: 8, month: 6, year: 2027, ambiguous_order: true}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: ask_info

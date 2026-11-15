@@ -1,0 +1,33 @@
+schema_version: 1
+id: el-season-boundary-july
+split: held_out
+tags: [season_boundary]
+
+email:
+  from: "Maria Fictional <maria@example.test>"
+  subject: "Δωμάτιο με θέα θάλασσα, Ιούλιος"
+  received_at: "2027-02-14T12:00:00+00:00"
+  body: |
+    Γεια σας,
+
+    Ενδιαφερόμαστε για ένα δίκλινο με θέα θάλασσα, 12 με 17 Ιουλίου 2027,
+    για δύο ενήλικες. Πόσο κοστίζει;
+
+    Με εκτίμηση,
+    Μαρία
+
+labels:
+  language: el
+  script: greek
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 12, month: 7, year: 2027}
+      check_out: {day: 17, month: 7, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: sea_view
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 1

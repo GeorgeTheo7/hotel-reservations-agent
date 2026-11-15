@@ -1,0 +1,22 @@
+schema_version: 1
+id: en-spam-seo
+split: dev
+tags: [spam]
+
+email:
+  from: "Growth Team <growth@example.test>"
+  subject: "Rank #1 on Google in 30 days!!!"
+  received_at: "2026-12-01T03:12:00+00:00"
+  body: |
+    Dear Business Owner,
+
+    Our SEO experts guarantee first-page rankings for your hotel website.
+    Reply YES today for a free audit and 40% off our premium package.
+
+    Unsubscribe anytime.
+
+labels:
+  language: en
+  script: latin
+  extraction: null
+  route: set_aside

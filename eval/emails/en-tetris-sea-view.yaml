@@ -1,0 +1,41 @@
+schema_version: 1
+id: en-tetris-sea-view
+split: dev
+tags: [tetris_availability, alternatives, world]
+
+email:
+  from: "Ruth Fictional <ruth@example.test>"
+  subject: "Sea view room, early July"
+  received_at: "2027-01-15T11:20:00+00:00"
+  body: |
+    Hello,
+
+    Is a sea view double free from 2 to 5 July 2027 for two adults?
+
+    Thanks,
+    Ruth
+
+# Every sea view room is booked for at least one of the nights 2, 3 and 4 July,
+# but none for all three: free room-nights exist, yet no single room fits the stay.
+world:
+  bookings:
+    - {room: 201, check_in: "2027-07-01", check_out: "2027-07-03", status: confirmed}
+    - {room: 202, check_in: "2027-07-03", check_out: "2027-07-06", status: confirmed}
+    - {room: 203, check_in: "2027-07-04", check_out: "2027-07-07", status: confirmed}
+    - {room: 204, check_in: "2027-07-02", check_out: "2027-07-04", status: confirmed}
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 2, month: 7, year: 2027}
+      check_out: {day: 5, month: 7, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: sea_view
+  route: quote
+  required_tools: [check_availability, suggest_alternatives, quote_price]
+  holds: 0

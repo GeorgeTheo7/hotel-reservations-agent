@@ -1,0 +1,23 @@
+schema_version: 1
+id: el-pets-policy
+split: dev
+tags: [policy_question, pets]
+
+email:
+  from: "Alexandra Fictional <alexandra@example.test>"
+  subject: "Κατοικίδια"
+  received_at: "2027-01-30T14:35:00+00:00"
+  body: |
+    Γεια σας,
+
+    Επιτρέπονται κατοικίδια στο ξενοδοχείο; Έχουμε ένα μικρό σκυλάκι.
+
+    Αλεξάνδρα
+
+labels:
+  language: el
+  script: greek
+  extraction: null
+  route: policy
+  required_tools: [search_policies]
+  # policy_ids: the pets policy chunk, added in week 5

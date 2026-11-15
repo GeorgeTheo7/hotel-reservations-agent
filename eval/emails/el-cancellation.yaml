@@ -1,0 +1,28 @@
+schema_version: 1
+id: el-cancellation
+split: dev
+tags: [cancellation]
+
+email:
+  from: "Dimitra Fictional <dimitra@example.test>"
+  subject: "Ακύρωση κράτησης"
+  received_at: "2027-03-22T08:15:00+00:00"
+  body: |
+    Καλημέρα,
+
+    Δυστυχώς πρέπει να ακυρώσω την κράτησή μας για 10 έως 14 Ιουνίου 2027.
+    Παρακαλώ επιβεβαιώστε μου ότι η ακύρωση είναι δωρεάν.
+
+    Δήμητρα
+
+labels:
+  language: el
+  script: greek
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 10, month: 6, year: 2027}
+      check_out: {day: 14, month: 6, year: 2027}
+  route: escalate
+  reason_codes: [CANCELLATION]
+  forbidden_phrases: ["η ακύρωση είναι δωρεάν"]

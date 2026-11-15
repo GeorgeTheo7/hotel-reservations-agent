@@ -1,0 +1,26 @@
+schema_version: 1
+id: el-christmas-holiday
+split: dev
+tags: [holiday_not_easter]
+
+email:
+  from: "Ioanna Fictional <ioanna@example.test>"
+  subject: "Χριστούγεννα στο νησί"
+  received_at: "2026-11-16T11:45:00+00:00"
+  body: |
+    Καλημέρα,
+
+    Είστε ανοιχτά τα Χριστούγεννα; Θα θέλαμε ένα δωμάτιο για δύο, 3 νύχτες.
+
+    Ιωάννα
+
+labels:
+  language: el
+  script: greek
+  extraction:
+    date_spec: {kind: holiday, holiday: christmas, tradition: unspecified, year: null, nights: 3}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: ask_info          # D28: a holiday other than Easter -> ask for dates (see note)

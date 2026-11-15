@@ -1,0 +1,27 @@
+schema_version: 1
+id: el-short-notice-this-weekend
+split: held_out
+tags: [short_notice, this_weekend, relative_date]
+
+email:
+  from: "Kostas Fictional <kostas@example.test>"
+  subject: "Δωμάτιο για αυτό το Σαββατοκύριακο"
+  received_at: "2027-07-02T07:00:00+00:00"   # Friday 10:00 Athens: always SHORT_NOTICE (D29)
+  body: |
+    Καλημέρα,
+
+    Έχετε κάποιο δίκλινο για αυτό το Σαββατοκύριακο; Δύο άτομα.
+
+    Κώστας
+
+labels:
+  language: el
+  script: greek
+  extraction:
+    date_spec: {kind: relative, phrase: this_weekend, nights: null}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: escalate
+  reason_codes: [SHORT_NOTICE]

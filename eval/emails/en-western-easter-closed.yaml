@@ -1,0 +1,29 @@
+schema_version: 1
+id: en-western-easter-closed
+split: dev
+tags: [easter, western_easter, closed, holiday_date]
+
+email:
+  from: "Claire Fictional <claire@example.test>"
+  subject: "Catholic Easter 2027"
+  received_at: "2027-01-12T08:30:00+00:00"
+  body: |
+    Good morning,
+
+    We are planning a short trip for Catholic Easter 2027 and would like
+    a room for two adults for 3 nights. Do you have anything available?
+
+    Kind regards,
+    Claire
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec: {kind: holiday, holiday: easter, tradition: western, year: 2027, nights: 3}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: decline
+  required_tools: [check_availability]

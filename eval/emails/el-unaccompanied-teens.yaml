@@ -1,0 +1,33 @@
+schema_version: 1
+id: el-unaccompanied-teens
+split: held_out
+tags: [unaccompanied_children]
+
+email:
+  from: "Vasso Fictional <vasso@example.test>"
+  subject: "Κράτηση για τους γιους μου"
+  received_at: "2027-04-02T18:20:00+00:00"
+  body: |
+    Καλησπέρα,
+
+    Οι δύο γιοι μου, 16 και 17 ετών, θα έρθουν μόνοι τους στο νησί.
+    Θα ήθελα ένα δωμάτιο για αυτούς από 3 έως 8 Αυγούστου 2027.
+
+    Ευχαριστώ,
+    Βάσω
+
+labels:
+  language: el
+  script: greek
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 3, month: 8, year: 2027}
+      check_out: {day: 8, month: 8, year: 2027}
+    adults: 0
+    children: 2
+    child_ages: [16, 17]
+    rooms: 1
+    room_type: null
+  route: escalate
+  reason_codes: [UNACCOMPANIED_CHILDREN]

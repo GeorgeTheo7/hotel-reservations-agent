@@ -1,0 +1,21 @@
+schema_version: 1
+id: en-thread-reply
+split: held_out
+tags: [thread_reply]
+
+email:
+  from: "Anna Fictional <anna@example.test>"
+  subject: "Re: Sea view room in June"
+  received_at: "2026-11-21T08:05:00+00:00"
+  in_reply_to: "<outbox-1@anemos.invalid>"
+  body: |
+    Thank you! Yes, please go ahead and book it. Do you need my card details?
+
+    Anna
+
+labels:
+  language: en
+  script: latin
+  extraction: null
+  route: escalate
+  reason_codes: [THREAD_REPLY]

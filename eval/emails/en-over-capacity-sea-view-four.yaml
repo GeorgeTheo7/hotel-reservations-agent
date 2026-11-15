@@ -1,0 +1,33 @@
+schema_version: 1
+id: en-over-capacity-sea-view-four
+split: held_out
+tags: [over_capacity, other_type]
+
+email:
+  from: "Tom Fictional <tom@example.test>"
+  subject: "Room for four friends"
+  received_at: "2027-02-20T16:45:00+00:00"
+  body: |
+    Hi,
+
+    Four of us (all adults) are coming for a long weekend, 8 to 11 June 2027.
+    We'd like to share one sea view room if possible. What would it cost?
+
+    Cheers,
+    Tom
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 8, month: 6, year: 2027}
+      check_out: {day: 11, month: 6, year: 2027}
+    adults: 4
+    children: 0
+    rooms: 1
+    room_type: sea_view
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 0

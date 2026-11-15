@@ -1,0 +1,33 @@
+schema_version: 1
+id: el-greeklish-quote-june
+split: dev
+tags: [greeklish]
+
+email:
+  from: "Panos Fictional <panos@example.test>"
+  subject: "Kratisi Iounio"
+  received_at: "2027-02-08T21:10:00+00:00"
+  body: |
+    Kalispera sas,
+
+    tha thelame ena diklino gia 2 atoma apo 10 eos 14 Iouniou 2027.
+    Poso kanei?
+
+    Eyxaristo,
+    Panos
+
+labels:
+  language: el
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 10, month: 6, year: 2027}
+      check_out: {day: 14, month: 6, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 1

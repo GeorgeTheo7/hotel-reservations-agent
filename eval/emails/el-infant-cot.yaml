@@ -1,0 +1,34 @@
+schema_version: 1
+id: el-infant-cot
+split: dev
+tags: [infant_cot]
+
+email:
+  from: "Katerina Fictional <katerina@example.test>"
+  subject: "Δωμάτιο με βρεφική κούνια"
+  received_at: "2027-01-08T09:25:00+00:00"
+  body: |
+    Καλημέρα σας,
+
+    Είμαστε ένα ζευγάρι με το μωρό μας, 10 μηνών. Θα θέλαμε ένα δίκλινο
+    standard με βρεφική κούνια από 1 έως 5 Ιουνίου 2027.
+
+    Ευχαριστούμε πολύ,
+    Κατερίνα
+
+labels:
+  language: el
+  script: greek
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 1, month: 6, year: 2027}
+      check_out: {day: 5, month: 6, year: 2027}
+    adults: 2
+    children: 1
+    child_ages: [0]
+    rooms: 1
+    room_type: standard
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 1

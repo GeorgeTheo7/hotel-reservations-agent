@@ -1,0 +1,32 @@
+schema_version: 1
+id: en-mid-august-min-stay
+split: dev
+tags: [min_stay_10_20_aug, min_stay_version]
+
+email:
+  from: "Daniel Fictional <daniel@example.test>"
+  subject: "3 nights in August"
+  received_at: "2027-01-20T09:40:00+00:00"
+  body: |
+    Hello,
+
+    We are two adults looking for a standard room from 12 to 15 August 2027.
+    How much would that be?
+
+    Daniel
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 12, month: 8, year: 2027}
+      check_out: {day: 15, month: 8, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: standard
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 0

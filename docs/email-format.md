@@ -70,6 +70,10 @@ Optional keys: `tags`, `in_reply_to`, `world`, `nights`, `year`, `ambiguous_orde
 `flags`, `reason_codes`, `required_tools`, `policy_ids`, `holds`, `forbidden_phrases`
 (all default to empty, null, false or 0).
 
+An email with no request but with a flag (e.g. a complaint with a legal threat) sets
+`extraction` to just the flags, `extraction: {flags: [legal_threat]}`; `extraction: null`
+is for an email with neither (spam, a pure question).
+
 Not labels: expected prices (computed by the unit-tested pricing code from the gold
 extraction) and summaries (week 6).
 

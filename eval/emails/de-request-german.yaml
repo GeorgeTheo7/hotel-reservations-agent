@@ -1,0 +1,32 @@
+schema_version: 1
+id: de-request-german
+split: dev
+tags: [other_language]
+
+email:
+  from: "Jonas Fictional <jonas@example.test>"
+  subject: "Zimmeranfrage Juni 2027"
+  received_at: "2027-01-05T09:00:00+00:00"
+  body: |
+    Guten Tag,
+
+    wir suchen ein Doppelzimmer mit Meerblick für zwei Erwachsene vom
+    15. bis 19. Juni 2027. Was würde das kosten?
+
+    Viele Grüße
+    Jonas
+
+labels:
+  language: de
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 15, month: 6, year: 2027}
+      check_out: {day: 19, month: 6, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: sea_view
+  route: escalate
+  reason_codes: [LANGUAGE]

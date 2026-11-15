@@ -1,0 +1,32 @@
+schema_version: 1
+id: en-late-arrival
+split: dev
+tags: [late_arrival]
+
+email:
+  from: "Peter Fictional <peter@example.test>"
+  subject: "Booking in September, late arrival"
+  received_at: "2027-03-02T07:50:00+00:00"
+  body: |
+    Hello,
+
+    We'd like a standard double for two adults from 20 to 24 September 2027.
+    Our ferry only arrives at 23:40, so we would check in around midnight.
+    Is that a problem?
+
+    Peter
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 20, month: 9, year: 2027}
+      check_out: {day: 24, month: 9, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: standard
+  route: escalate
+  reason_codes: [LATE_ARRIVAL]

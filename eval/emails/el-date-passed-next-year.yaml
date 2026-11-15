@@ -1,0 +1,33 @@
+schema_version: 1
+id: el-date-passed-next-year
+split: dev
+tags: [date_passed_next_year]
+
+email:
+  from: "Nikos Fictional <nikos@example.test>"
+  subject: "Δωμάτιο τον Οκτώβριο"
+  received_at: "2026-11-28T17:30:00+00:00"   # 20 October 2026 has passed: resolves to 2027
+  body: |
+    Καλησπέρα,
+
+    Θα θέλαμε ένα δίκλινο standard για δύο άτομα, από 20 έως 23 Οκτωβρίου.
+    Μπορείτε να μου πείτε την τιμή;
+
+    Ευχαριστώ,
+    Νίκος
+
+labels:
+  language: el
+  script: greek
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 20, month: 10}
+      check_out: {day: 23, month: 10}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: standard
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 1
