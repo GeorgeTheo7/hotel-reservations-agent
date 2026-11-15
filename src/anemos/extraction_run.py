@@ -1,7 +1,8 @@
 """Extraction of one email, under D65's transaction boundaries.
 
 1. Claim (short transaction, committed): the sender lock (D61), then the email must be
-   `received`; it becomes `processing`.
+   `received`; it becomes `processing`. A thread reply (`in_reply_to` set) is escalated
+   THREAD_REPLY in this same transaction and the run ends: no model call (D70).
 2. The model call, with no transaction open and no lock held. The email's subject and
    body go between <email> markers as untrusted data; the model is never given today's
    date or received_at (D6): code resolves dates later.
@@ -29,12 +30,14 @@ from psycopg.types.range import Range
 from anemos.audit import AuditEvent, write_audit
 from anemos.clock import Clock
 from anemos.extraction import ExtractionOutput
-from anemos.inbox import lock_sender
+from anemos.inbox import escalate, lock_sender
 from anemos.llm.adapter import LLM, Prompt
 from anemos.prompts import CURRENT_EXTRACTION, PromptSpec
 from anemos.reservations.datespec import resolve
 from anemos.reservations.errors import ReasonCode
+from anemos.reservations.loader import load_hotel_data
 from anemos.reservations.model import Stay
+from anemos.routing import EmailFacts, Escalate, Routed, SetAside, ToAgent, route
 from anemos.states import EmailStatus, NotFound, TransitionRefused
 
 type Conn = psycopg.Connection[TupleRow]
@@ -55,6 +58,7 @@ class Claimed:
     subject: str
     clean_body: str
     received_at: datetime
+    in_reply_to: str | None = None
 
 
 @dataclass(frozen=True)
@@ -87,17 +91,17 @@ def claim(conn: Conn, clock: Clock, email_id: int) -> Claimed:
         raise NotFound(f"no email {email_id}")
     lock_sender(conn, row[0])
     found = conn.execute(
-        "SELECT status, from_address, subject, clean_body, received_at FROM emails"
-        " WHERE id = %s FOR UPDATE",
+        "SELECT status, from_address, subject, clean_body, received_at, in_reply_to"
+        " FROM emails WHERE id = %s FOR UPDATE",
         (email_id,),
     ).fetchone()
     assert found is not None  # emails are never deleted (D51)
-    status, address, subject, body, received_at = found
+    status, address, subject, body, received_at, in_reply_to = found
     if status != EmailStatus.RECEIVED:
         raise TransitionRefused("email", email_id, status, EmailStatus.PROCESSING, action="extract")
     conn.execute("UPDATE emails SET status = %s WHERE id = %s", (EmailStatus.PROCESSING, email_id))
     write_audit(conn, clock.now(), "system", AuditEvent.EMAIL_PROCESSING, email_id=email_id)
-    return Claimed(email_id, address, subject, body, received_at)
+    return Claimed(email_id, address, subject, body, received_at, in_reply_to)
 
 
 def store_extraction(conn: Conn, clock: Clock, claimed: Claimed, out: ExtractionOutput) -> None:
@@ -131,6 +135,15 @@ def process_email(
 ) -> RunResult:
     with connect() as conn:  # 1. claim
         claimed = claim(conn, clock, email_id)
+        if claimed.in_reply_to is not None:
+            # Thread replies are routed before extraction: no model call (D70 rule 1).
+            decision = route(EmailFacts(claimed.received_at, claimed.in_reply_to), None, None,
+                             load_hotel_data(conn))  # fmt: skip
+            assert isinstance(decision, Escalate), decision
+            record_route(conn, clock.now(), email_id, decision)
+            escalate(conn, clock.now(), email_id, decision.codes, decision.detail, actor="system")
+            conn.commit()
+            return RunResult(email_id, "escalated", None)
         conn.commit()
 
     extraction: ExtractionOutput | None = None  # 2. the model, nothing held
@@ -168,14 +181,20 @@ def process_email(
 
 
 def _escalate_system_error(conn: Conn, now: datetime, email_id: int, error: str) -> None:
-    conn.execute(
-        "UPDATE emails SET status = %s, reason_codes = %s WHERE id = %s",
-        (EmailStatus.ESCALATED, [ReasonCode.SYSTEM_ERROR.value], email_id),
-    )
-    write_audit(
-        conn, now, "system", AuditEvent.EMAIL_ESCALATED, email_id=email_id,
-        output={"reason": ReasonCode.SYSTEM_ERROR.value, "detail": error},
-    )  # fmt: skip
+    escalate(conn, now, email_id, (ReasonCode.SYSTEM_ERROR,), error, actor="system")
+
+
+def record_route(conn: Conn, now: datetime, email_id: int, decision: Routed) -> None:
+    """The router's decision, audited for every routed email (D70): the eval and the
+    monitoring compare it with what the email ended as."""
+    match decision:
+        case SetAside():
+            output: dict[str, object] = {"outcome": "set_aside"}
+        case Escalate(codes=codes, detail=detail):
+            output = {"outcome": "escalate", "codes": [c.value for c in codes], "detail": detail}
+        case ToAgent(route=agent_route, detail=detail):
+            output = {"outcome": "to_agent", "route": agent_route, "detail": detail}
+    write_audit(conn, now, "system", AuditEvent.EMAIL_ROUTED, email_id=email_id, output=output)
 
 
 def _discarded(connect: Callable[[], Conn], clock: Clock, email_id: int, status: str) -> None:

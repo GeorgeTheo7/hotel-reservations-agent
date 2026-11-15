@@ -24,6 +24,8 @@ class AuditEvent(StrEnum):
     EMAIL_CLOSED = "email.closed"
     EMAIL_REOPENED = "email.reopened"
     EMAIL_ACTION_REFUSED = "email.action_refused"
+    EMAIL_ROUTED = "email.routed"
+    EMAIL_SET_ASIDE = "email.set_aside"
     DRAFT_CREATED = "draft.created"
     DRAFT_EDITED = "draft.edited"
     DRAFT_REJECTED = "draft.rejected"
@@ -65,10 +67,13 @@ LLM_EVENTS = frozenset(
 )
 
 
-# Written only by a run whose email changed while the model was working (D65). The
-# cross-rules scenario runs no model, so it never writes it;
-# tests/integration/test_extraction_run.py covers it.
-RUN_EVENTS = frozenset({AuditEvent.RUN_DISCARDED})
+# Written only by a run (extraction and routing, anemos.run): a run whose email changed
+# while the model was working (D65), the router's decision for every email (D70), and
+# set-aside spam. The cross-rules scenario runs no model, so it never writes them;
+# tests/integration/test_extraction_run.py and test_run.py cover them.
+RUN_EVENTS = frozenset(
+    {AuditEvent.RUN_DISCARDED, AuditEvent.EMAIL_ROUTED, AuditEvent.EMAIL_SET_ASIDE}
+)
 
 
 def write_audit(

@@ -11,15 +11,17 @@ take the same per-sender lock (`lock_sender`) first, so they run one after anoth
 for one address and never block other senders.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 import psycopg
 from psycopg.rows import TupleRow
 
-from anemos.audit import AuditEvent, write_audit
+from anemos.audit import Actor, AuditEvent, write_audit
 from anemos.clock import Clock
 from anemos.mailbox import IncomingEmail, Mailbox
+from anemos.reservations.errors import ReasonCode
 from anemos.states import DraftStatus, EmailStatus
 
 type Conn = psycopg.Connection[TupleRow]
@@ -139,3 +141,25 @@ def ingest(connect: Callable[[], Conn], clock: Clock, mailbox: Mailbox) -> list[
             with conn.transaction():
                 results.append(store_email(conn, clock, email))
     return results
+
+
+def escalate(
+    conn: Conn, now: datetime, email_id: int, codes: Sequence[ReasonCode], detail: str,
+    *, actor: Actor,
+) -> None:  # fmt: skip
+    """processing -> escalated with every reason code (spec Escalation rules), audited.
+    The caller holds the sender lock and has checked the status."""
+    values = [code.value for code in codes]
+    conn.execute(
+        "UPDATE emails SET status = %s, reason_codes = %s WHERE id = %s",
+        (EmailStatus.ESCALATED, values, email_id),
+    )
+    write_audit(conn, now, actor, AuditEvent.EMAIL_ESCALATED, email_id=email_id,
+                output={"reason": values[0], "reasons": values, "detail": detail})  # fmt: skip
+
+
+def set_aside(conn: Conn, now: datetime, email_id: int) -> None:
+    """processing -> set_aside (spam: no draft, no reply; found through the inbox
+    filter, D50), audited."""
+    conn.execute("UPDATE emails SET status = %s WHERE id = %s", (EmailStatus.SET_ASIDE, email_id))
+    write_audit(conn, now, "system", AuditEvent.EMAIL_SET_ASIDE, email_id=email_id)

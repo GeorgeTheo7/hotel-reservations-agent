@@ -99,24 +99,40 @@ class Escalated:
 
 
 def draft_reply(conn: Conn, hotel: HotelData, clock: Clock, email_id: int) -> Drafted | Escalated:
+    """Claim a `received` email (received -> processing) and draft it: the stub on its
+    own, without extraction or routing (tests; week 3)."""
     row = conn.execute("SELECT from_address FROM emails WHERE id = %s", (email_id,)).fetchone()
     if row is None:
         raise LookupError(f"no email {email_id}")
     lock_sender(conn, row[0])  # D61: before reading anything that superseding changes
     email = conn.execute(
-        "SELECT status, language, received_at FROM emails WHERE id = %s FOR UPDATE",
+        "SELECT status FROM emails WHERE id = %s FOR UPDATE", (email_id,)
+    ).fetchone()
+    if email is None:
+        raise LookupError(f"no email {email_id}")
+    if email[0] != EmailStatus.RECEIVED:
+        raise TransitionRefused(
+            "email", email_id, email[0], EmailStatus.PROCESSING, action="draft_reply"
+        )
+    _set_email(conn, email_id, EmailStatus.PROCESSING)
+    write_audit(conn, clock.now(), "system", AuditEvent.EMAIL_PROCESSING, email_id=email_id)
+    return draft_claimed(conn, hotel, clock, email_id)
+
+
+def draft_claimed(conn: Conn, hotel: HotelData, clock: Clock, email_id: int) -> Drafted | Escalated:
+    """Draft an email that is already `processing`, its sender lock held by the caller
+    (D61): the run's final transaction after routing, or `draft_reply`."""
+    email = conn.execute(
+        "SELECT status, from_address, language, received_at FROM emails WHERE id = %s FOR UPDATE",
         (email_id,),
     ).fetchone()
     if email is None:
         raise LookupError(f"no email {email_id}")
-    status, language, received_at = email
-    if status != EmailStatus.RECEIVED:
-        raise TransitionRefused(
-            "email", email_id, status, EmailStatus.PROCESSING, action="draft_reply"
-        )
+    status, from_address, language, received_at = email
+    if status != EmailStatus.PROCESSING:
+        raise TransitionRefused("email", email_id, status, EmailStatus.AWAITING_APPROVAL,
+                                action="draft")  # fmt: skip
     now = clock.now()
-    _set_email(conn, email_id, EmailStatus.PROCESSING)
-    write_audit(conn, now, "system", AuditEvent.EMAIL_PROCESSING, email_id=email_id)
 
     request_row = conn.execute(
         "SELECT id FROM requests WHERE email_id = %s", (email_id,)
@@ -170,7 +186,7 @@ def draft_reply(conn: Conn, hotel: HotelData, clock: Clock, email_id: int) -> Dr
         detail = "; ".join(str(r) for r in results.values() if r is not True)
         return _escalate(conn, now, email_id, Escalated(ReasonCode.GUARDRAIL_FAIL, detail))
 
-    newer = _newer_email_exists(conn, row[0], received_at, email_id)
+    newer = _newer_email_exists(conn, from_address, received_at, email_id)
     draft_status = DraftStatus.SUPERSEDED if newer else DraftStatus.PENDING_APPROVAL
     draft_id = _insert_draft(conn, now, email_id, request_id, route, draft_status)
     conn.execute(
