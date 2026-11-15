@@ -18,7 +18,7 @@ from anemos.extraction import ExtractionOutput, OutApproximate, OutExact, OutHol
 from anemos.extraction_run import EMAIL_CLOSE, EMAIL_OPEN, build_prompt, delimited_email
 from anemos.llm.adapter import Settings
 from anemos.llm.openai_client import OpenAIClient, text_format
-from anemos.prompts import EXTRACTION_V1, PROMPTS, content_hash
+from anemos.prompts import EXTRACTION_V1, PROMPTS
 
 pytestmark = pytest.mark.unit
 
@@ -131,7 +131,7 @@ def test_the_schema_sent_obeys_openais_strict_rules() -> None:
 def test_a_pinned_prompt_file_is_never_edited(spec: Any) -> None:
     """A change to the prompt or its schema is a new version, so prompt_version names
     exactly what the model was sent."""
-    assert content_hash(spec.text(), spec.schema) == spec.sha256_8, (
+    assert spec.current_hash() == spec.sha256_8, (
         f"{spec.file} changed: add a new version instead of editing it"
     )
 
@@ -238,5 +238,5 @@ def test_the_schema_is_sent_strict_and_a_gold_reply_parses() -> None:
     assert schema["strict"] is True
     assert set(schema["schema"]["required"]) == fields(ExtractionOutput)
     assert body["max_output_tokens"] == 600
-    assert body["reasoning"] == {"effort": "minimal"}
+    assert body["reasoning"] == {"effort": "none"}
     assert greek.email.body in body["input"]  # the Greek text, untranslated

@@ -81,16 +81,24 @@ class Result[T: BaseModel]:
 class ClientError(Exception):
     """A failed attempt. `usage` is set if the response reported tokens anyway (e.g. a
     refusal), so the budget is settled with the real cost. `cost_unknown`: a response
-    arrived but its usage could not be read, so the budget keeps the reserved maximum."""
+    arrived but its usage could not be read, so the budget keeps the reserved maximum.
+    `request_refused`: the API refused the request itself (a 4xx other than 429: a bad
+    schema, an unsupported setting, a bad key), so sending it again cannot help."""
 
     transient = False
 
     def __init__(
-        self, message: str, usage: Usage | None = None, *, cost_unknown: bool = False
+        self,
+        message: str,
+        usage: Usage | None = None,
+        *,
+        cost_unknown: bool = False,
+        request_refused: bool = False,
     ) -> None:
         super().__init__(message)
         self.usage = usage
         self.cost_unknown = cost_unknown
+        self.request_refused = request_refused
 
 
 class TransientError(ClientError):

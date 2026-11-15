@@ -87,7 +87,9 @@ class OpenAIClient:
         except openai.APIStatusError as exc:
             if exc.status_code == 429 or exc.status_code >= 500:
                 raise TransientError(f"HTTP {exc.status_code}: {exc.message}") from exc
-            raise PermanentError(f"HTTP {exc.status_code}: {exc.message}") from exc
+            raise PermanentError(
+                f"HTTP {exc.status_code}: {exc.message}", request_refused=True
+            ) from exc
         except (openai.APIResponseValidationError, pydantic.ValidationError, ValueError) as exc:
             # A reply arrived, but it could not be read at all: tokens spent, amount unknown.
             raise PermanentError(f"unreadable reply: {exc}", cost_unknown=True) from exc

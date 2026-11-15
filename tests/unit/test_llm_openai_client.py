@@ -99,8 +99,9 @@ def test_the_reasoning_effort_is_sent_when_set() -> None:
 @pytest.mark.parametrize("status", [429, 500, 503])
 def test_rate_limits_and_server_errors_are_transient(status: int) -> None:
     handler, _ = answering(httpx2.Response(status, json={"error": {"message": "busy"}}))
-    with pytest.raises(TransientError, match=f"HTTP {status}"):
+    with pytest.raises(TransientError, match=f"HTTP {status}") as error:
         client(handler).send(PROMPT, Out, SETTINGS)
+    assert error.value.request_refused is False
 
 
 @pytest.mark.parametrize("status", [400, 401, 404])
@@ -109,6 +110,7 @@ def test_other_statuses_are_permanent(status: int) -> None:
     with pytest.raises(PermanentError, match=f"HTTP {status}") as error:
         client(handler).send(PROMPT, Out, SETTINGS)
     assert (error.value.usage, error.value.cost_unknown) == (None, False)
+    assert error.value.request_refused is True  # the request itself: never worth repeating
 
 
 @pytest.mark.parametrize(
@@ -127,6 +129,7 @@ def test_an_incomplete_reply_is_permanent_and_billed() -> None:
         status="incomplete", incomplete_details={"reason": "max_output_tokens"})))  # fmt: skip
     with pytest.raises(PermanentError, match="incomplete: max_output_tokens") as error:
         client(handler).send(PROMPT, Out, SETTINGS)
+    assert error.value.request_refused is False  # the reply, not the request
     assert error.value.usage == Usage(120, 20, 30, 4)
 
 

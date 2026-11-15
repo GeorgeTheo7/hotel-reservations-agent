@@ -23,7 +23,7 @@ from typing import Any
 from anemos.email_cases import EmailCase, load_cases
 from anemos.extraction import ExtractionOutput
 from anemos.extraction_run import build_prompt
-from anemos.llm.adapter import LLM, LLMError
+from anemos.llm.adapter import LLM, ClientError, LLMError
 from anemos.llm.budget import BudgetExceeded
 from anemos.prompts import PromptSpec
 from anemos.reservations.datespec import resolve
@@ -93,13 +93,15 @@ class Row:
     fields: dict[str, bool] | None = None  # None: the call failed
     output: dict[str, Any] | None = None
     error: str | None = None
+    stops_run: bool = False  # the API refused the request: the run stopped here
 
 
 def run_cases(
     llm: LLM, cases: Sequence[EmailCase], spec: PromptSpec, *, step: str, repeat: int = 1
 ) -> list[Row]:
-    """Each case `repeat` times. A failed call is a row with its error; an exhausted
-    budget ends the run (the rows so far are kept)."""
+    """Each case `repeat` times. A failed call is a row with its error. Two failures end
+    the run (the rows so far are kept): an exhausted budget, and a request the API
+    refused (4xx: a bad schema or setting), which every later call would repeat."""
     settings = replace(llm.settings, max_output_tokens=spec.max_output_tokens,
                        reasoning_effort=spec.reasoning_effort)  # fmt: skip
     rows: list[Row] = []
@@ -115,7 +117,10 @@ def run_cases(
                 rows.append(Row(case.id, settings.model, error=f"BudgetExceeded: {exc}"))
                 return rows
             except LLMError as exc:
-                rows.append(Row(case.id, settings.model, error=str(exc)))
+                refused = isinstance(exc.__cause__, ClientError) and exc.__cause__.request_refused
+                rows.append(Row(case.id, settings.model, error=str(exc), stops_run=refused))
+                if refused:  # the same request would be refused again: stop, don't repeat it
+                    return rows
                 continue
             u = result.usage
             rows.append(Row(
@@ -194,6 +199,8 @@ def report(rows: Sequence[Row], summary: Summary) -> str:
             f"{r.cost_micro_usd:>6} {r.latency_ms:>6}"
         )
         lines.append(f"{r.case_id:32} {numbers}  {wrong}")
+    if rows and rows[-1].stops_run:
+        lines.append("STOPPED: the API refused the request; fix the request or setting, rerun")
     lines.append("")
     lines.append(f"calls {summary.calls}, failed {summary.failed}, cost "
                  f"{summary.cost_micro_usd} µ$ (${summary.cost_micro_usd / 1_000_000:.4f}), "

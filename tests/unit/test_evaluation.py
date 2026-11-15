@@ -24,7 +24,7 @@ from anemos.evaluation import (
     summarise,
 )
 from anemos.extraction import ExtractionOutput
-from anemos.llm.adapter import LLM, Prompt, Settings, TransientError
+from anemos.llm.adapter import LLM, PermanentError, Prompt, Settings, TransientError
 from anemos.llm.budget import Budget
 from anemos.llm.fake import Answer, ScriptedClient, Step
 from anemos.llm.pricing import Usage
@@ -161,7 +161,7 @@ def test_the_calls_use_the_prompts_settings(tmp_path: Path) -> None:
     run_cases(LLM(client, Settings("gpt-6-luna", 100), Budget(clock, 10**6, tmp_path / "s.jsonl"),
                   None, clock), cases, EXTRACTION_V1, step="eval-smoke")  # fmt: skip
     [sent] = client.sent
-    assert (sent.settings.max_output_tokens, sent.settings.reasoning_effort) == (600, "minimal")
+    assert (sent.settings.max_output_tokens, sent.settings.reasoning_effort) == (600, "none")
 
 
 def test_a_failed_call_is_a_row_and_the_run_goes_on(tmp_path: Path) -> None:
@@ -295,3 +295,32 @@ def test_repeats_that_differ_or_fail_are_reported_per_case(tmp_path: Path) -> No
     assert "el-injection-greek               differs in failed call" in printed
     assert "el-greeklish-quote-june          same" in printed
     assert printed.endswith("consistent cases: 3/5")
+
+
+# --- fail fast: a refused request is not repeated --------------------------------------
+
+
+def test_a_refused_request_stops_the_run_at_once(tmp_path: Path) -> None:
+    """A 400 for the schema or a setting would be the same for every call: one row,
+    the error printed, no further calls."""
+    refused = PermanentError("HTTP 400: 'minimal' is not supported", request_refused=True)
+    client = ScriptedClient.of([refused])
+    clock = FixedClock(NOW)
+    agent = LLM(client, Settings("gpt-6-luna", 100), Budget(clock, 10**6, tmp_path / "s.jsonl"),
+                None, clock)  # fmt: skip
+    rows = run_cases(agent, smoke(), EXTRACTION_V1, step="eval-smoke", repeat=3)
+    assert len(rows) == 1 and len(client.sent) == 1
+    assert rows[0].stops_run and "not supported" in (rows[0].error or "")
+    printed = report(rows, summarise(rows))
+    assert "STOPPED: the API refused the request" in printed
+    assert "not supported" in printed
+
+
+def test_a_bad_reply_does_not_stop_the_run(tmp_path: Path) -> None:
+    """An unparsable or cut-off reply is about the model's output, not the request:
+    the run goes on to the other cases."""
+    cases = smoke()[:2]
+    steps: list[Step] = [PermanentError("unparsable reply: ...", USAGE), answers_by_email(cases)]
+    rows = run_cases(llm(steps, tmp_path), cases, EXTRACTION_V1, step="eval-smoke")
+    assert [r.stops_run for r in rows] == [False, False]
+    assert rows[1].fields == dict.fromkeys(FIELDS, True)
