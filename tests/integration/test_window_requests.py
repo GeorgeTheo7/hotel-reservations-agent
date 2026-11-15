@@ -276,3 +276,20 @@ def test_window_fully_taken_declines_naming_only_that_room_type(
     assert "not have enough Standard Double rooms free for any check-in date" in body
     assert "week" not in body
     assert "no suitable room" not in body
+
+
+def test_two_room_window_summary_names_the_rooms_and_type(
+    db: Conn, rows: Rows, hotel: HotelData
+) -> None:
+    request_id = window_request(
+        rows, easter(), EASTER_RECEIVED, adults=4, rooms=2, room_type_id="sea_view"
+    )
+    row = db.execute("SELECT email_id FROM requests WHERE id = %s", (request_id,)).fetchone()
+    assert row is not None
+    result = draft_reply(db, hotel, CLOCK, row[0])
+    assert isinstance(result, Drafted) and result.route == "quote"
+    body = db.execute(
+        "SELECT body FROM draft_versions WHERE draft_id = %s", (result.draft_id,)
+    ).fetchone()
+    assert body is not None
+    assert "Your request: Sea View Double, 2 rooms, check-in between" in body[0]

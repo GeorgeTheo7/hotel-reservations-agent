@@ -59,6 +59,7 @@ from anemos.reservations.quote_template import (
     RoomTypeChange,
     RoomTypeUnavailableChange,
     WindowOptionChange,
+    WindowRequest,
     date_with_article,
     render_quote_block,
     render_request_summary,
@@ -308,7 +309,11 @@ def _render(
 
 def _summary(hotel: HotelData, loaded: LoadedRequest | LoadedWindow, lang: Lang) -> str:
     """{{REQUEST_SUMMARY}}: the stay, or for a window its check-in range (guardrail 3)."""
-    asked = loaded.window if isinstance(loaded, LoadedWindow) else loaded.request
+    asked = (
+        WindowRequest(loaded.window, loaded.rooms, loaded.room_type_id)
+        if isinstance(loaded, LoadedWindow)
+        else loaded.request
+    )
     return render_request_summary(hotel, asked, loaded.party, lang)
 
 

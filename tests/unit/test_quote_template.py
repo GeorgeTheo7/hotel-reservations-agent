@@ -27,6 +27,7 @@ from anemos.reservations.quote_template import (
     RoomTypeChange,
     RoomTypeUnavailableChange,
     WindowOptionChange,
+    WindowRequest,
     render_hold_until,
     render_quote_block,
     render_request_summary,
@@ -185,7 +186,7 @@ def test_greek_weekday_article_for_saturday() -> None:
 
 
 def test_summary_for_an_easter_window() -> None:
-    window = Window(date(2027, 4, 29), date(2027, 5, 5), 4)
+    window = WindowRequest(Window(date(2027, 4, 29), date(2027, 5, 5), 4))
     en = render_request_summary(HOTEL, window, Party.of(2), "en")
     el = render_request_summary(HOTEL, window, Party.of(2), "el")
     assert en == (
@@ -196,6 +197,18 @@ def test_summary_for_an_easter_window() -> None:
         "Το αίτημά σας: 1 δωμάτιο, άφιξη από Πέμπτη 29 Απριλίου 2027 έως"
         " Τετάρτη 5 Μαΐου 2027, 4 νύχτες, 2 ενήλικες."
     )
+
+
+def test_summary_for_a_two_room_window_names_the_rooms_and_type() -> None:
+    window = Window(date(2027, 6, 21), date(2027, 6, 30), 7)
+    request = WindowRequest(window, rooms=2, room_type_id="sea_view")
+    en = render_request_summary(HOTEL, request, Party.of(4), "en")
+    el = render_request_summary(HOTEL, request, Party.of(4), "el")
+    assert en == (
+        "Your request: Sea View Double, 2 rooms, check-in between Monday 21 June 2027 and"
+        " Wednesday 30 June 2027, 7 nights, 4 adults."
+    )
+    assert el.startswith("Το αίτημά σας: Δίκλινο με θέα θάλασσα, 2 δωμάτια, άφιξη από")
 
 
 def test_summary_without_room_type() -> None:

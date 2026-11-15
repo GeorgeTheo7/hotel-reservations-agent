@@ -141,23 +141,33 @@ def render_quote_block(
     return _render_file(f"quote_{lang}.txt", values)
 
 
+@dataclass(frozen=True)
+class WindowRequest:
+    """What the guest asked for when the dates are a check-in window (D7, D28): the
+    same rooms and room type as a RoomRequest, with a window instead of a stay."""
+
+    window: Window
+    rooms: int = 1
+    room_type_id: str | None = None  # None = the guest named no type
+
+
 def render_request_summary(
-    hotel: HotelData, request: RoomRequest | Window, party: Party, lang: Lang
+    hotel: HotelData, request: RoomRequest | WindowRequest, party: Party, lang: Lang
 ) -> str:
     """What the guest asked for, with dates resolved in full (guardrail 3)."""
+    what = count(request.rooms, "room", lang)
+    if request.room_type_id is not None:
+        what = f"{room_type_name(hotel.room_types[request.room_type_id], lang)}, {what}"
     if isinstance(request, RoomRequest):
-        what = count(request.rooms, "room", lang)
-        if request.room_type_id is not None:
-            what = f"{room_type_name(hotel.room_types[request.room_type_id], lang)}, {what}"
         dates = format_stay(request.stay, lang)
     else:
-        what = count(1, "room", lang)
+        window = request.window
         dates = _phrase(
             lang,
             "window",
-            first=format_date(request.first_check_in, lang),
-            last=format_date(request.last_check_in, lang),
-            nights=count(request.nights, "night", lang),
+            first=format_date(window.first_check_in, lang),
+            last=format_date(window.last_check_in, lang),
+            nights=count(window.nights, "night", lang),
         )
     values = {"what": what, "dates": dates, "party": format_party(party, lang)}
     return _render_file(f"summary_{lang}.txt", values)
