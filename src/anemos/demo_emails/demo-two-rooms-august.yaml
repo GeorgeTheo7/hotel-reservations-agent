@@ -1,0 +1,24 @@
+schema_version: 1
+id: demo-two-rooms-august
+split: demo
+
+email:
+  from: "Lena Fictional <lena@example.test>"
+  subject: "Two rooms in August"
+  received_at: "2026-11-14T10:00:00+00:00"
+  body: "We are four adults and need two rooms, 16 to 19 August 2027."
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 16, month: 8, year: 2027}
+      check_out: {day: 19, month: 8, year: 2027}
+    adults: 4
+    children: 0
+    rooms: 2
+    room_type: standard
+  route: quote
+  holds: 2

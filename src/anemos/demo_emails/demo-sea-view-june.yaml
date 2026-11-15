@@ -1,0 +1,24 @@
+schema_version: 1
+id: demo-sea-view-june
+split: demo
+
+email:
+  from: "Anna Fictional <anna@example.test>"
+  subject: "Sea view room in June"
+  received_at: "2026-11-14T08:00:00+00:00"
+  body: "Hello, do you have a sea view room for two adults, 1 to 4 June 2027?"
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 1, month: 6, year: 2027}
+      check_out: {day: 4, month: 6, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: sea_view
+  route: quote
+  holds: 1

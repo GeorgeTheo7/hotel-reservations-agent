@@ -1,0 +1,23 @@
+schema_version: 1
+id: demo-family-ages-missing
+split: demo
+
+email:
+  from: "Maria Fictional <maria@example.test>"
+  subject: "Family stay"
+  received_at: "2026-11-14T11:00:00+00:00"
+  body: "Two adults and two children, 5 to 8 September 2027. One child is 8."
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 5, month: 9, year: 2027}
+      check_out: {day: 8, month: 9, year: 2027}
+    adults: 2
+    children: 2
+    child_ages: [8]
+    rooms: 1
+  route: ask_info

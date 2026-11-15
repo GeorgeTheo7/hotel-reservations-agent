@@ -66,6 +66,13 @@ def incoming(
     )
 
 
+class HasIncoming(Protocol):
+    """Anything that can be delivered as an email, e.g. an email_cases.EmailCase (a
+    protocol, so this module does not import email_cases, which imports it)."""
+
+    def incoming(self) -> IncomingEmail: ...
+
+
 class FakeMailbox:
     """An in-memory mailbox for tests, the evaluation and the replay demo.
 
@@ -75,6 +82,11 @@ class FakeMailbox:
 
     def __init__(self, emails: Sequence[IncomingEmail] = ()) -> None:
         self._emails = list(emails)
+
+    @classmethod
+    def from_cases(cls, cases: Iterable["HasIncoming"]) -> "FakeMailbox":
+        """A mailbox holding test-email cases (anemos.email_cases), in the given order."""
+        return cls([case.incoming() for case in cases])
 
     def deliver(self, email: IncomingEmail) -> None:
         self._emails.append(email)

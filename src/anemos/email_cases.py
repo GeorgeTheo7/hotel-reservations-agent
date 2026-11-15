@@ -9,7 +9,8 @@ type or a broken rule refuses the whole file, with the file name in the error.
 from collections.abc import Iterable
 from datetime import date
 from email.utils import parseaddr
-from pathlib import Path
+from importlib.resources import files
+from importlib.resources.abc import Traversable
 from typing import Annotated, Literal, Self
 
 import yaml
@@ -252,8 +253,9 @@ def parse_case(text: str, *, name: str) -> EmailCase:
     return case
 
 
-def load_case(path: Path) -> EmailCase:
-    return parse_case(path.read_text(encoding="utf-8"), name=path.stem)
+def load_case(path: Traversable) -> EmailCase:
+    """One file; a Path, or a file inside the installed package (importlib.resources)."""
+    return parse_case(path.read_text(encoding="utf-8"), name=path.name.removesuffix(".yaml"))
 
 
 def check_unique(cases: Iterable[EmailCase]) -> list[EmailCase]:
@@ -266,6 +268,14 @@ def check_unique(cases: Iterable[EmailCase]) -> list[EmailCase]:
     return found
 
 
-def load_cases(directory: Path) -> list[EmailCase]:
+def load_cases(directory: Traversable) -> list[EmailCase]:
     """Every *.yaml file in `directory`, sorted by name."""
-    return check_unique(load_case(path) for path in sorted(directory.glob("*.yaml")))
+    paths = sorted(
+        (p for p in directory.iterdir() if p.name.endswith(".yaml")), key=lambda p: p.name
+    )
+    return check_unique(load_case(path) for path in paths)
+
+
+def demo_cases() -> list[EmailCase]:
+    """The demo inbox (anemos/demo_emails/, shipped inside the package)."""
+    return load_cases(files("anemos").joinpath("demo_emails"))

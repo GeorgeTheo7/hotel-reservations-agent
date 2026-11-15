@@ -14,7 +14,15 @@ from typing import Any
 import pytest
 import yaml
 
-from anemos.email_cases import CaseError, EmailCase, check_unique, load_cases, parse_case
+from anemos.demo_inbox import request_columns
+from anemos.email_cases import (
+    CaseError,
+    EmailCase,
+    check_unique,
+    demo_cases,
+    load_cases,
+    parse_case,
+)
 from anemos.extraction import ExtractionFlag, Script
 from anemos.reservations.datespec import ExactDates, PartialDate
 
@@ -98,6 +106,21 @@ def test_every_eval_file_loads() -> None:
     cases = load_cases(EVAL_EMAILS)
     assert len(cases) >= 3
     assert {case.split for case in cases} <= {"dev", "held_out"}  # demo cases live in src/
+
+
+def test_every_demo_case_loads_and_can_be_drafted() -> None:
+    """The demo set ships in the package: split demo, no world (the CLI applies none),
+    and every drafted case's gold dates resolve to one stay for the requests row."""
+    cases = demo_cases()
+    assert len(cases) == 6
+    for case in cases:
+        assert (case.split, case.world.bookings) == ("demo", []), case.id
+        if case.labels.route != "set_aside":
+            assert request_columns(case)["adults"] is not None, case.id
+
+
+def test_eval_and_demo_ids_do_not_overlap() -> None:
+    check_unique([*load_cases(EVAL_EMAILS), *demo_cases()])
 
 
 def test_the_example_in_email_format_md_is_a_valid_case() -> None:

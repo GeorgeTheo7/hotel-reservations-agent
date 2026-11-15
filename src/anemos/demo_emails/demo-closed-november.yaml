@@ -1,0 +1,22 @@
+schema_version: 1
+id: demo-closed-november
+split: demo
+
+email:
+  from: "John Fictional <john@example.test>"
+  subject: "November break"
+  received_at: "2026-11-14T12:00:00+00:00"
+  body: "Any rooms from 5 to 8 November 2027?"
+
+labels:
+  language: en
+  script: latin
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 5, month: 11, year: 2027}
+      check_out: {day: 8, month: 11, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+  route: decline
