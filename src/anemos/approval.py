@@ -17,8 +17,9 @@ Steps, in D10's order:
     free (rooms_for_plan, D59), and its check-in moment (15:00 Athens on the arrival
     date) must not have passed (D64). Any failure -> invalidated (D44).
  5. Holds: for the held offer only (D9), the lowest free room numbers (D38), expiring
-    48 h after approval, inside a SAVEPOINT. An exclusion violation (another approval
-    took the room since step 4) -> invalidated (D52).
+    48 h after approval, inside a SAVEPOINT, after a per-room lock taken in ascending
+    order (D52). An exclusion violation (another approval took the room since step 4)
+    -> invalidated.
  6. Outbox: the latest version's text with {{HOLD_UNTIL}} filled in (D8), one row.
  7. Audit, then draft approved and email answered.
 
@@ -273,6 +274,7 @@ def _insert_holds(
     """One hold per room, lowest numbers first (D38); the accommodation total split
     over the rooms in whole cents, the remainder on the first room."""
     rooms = sorted(rooms_by_quote[offer.quote_id])  # ascending: every approval locks rooms
+    _lock_rooms(conn, rooms)
     total = int(offer.stored["accommodation_subtotal_cents"])
     share, remainder = divmod(total, len(rooms))
     request_id = _request_id(conn, draft_id)
@@ -292,6 +294,25 @@ def _insert_holds(
             raise RuntimeError("INSERT ... RETURNING returned no row")
         ids.append(int(row[0]))
     return ids
+
+
+ROOM_LOCK = 1  # first key of the two-key advisory lock: "a room's holds" (D52)
+
+
+def _lock_rooms(conn: Conn, rooms: list[int]) -> None:
+    """Serialise hold inserts per room, in ascending room order, until commit.
+
+    Why not rely on the exclusion constraint alone: it checks for conflicts *after*
+    inserting the row, so two transactions inserting a hold on the same room at the
+    same moment each find the other's uncommitted row and wait for each other, a
+    deadlock (seen in the 2-room race test). With this lock the second approval waits
+    before its insert; once the first commits, its insert fails cleanly with an
+    exclusion violation, which the savepoint turns into an invalidation (D52).
+    The two-key form is a key space of its own: it cannot collide with the one-key
+    sender lock (D61). Ascending order keeps multi-room approvals deadlock-free.
+    """
+    for room_id in rooms:
+        conn.execute("SELECT pg_advisory_xact_lock(%s, %s)", (ROOM_LOCK, room_id))
 
 
 def _request_id(conn: Conn, draft_id: int) -> int:
