@@ -68,6 +68,7 @@ addopts = ["--strict-markers", "-ra", "--import-mode=importlib"]
 markers = [
     "unit: no database, no network",
     "integration: needs the local Postgres service",
+    "slow: starts several processes (seconds); CI runs them, a quick local loop may skip them",
 ]
 
 [dependency-groups]

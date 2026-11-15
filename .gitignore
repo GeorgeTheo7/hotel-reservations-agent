@@ -17,6 +17,9 @@ htmlcov/
 
 # Local secrets and settings (copy .env.example to .env)
 .env
+
+# Local state: the model spend ledger (anemos.llm.budget)
+var/
 .claude/settings.local.json
 
 # Editors / OS

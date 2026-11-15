@@ -58,16 +58,36 @@ uv run --env-file .env python -m anemos.db.seed
 `Seeded: room_types 4, rooms 14, seasons 3, room_rates 12, season_periods 5, min_stay_rules 7`
 and can be run again safely.
 
+Model calls (from week 4) are capped by `ANEMOS_LLM_BUDGET_USD` in `.env` (default
+$2.00, counted in the git-ignored `var/llm_spend.jsonl`). Set a hard monthly usage limit
+in the OpenAI dashboard as well; the code cap only sees calls made from this machine.
+
 ## Tests
 
 ```sh
 uv run pytest -m unit                          # no database, no network
 uv run --env-file .env pytest -m integration   # needs Postgres running
+uv run pytest -m "unit and not slow"            # quick loop: skips the process races
 ```
 
 Integration tests never touch your dev database. Each run recreates a throwaway
 `anemos_test` database, migrates and seeds it, and runs every test inside a transaction
 that is rolled back.
+
+### Model spend
+
+Every model call reserves its maximum cost in the spend ledger before it starts and
+settles the real cost after. A call that crashes (process killed, machine off) leaves
+its reservation open, and it keeps counting at its maximum. To see and free those:
+
+```sh
+uv run python -m anemos.llm.budget list                       # spend and open reservations
+uv run python -m anemos.llm.budget release <id> --cost-usd 0  # the dashboard's cost, if any
+```
+
+Release only a reservation whose call is certainly over (no run in progress), and give
+the cost the OpenAI dashboard shows for it. Releasing appends a line; the ledger is
+never edited.
 
 Evaluations (anything that calls a model) will live under `eval/` and are never run by
 pytest or CI.
