@@ -26,9 +26,10 @@ Rules:
 """
 
 import calendar
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Literal, assert_never
+from typing import Any, Literal, assert_never
 
 from anemos.reservations.easter import orthodox_easter, western_easter
 from anemos.reservations.errors import InvalidDates, NeedsInfo
@@ -127,6 +128,14 @@ class Window:
     first_check_in: date
     last_check_in: date
     nights: int
+
+    def candidate_nights(self) -> tuple[date, ...]:
+        """Every night of every stay the window allows: first check-in up to last
+        check-in + nights (D70: NO_CALENDAR and CLOSED look at all of them)."""
+        end = self.last_check_in + timedelta(days=self.nights)
+        return tuple(
+            self.first_check_in + timedelta(days=i) for i in range((end - self.first_check_in).days)
+        )
 
 
 def resolve(spec: DateSpec, received_at: datetime) -> Stay | Window | NeedsInfo | InvalidDates:
@@ -261,3 +270,83 @@ def _on_or_after(partial: PartialDate, earliest: date) -> date | InvalidDates:
         if candidate >= earliest:
             return candidate
     raise AssertionError(f"no occurrence of {partial} found")  # unreachable
+
+
+# --- a DateSpec stored as JSON --------------------------------------------------------
+
+_KEYS: dict[str, frozenset[str]] = {
+    "exact": frozenset({"kind", "check_in", "check_out", "nights"}),
+    "relative": frozenset({"kind", "phrase", "nights"}),
+    "holiday": frozenset({"kind", "holiday", "tradition", "year", "nights"}),
+    "approximate": frozenset({"kind", "part", "month", "year", "nights"}),
+}
+_PARTIAL_KEYS = frozenset({"day", "month", "year", "ambiguous_order"})
+_PHRASES: tuple[Literal["this_weekend", "next_weekend"], ...] = ("this_weekend", "next_weekend")
+_TRADITIONS: tuple[Literal["orthodox", "western", "unspecified"], ...] = (
+    "orthodox", "western", "unspecified",
+)  # fmt: skip
+_PARTS: tuple[Literal["early", "mid", "late", "whole_month"], ...] = (
+    "early", "mid", "late", "whole_month",
+)  # fmt: skip
+
+
+def date_spec_from_json(raw: Mapping[str, Any]) -> DateSpec:
+    """A DateSpec as extraction stored it (`requests.extracted["date_spec"]`: every key
+    written out, unknown = null) back to its dataclass. Strict: an unknown kind, a
+    missing or extra key, or a wrong type is a bug in what was stored -> ValueError."""
+    kind = raw.get("kind")
+    if kind not in _KEYS:
+        raise ValueError(f"stored date_spec: unknown kind {kind!r}")
+    if set(raw) != _KEYS[kind]:
+        raise ValueError(
+            f"stored date_spec ({kind}): keys {sorted(raw)}, expected {sorted(_KEYS[kind])}"
+        )
+    match kind:
+        case "exact":
+            out = raw["check_out"]
+            return ExactDates(
+                _partial(raw["check_in"]), None if out is None else _partial(out),
+                _int_or_none(raw, "nights"),
+            )  # fmt: skip
+        case "relative":
+            return RelativeDates(_choice(raw, "phrase", _PHRASES),
+                                 _int_or_none(raw, "nights"))  # fmt: skip
+        case "holiday":
+            holiday = raw["holiday"]
+            if not isinstance(holiday, str):
+                raise ValueError(f"stored date_spec: holiday {holiday!r} is not text")
+            tradition = _choice(raw, "tradition", _TRADITIONS)
+            return HolidayDates(holiday, tradition, _int_or_none(raw, "year"),
+                                _int_or_none(raw, "nights"))  # fmt: skip
+        case _:
+            part = _choice(raw, "part", _PARTS)
+            return ApproximateDates(part, _int(raw, "month"), _int_or_none(raw, "year"),
+                                    _int_or_none(raw, "nights"))  # fmt: skip
+
+
+def _partial(raw: Any) -> PartialDate:
+    if not isinstance(raw, Mapping) or set(raw) != _PARTIAL_KEYS:
+        raise ValueError(f"stored date_spec: date {raw!r}, expected keys {sorted(_PARTIAL_KEYS)}")
+    flag = raw["ambiguous_order"]
+    if not isinstance(flag, bool):
+        raise ValueError(f"stored date_spec: ambiguous_order {flag!r} is not true/false")
+    return PartialDate(_int(raw, "day"), _int(raw, "month"), _int_or_none(raw, "year"), flag)
+
+
+def _int(raw: Mapping[str, Any], key: str) -> int:
+    value = raw[key]
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"stored date_spec: {key} {value!r} is not a whole number")
+    return value
+
+
+def _int_or_none(raw: Mapping[str, Any], key: str) -> int | None:
+    return None if raw[key] is None else _int(raw, key)
+
+
+def _choice[T: str](raw: Mapping[str, Any], key: str, allowed: tuple[T, ...]) -> T:
+    value = raw[key]
+    for option in allowed:
+        if value == option:
+            return option
+    raise ValueError(f"stored date_spec: {key} {value!r} is not one of {allowed}")

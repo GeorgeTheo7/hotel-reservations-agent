@@ -11,7 +11,7 @@ database row is a bug and raises.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import psycopg
@@ -20,6 +20,7 @@ from psycopg.types.json import Jsonb
 
 from anemos.clock import Clock
 from anemos.reservations.availability import free_rooms, rooms_for_plan
+from anemos.reservations.datespec import Window, date_spec_from_json, resolve
 from anemos.reservations.errors import (
     Closed,
     FullyBooked,
@@ -31,12 +32,15 @@ from anemos.reservations.errors import (
     NoneFound,
     NoRate,
     OriginalAvailable,
+    ReasonCode,
 )
 from anemos.reservations.hotel_data import HotelData
 from anemos.reservations.model import Party, RoomRequest, Stay, party_from_counts, stay_or_error
 from anemos.reservations.occupancy import fits
 from anemos.reservations.offer import Offer, OfferChange, build_offer
+from anemos.reservations.options import window_options
 from anemos.reservations.pricing import NightLine, Quote
+from anemos.reservations.seasons import is_open
 from anemos.reservations.stay_rules import check_stay, short_notice
 
 type Conn = psycopg.Connection[TupleRow]
@@ -82,9 +86,19 @@ class StoredQuote:
     offer: Offer
 
 
+@dataclass(frozen=True)
+class WindowQuotes:
+    """Up to 3 options inside the window, each priced and stored (D58); never held (D9).
+    `changes` of each: window_option, plus min_stay when the requested length fits
+    nowhere only because of the minimum stay (D7), plus any room-plan change (D27)."""
+
+    options: tuple[StoredQuote, ...]
+
+
 REQUEST_SQL = """
-SELECT stay, adults, children, child_ages, rooms, room_type_id, extracted
-FROM requests WHERE id = %s
+SELECT r.stay, r.adults, r.children, r.child_ages, r.rooms, r.room_type_id, r.extracted,
+       e.received_at
+FROM requests r JOIN emails e ON e.id = r.email_id WHERE r.id = %s
 """
 
 INSERT_QUOTE_SQL = """
@@ -104,7 +118,17 @@ INSERT INTO quotes (
 
 def quote_price(
     conn: Conn, hotel: HotelData, clock: Clock, request_id: int
-) -> StoredQuote | NeedsInfo | Closed | MinStayIntoClosed | NoRate | NeedsEscalation | FullyBooked:
+) -> (
+    StoredQuote
+    | WindowQuotes
+    | NeedsInfo
+    | Closed
+    | MinStayIntoClosed
+    | NoRate
+    | NeedsEscalation
+    | FullyBooked
+    | NoneFound
+):
     """Price the stored request through build_offer, check the plan is free, and store
     the quote.
 
@@ -118,10 +142,15 @@ def quote_price(
     the type asked) must have enough free rooms, else FULLY_BOOKED and nothing is
     stored; the model's next step is suggest_alternatives. Approval still re-checks
     (D47), because this is a snapshot.
+
+    A window request (Easter, part of a month; D7, D28) is priced by `quote_window`:
+    up to 3 options, never held, or why there are none.
     """
     loaded = load_request(conn, request_id)
     if isinstance(loaded, NeedsInfo):
         return loaded
+    if isinstance(loaded, LoadedWindow):
+        return quote_window(conn, hotel, clock, request_id, loaded)
     result = build_offer(
         hotel, loaded.request, loaded.party, accessibility_need=loaded.accessibility_need
     )
@@ -142,25 +171,54 @@ class LoadedRequest:
     accessibility_need: bool
 
 
-def load_request(conn: Conn, request_id: int) -> LoadedRequest | NeedsInfo:
-    """The stored request as build_offer's inputs, or what must be asked first."""
+@dataclass(frozen=True)
+class LoadedWindow:
+    """A stored request for a check-in window (D7, D28) instead of one stay."""
+
+    window: Window
+    rooms: int
+    room_type_id: str | None
+    party: Party
+    accessibility_need: bool
+
+
+def load_request(conn: Conn, request_id: int) -> LoadedRequest | LoadedWindow | NeedsInfo:
+    """The stored request as build_offer's inputs, or what must be asked first.
+
+    A window (Easter, part of a month) is not stored as a stay: `requests.stay` stays
+    NULL and the DateSpec is in `extracted`. It is resolved again here, at the email's
+    received_at, by the same code as at storing (D6), so the result is the same window.
+    """
     row = conn.execute(REQUEST_SQL, (request_id,)).fetchone()
     if row is None:
         raise LookupError(f"no request {request_id}")
-    stay_range, adults, children, child_ages, rooms, room_type_id, extracted = row
+    stay_range, adults, children, child_ages, rooms, room_type_id, extracted, received_at = row
 
+    window = None
     if stay_range is None:
-        return NeedsInfo("dates of the stay")
+        window = _stored_window(extracted, received_at)
+        if window is None:
+            return NeedsInfo("dates of the stay")
     party = party_from_counts(adults, children, child_ages)
     if isinstance(party, NeedsInfo):
         return party
-    request = RoomRequest(
-        Stay(stay_range.lower, stay_range.upper),
-        # Not stated = one room (D5: one stay, at most 2 rooms; 3+ escalates as GROUP).
-        rooms=1 if rooms is None else rooms,
-        room_type_id=room_type_id,
-    )
-    return LoadedRequest(request, party, _has_flag(extracted, ACCESSIBILITY_FLAG))
+    # Not stated = one room (D5: one stay, at most 2 rooms; 3+ escalates as GROUP).
+    rooms = 1 if rooms is None else rooms
+    need = _has_flag(extracted, ACCESSIBILITY_FLAG)
+    if window is not None:
+        return LoadedWindow(window, rooms, room_type_id, party, need)
+    request = RoomRequest(Stay(stay_range.lower, stay_range.upper), rooms, room_type_id)
+    return LoadedRequest(request, party, need)
+
+
+def _stored_window(extracted: Mapping[str, Any], received_at: datetime) -> Window | None:
+    """The window of a stored DateSpec, or None if it has none (no dates, or dates that
+    need asking). A DateSpec that does not parse is a bug in what we stored: it raises."""
+    raw = extracted.get("date_spec")
+    if raw is None:
+        return None
+    resolved = resolve(date_spec_from_json(raw), received_at)
+    return resolved if isinstance(resolved, Window) else None
 
 
 def _has_flag(extracted: Mapping[str, Any], flag: str) -> bool:
@@ -256,6 +314,9 @@ def suggest_alternatives(
     loaded = load_request(conn, request_id)
     if isinstance(loaded, NeedsInfo):
         return loaded
+    if isinstance(loaded, LoadedWindow):
+        # Window options are the choice already (D7); a window has no "other dates".
+        raise ValueError(f"request {request_id} is a window: options come from quote_price")
     base = build_offer(
         hotel, loaded.request, loaded.party, accessibility_need=loaded.accessibility_need
     )
@@ -356,3 +417,79 @@ def _other_dates(
         if len(found) == MAX_ALTERNATIVES:
             break
     return found
+
+
+# --- window requests (D7, D28) --------------------------------------------------------
+
+
+def quote_window(
+    conn: Conn, hotel: HotelData, clock: Clock, request_id: int, loaded: LoadedWindow
+) -> WindowQuotes | Closed | NoneFound | NoRate | NeedsEscalation:
+    """Options for a window request (D7), or why there are none.
+
+    In order: a candidate night in a year with no calendar -> NO_CALENDAR (D36); every
+    candidate night closed -> CLOSED (decline, D62). Then `window_options` picks the
+    options; a stay counts only if it passes the calendar, is not SHORT_NOTICE (D31,
+    as in `_other_dates`), build_offer prices it, and its plan is free (D59).
+    No option: a party escalation (GROUP, ACCESSIBILITY, UNACCOMPANIED_CHILDREN, the
+    same for every stay) or NoRate is returned; else, if some stay was taken, NONE_FOUND
+    (decline; days_searched 0: a window is not shifted); else, if every stay was too
+    soon, SHORT_NOTICE; else no stay passes the calendar: CLOSED with the closed nights.
+    """
+    window = loaded.window
+    nights = window.candidate_nights()
+    missing = sorted({n.year for n in nights if not hotel.has_calendar_for(n.year)})
+    if missing:
+        return NeedsEscalation(
+            ReasonCode.NO_CALENDAR, f"no season calendar for {', '.join(map(str, missing))}"
+        )
+    closed = tuple(n for n in nights if not is_open(hotel, n))
+    if len(closed) == len(nights):
+        return Closed(closed)
+
+    offers: dict[Stay, Offer] = {}
+    problems: list[NoRate | NeedsEscalation] = []
+    taken: list[str] = []  # the plan's room type, per stay that was taken
+    too_soon: list[Stay] = []
+
+    def is_available(stay: Stay) -> bool:
+        if short_notice(stay.check_in, clock.now()) is not None:
+            too_soon.append(stay)
+            return False
+        offer = build_offer(
+            hotel, RoomRequest(stay, loaded.rooms, loaded.room_type_id), loaded.party,
+            accessibility_need=loaded.accessibility_need,
+        )  # fmt: skip
+        if isinstance(offer, NoRate | NeedsEscalation):
+            problems.append(offer)
+            return False
+        if not isinstance(offer, Offer):  # the calendar was checked first: a bug
+            raise AssertionError(f"{stay} passed check_stay but build_offer says {offer}")
+        plan = offer.quote
+        free = rooms_for_plan(conn, clock, plan.room_type_id, plan.stay, plan.rooms)
+        if isinstance(free, FullyBooked):
+            taken.append(plan.room_type_id)
+            return False
+        offers[stay] = offer
+        return True
+
+    found = window_options(hotel, window, is_available)
+    if found.options:
+        extra = {OfferChange.WINDOW_OPTION}
+        if found.length_changed:
+            extra.add(OfferChange.MIN_STAY)
+        stored = []
+        for stay in found.options:
+            offer = Offer(offers[stay].quote, offers[stay].changes | extra)
+            stored.append(StoredQuote(_store_quote(conn, clock, request_id, offer), offer))
+        return WindowQuotes(tuple(stored))
+    if problems:
+        return problems[0]
+    if taken:
+        last_check_out = window.last_check_in + timedelta(days=window.nights)
+        return NoneFound(window.first_check_in, last_check_out, 0, room_type_id=taken[0])
+    if too_soon:
+        return NeedsEscalation(
+            ReasonCode.SHORT_NOTICE, f"every check-in from {window.first_check_in} is too soon"
+        )
+    return Closed(closed)

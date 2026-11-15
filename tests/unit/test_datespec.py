@@ -1,10 +1,12 @@
 from datetime import UTC, date, datetime
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 import pytest
 
 from anemos.clock import FixedClock
 from anemos.db.seed import hotel_data
+from anemos.email_cases import demo_cases, load_cases
 from anemos.reservations.datespec import (
     ApproximateDates,
     ExactDates,
@@ -12,6 +14,7 @@ from anemos.reservations.datespec import (
     PartialDate,
     RelativeDates,
     Window,
+    date_spec_from_json,
     resolve,
 )
 from anemos.reservations.errors import Closed, InvalidDates, NeedsInfo
@@ -344,3 +347,58 @@ def test_whole_month_asks_which_part() -> None:
     result = resolve(ApproximateDates("whole_month", 6, nights=7), received(2026, 11, 20))
     assert isinstance(result, NeedsInfo)
     assert "June" in result.missing
+
+
+# --- a DateSpec stored as JSON (requests.extracted) -----------------------------------
+
+ALL_CASES = [*load_cases(Path(__file__).resolve().parents[2] / "eval" / "emails"), *demo_cases()]
+DATED = [c for c in ALL_CASES if c.labels.extraction and c.labels.extraction.date_spec]
+
+
+@pytest.mark.parametrize("case", DATED, ids=lambda c: c.id)
+def test_stored_date_spec_reads_back_as_written(case: Any) -> None:
+    """What extraction stores (the model output) and what the demo stand-in stores (the
+    labels) both read back to the same DateSpec."""
+    gold = case.gold_output()
+    labels = case.labels.extraction
+    assert date_spec_from_json(gold.model_dump(mode="json")["date_spec"]) == gold.date_spec_value()
+    assert (
+        date_spec_from_json(labels.model_dump(mode="json")["date_spec"]) == gold.date_spec_value()
+    )
+
+
+EASTER_JSON = {"kind": "holiday", "holiday": "easter", "tradition": "unspecified", "year": None,
+               "nights": 4}  # fmt: skip
+EXACT_JSON = {
+    "kind": "exact", "nights": None,
+    "check_in": {"day": 1, "month": 6, "year": 2027, "ambiguous_order": False},
+    "check_out": {"day": 4, "month": 6, "year": 2027, "ambiguous_order": False},
+}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ({"kind": "someday"}, "unknown kind"),
+        ({k: v for k, v in EASTER_JSON.items() if k != "nights"}, "keys"),
+        (EASTER_JSON | {"extra": 1}, "keys"),
+        (EASTER_JSON | {"nights": "4"}, "whole number"),
+        (EASTER_JSON | {"nights": True}, "whole number"),
+        (EASTER_JSON | {"tradition": "julian"}, "tradition"),
+        (EASTER_JSON | {"holiday": 7}, "not text"),
+        (EXACT_JSON | {"check_in": {"day": 1, "month": 6}}, "expected keys"),
+        (
+            EXACT_JSON
+            | {"check_in": {"day": 1, "month": 6, "year": None, "ambiguous_order": "no"}},
+            "true/false",
+        ),
+        (
+            EXACT_JSON
+            | {"check_in": {"day": 1, "month": 13, "year": None, "ambiguous_order": False}},
+            "month",
+        ),
+    ],
+)
+def test_a_broken_stored_date_spec_raises(raw: dict[str, Any], message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        date_spec_from_json(raw)

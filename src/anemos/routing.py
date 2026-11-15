@@ -40,7 +40,7 @@ the quote tool cannot disagree about who fits; a unit test checks they agree.
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 from typing import Literal
 
 from anemos.extraction import ExtractionFlag, ExtractionOutput
@@ -154,12 +154,9 @@ def _escalate(code: ReasonCode, detail: str) -> Escalate:
 
 
 def candidate_nights(dates: Stay | Window) -> tuple[date, ...]:
-    """Every night the request could include: a stay's nights, or for a window the
-    nights of every stay it allows (first check-in up to last check-in + nights)."""
-    if isinstance(dates, Stay):
-        return dates.nights
-    end = dates.last_check_in + timedelta(days=dates.nights)
-    return Stay(dates.first_check_in, end).nights
+    """Every night the request could include: a stay's nights, or a window's
+    candidate nights (`Window.candidate_nights`)."""
+    return dates.nights if isinstance(dates, Stay) else dates.candidate_nights()
 
 
 def _calendar_rule(hotel: HotelData, dates: Stay | Window, received_at: datetime) -> Routed | None:

@@ -1,0 +1,10 @@
+Dear guest,
+
+Thank you for your email.
+
+{{REQUEST_SUMMARY}}
+
+Unfortunately we do not have enough $room_type rooms free for any check-in date in this period. We are sorry we cannot help this time.
+
+Kind regards,
+Hotel Anemos

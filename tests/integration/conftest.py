@@ -137,7 +137,7 @@ class Rows:
             "requests",
             {
                 "email_id": self.email() if email_id is None else email_id,
-                "extracted": Jsonb({"date_spec": {"kind": "exact"}}),
+                "extracted": Jsonb({"date_spec": None}),  # no dates given
                 "created_at": self.T0,
             }
             | overrides,

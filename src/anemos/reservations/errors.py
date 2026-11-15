@@ -77,12 +77,15 @@ class OriginalAvailable:
 @dataclass(frozen=True)
 class NoneFound:
     """suggest_alternatives found nothing free: no other room type for the stay, and no
-    same-length stay within +-`days_searched` days (spec Unmet requests: decline)."""
+    same-length stay within +-`days_searched` days (spec Unmet requests: decline).
+    For a window (quote_window): no check-in in it has the plan's room type free;
+    days_searched is 0 (a window is not shifted) and room_type_id names that type."""
 
     code: ClassVar[str] = "NONE_FOUND"
     check_in: date  # of the stay searched around (dates, not Stay: model imports errors)
     check_out: date
     days_searched: int
+    room_type_id: str | None = None  # a window: the only type that was looked at
 
 
 @dataclass(frozen=True)

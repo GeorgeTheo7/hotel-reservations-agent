@@ -6,7 +6,8 @@ extraction will fill it) and, in one transaction (no commit):
 1. takes the sender's lock (D61) and moves the email `received` -> `processing`;
 2. runs the read tools: quote_price, and suggest_alternatives on FULLY_BOOKED;
 3. escalates (no draft) or writes a draft from fixed templates with the
-   code-rendered blocks (D8): route `quote` (one offer, or alternatives),
+   code-rendered blocks (D8): route `quote` (one offer, alternatives, or the
+   options of a window, D7),
    `ask_info` (NEEDS_INFO) or `decline` (CLOSED, stating the open season; NONE_FOUND)
    (D62);
 4. runs guardrails 1 and 7 (D53); a failure escalates GUARDRAIL_FAIL;
@@ -46,7 +47,7 @@ from anemos.reservations.errors import (
     OriginalAvailable,
     ReasonCode,
 )
-from anemos.reservations.formatting import Lang
+from anemos.reservations.formatting import Lang, room_type_name
 from anemos.reservations.hotel_data import HotelData
 from anemos.reservations.occupancy import fits
 from anemos.reservations.offer import OfferChange
@@ -66,7 +67,9 @@ from anemos.reservations.quote_template import OfferChange as NoteChange
 from anemos.reservations.tools import (
     Alternatives,
     LoadedRequest,
+    LoadedWindow,
     StoredQuote,
+    WindowQuotes,
     load_request,
     quote_price,
     suggest_alternatives,
@@ -132,17 +135,23 @@ def draft_reply(conn: Conn, hotel: HotelData, clock: Clock, email_id: int) -> Dr
     elif isinstance(outcome, Closed | NoneFound):
         loaded = _loaded(conn, request_id)
         route, text = "decline", _decline_text(hotel, outcome, loaded, lang)
-        rendered = text.replace(
-            REQUEST_SUMMARY, render_request_summary(hotel, loaded.request, loaded.party, lang)
-        )
+        rendered = text.replace(REQUEST_SUMMARY, _summary(hotel, loaded, lang))
     else:
         loaded = _loaded(conn, request_id)
         route = "quote"
-        quotes = list(outcome.options) if isinstance(outcome, Alternatives) else [outcome]
+        if isinstance(outcome, Alternatives | WindowQuotes):
+            quotes = list(outcome.options)
+        else:
+            quotes = [outcome]
         offers = [ProposedOffer(q.quote_id, hold=q.offer.hold_allowed) for q in quotes]
         if len(offers) > 1:  # D9: options are never held
             offers = [ProposedOffer(o.quote_id, hold=False) for o in offers]
-        text = _quote_text(lang, alternatives=isinstance(outcome, Alternatives))
+        intro = (
+            "alternatives_intro" if isinstance(outcome, Alternatives)
+            else "window_intro" if isinstance(outcome, WindowQuotes)
+            else None
+        )  # fmt: skip
+        text = _quote_text(lang, intro=intro)
         rendered, blocks = _render(hotel, text, loaded, quotes, offers, lang)
 
     results: dict[str, bool | str] = {
@@ -185,7 +194,7 @@ def draft_reply(conn: Conn, hotel: HotelData, clock: Clock, email_id: int) -> Dr
 
 def _run_tools(
     conn: Conn, hotel: HotelData, clock: Clock, request_id: int
-) -> StoredQuote | Alternatives | NeedsInfo | Closed | NoneFound | Escalated:
+) -> StoredQuote | WindowQuotes | Alternatives | NeedsInfo | Closed | NoneFound | Escalated:
     priced = quote_price(conn, hotel, clock, request_id)
     if isinstance(priced, FullyBooked):
         found = suggest_alternatives(conn, hotel, clock, request_id)
@@ -196,8 +205,8 @@ def _run_tools(
             # loop on a changing snapshot.
             return Escalated(ReasonCode.MODEL, "availability changed while drafting")
         return _escalated(found)
-    if isinstance(priced, StoredQuote | NeedsInfo | Closed):
-        return priced
+    if isinstance(priced, StoredQuote | WindowQuotes | NeedsInfo | Closed | NoneFound):
+        return priced  # NoneFound: nothing free in a window (quote_window)
     return _escalated(priced)
 
 
@@ -226,19 +235,32 @@ def _escalate(conn: Conn, now: datetime, email_id: int, escalation: Escalated) -
 # --- text ----------------------------------------------------------------------------
 
 
-def _quote_text(lang: Lang, *, alternatives: bool) -> str:
-    intro = str(_phrases(lang)["alternatives_intro"]) if alternatives else ""
-    return Template(_template(f"stub_quote_{lang}.txt")).substitute(intro=intro)
+def _quote_text(lang: Lang, *, intro: str | None) -> str:
+    """intro: the phrase key that introduces several options, or None for one quote."""
+    text = str(_phrases(lang)[intro]) if intro is not None else ""
+    return Template(_template(f"stub_quote_{lang}.txt")).substitute(intro=text)
 
 
 def _decline_text(
-    hotel: HotelData, why: Closed | NoneFound, loaded: LoadedRequest, lang: Lang
+    hotel: HotelData, why: Closed | NoneFound, loaded: LoadedRequest | LoadedWindow, lang: Lang
 ) -> str:
     """D62: a decline restates the request ({{REQUEST_SUMMARY}}, guardrail 3) and says
     why. CLOSED names the open season of the year asked for."""
+    if isinstance(why, NoneFound) and why.room_type_id is not None:
+        # A window: only the plan's type was looked at, and no dates were shifted, so
+        # the reply names that type and claims nothing about the rest of the hotel.
+        room_type = room_type_name(hotel.room_types[why.room_type_id], lang)
+        return Template(_template(f"stub_decline_window_full_{lang}.txt")).substitute(
+            room_type=room_type
+        )
     if isinstance(why, NoneFound):
         return _template(f"stub_decline_full_{lang}.txt")
-    opens, closes = _open_season(hotel, loaded.request.stay.check_in.year)
+    first = (
+        loaded.window.first_check_in
+        if isinstance(loaded, LoadedWindow)
+        else (loaded.request.stay.check_in)
+    )
+    opens, closes = _open_season(hotel, first.year)
     return Template(_template(f"stub_decline_closed_{lang}.txt")).substitute(
         opens=date_with_article(opens, lang), closes=date_with_article(closes, lang)
     )
@@ -265,7 +287,7 @@ def _ask_info_text(needs: NeedsInfo, lang: Lang) -> str:
 def _render(
     hotel: HotelData,
     text: str,
-    loaded: LoadedRequest,
+    loaded: LoadedRequest | LoadedWindow,
     quotes: list[StoredQuote],
     offers: list[ProposedOffer],
     lang: Lang,
@@ -280,12 +302,26 @@ def _render(
         )
         for q in quotes
     }
-    summary = render_request_summary(hotel, loaded.request, loaded.party, lang)
-    text = text.replace(REQUEST_SUMMARY, summary)
+    text = text.replace(REQUEST_SUMMARY, _summary(hotel, loaded, lang))
     return text.replace(QUOTE_BLOCK, "\n\n".join(blocks.values())), blocks
 
 
-def _notes(hotel: HotelData, loaded: LoadedRequest, stored: StoredQuote) -> list[NoteChange]:
+def _summary(hotel: HotelData, loaded: LoadedRequest | LoadedWindow, lang: Lang) -> str:
+    """{{REQUEST_SUMMARY}}: the stay, or for a window its check-in range (guardrail 3)."""
+    asked = loaded.window if isinstance(loaded, LoadedWindow) else loaded.request
+    return render_request_summary(hotel, asked, loaded.party, lang)
+
+
+def _asked(loaded: LoadedRequest | LoadedWindow) -> tuple[str | None, int]:
+    """The room type (None = any) and the number of rooms the guest asked for."""
+    if isinstance(loaded, LoadedWindow):
+        return loaded.room_type_id, loaded.rooms
+    return loaded.request.room_type_id, loaded.request.rooms
+
+
+def _notes(
+    hotel: HotelData, loaded: LoadedRequest | LoadedWindow, stored: StoredQuote
+) -> list[NoteChange]:
     """One note per entry in the quote's changes (the block sorts them into a fixed
     order). A type change is a capacity note (D27) when the type asked cannot hold the
     party, else an availability note (an alternative, D60)."""
@@ -295,10 +331,10 @@ def _notes(hotel: HotelData, loaded: LoadedRequest, stored: StoredQuote) -> list
         notes.append(OpenPartChange())
     if OfferChange.MIN_STAY in changes:
         notes.append(MinStayChange(quote.stay.check_in, quote.stay.night_count))
-    asked = loaded.request.room_type_id
+    asked, asked_rooms = _asked(loaded)
     if OfferChange.OTHER_TYPE in changes and asked is not None:
         asked_type = hotel.room_types[asked]
-        if fits(asked_type, loaded.party, loaded.request.rooms):
+        if fits(asked_type, loaded.party, asked_rooms):
             notes.append(RoomTypeUnavailableChange(asked))
         else:
             notes.append(RoomTypeChange(asked, asked_type.max_occupancy))
@@ -311,9 +347,9 @@ def _notes(hotel: HotelData, loaded: LoadedRequest, stored: StoredQuote) -> list
     return notes
 
 
-def _loaded(conn: Conn, request_id: int) -> LoadedRequest:
+def _loaded(conn: Conn, request_id: int) -> LoadedRequest | LoadedWindow:
     loaded = load_request(conn, request_id)
-    if not isinstance(loaded, LoadedRequest):  # the tools just loaded it successfully
+    if isinstance(loaded, NeedsInfo):  # the tools just loaded it successfully
         raise RuntimeError(f"request {request_id} changed while drafting: {loaded}")
     return loaded
 

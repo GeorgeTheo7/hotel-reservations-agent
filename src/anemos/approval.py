@@ -42,7 +42,7 @@ from anemos.clock import Clock
 from anemos.guardrails import PRICE_CHECK, missing_blocks
 from anemos.owner_actions import DraftExpired, decide_draft, lock_pending_draft, set_email
 from anemos.reservations.availability import rooms_for_plan
-from anemos.reservations.errors import FullyBooked, NeedsEscalation, ReasonCode
+from anemos.reservations.errors import FullyBooked, NeedsEscalation, NeedsInfo, ReasonCode
 from anemos.reservations.formatting import Lang
 from anemos.reservations.hotel_data import HotelData
 from anemos.reservations.hotel_time import check_in_moment
@@ -50,7 +50,7 @@ from anemos.reservations.loader import load_hotel_data
 from anemos.reservations.model import Party, Stay
 from anemos.reservations.pricing import Quote, price_stay
 from anemos.reservations.quote_template import render_hold_until
-from anemos.reservations.tools import LoadedRequest, line_json, load_request
+from anemos.reservations.tools import LoadedRequest, LoadedWindow, line_json, load_request
 from anemos.states import BookingStatus, DraftStatus, EmailStatus, StaleVersion
 
 type Conn = psycopg.Connection[TupleRow]
@@ -252,12 +252,14 @@ def _amounts(lines: object, *values: object) -> dict[str, Any]:
     return {"lines": lines, **dict(zip(names, values, strict=True))}
 
 
-def _request_of(conn: Conn, draft_id: int) -> LoadedRequest:
+def _request_of(conn: Conn, draft_id: int) -> LoadedRequest | LoadedWindow:
+    """The draft's request; re-validation needs only its party. A window request
+    (D7) has options as its offers, priced and checked like any other."""
     row = conn.execute("SELECT request_id FROM drafts WHERE id = %s", (draft_id,)).fetchone()
     if row is None or row[0] is None:
         raise LookupError(f"draft {draft_id} offers quotes but has no request")
     loaded = load_request(conn, int(row[0]))
-    if not isinstance(loaded, LoadedRequest):
+    if isinstance(loaded, NeedsInfo):
         raise RuntimeError(f"request of draft {draft_id} is incomplete: {loaded}")
     return loaded
 
