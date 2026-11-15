@@ -55,11 +55,17 @@ def rendered_blocks_unchanged(text: str, blocks: Sequence[str]) -> bool | str:
     version must still appear verbatim. A changed amount, a reworded line or a deleted
     block is the edited-price warning, which approval refuses unless confirm_warnings.
     """
-    missing = [i + 1 for i, block in enumerate(blocks) if block not in text]
+    missing = missing_blocks(text, blocks)
     if not missing:
         return True
-    which = ", ".join(map(str, missing))
+    which = ", ".join(str(i + 1) for i in missing)
     return f"edited-price warning: quote block {which} of {len(blocks)} changed or removed"
+
+
+def missing_blocks(text: str, blocks: Sequence[str]) -> list[int]:
+    """Positions (0-based) of the blocks that no longer appear verbatim in `text`. The
+    one definition of "changed or removed" for the price check (D63) and approval."""
+    return [i for i, block in enumerate(blocks) if block not in text]
 
 
 def all_passed(results: dict[str, bool | str]) -> bool:

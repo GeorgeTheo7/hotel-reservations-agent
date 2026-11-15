@@ -23,11 +23,13 @@ class AuditEvent(StrEnum):
     EMAIL_ESCALATED = "email.escalated"
     EMAIL_CLOSED = "email.closed"
     EMAIL_REOPENED = "email.reopened"
+    EMAIL_ACTION_REFUSED = "email.action_refused"
     DRAFT_CREATED = "draft.created"
     DRAFT_EDITED = "draft.edited"
     DRAFT_REJECTED = "draft.rejected"
     DRAFT_EXPIRED = "draft.expired"
     DRAFT_ACTION_REFUSED = "draft.action_refused"
+    DRAFT_PRICE_WARNING_SHOWN = "draft.price_warning_shown"
     DRAFT_SUPERSEDED = "draft.superseded"
     DRAFT_APPROVED = "draft.approved"
     DRAFT_INVALIDATED = "draft.invalidated"
@@ -35,8 +37,22 @@ class AuditEvent(StrEnum):
     HOLD_CONFIRMED = "hold.confirmed"
     HOLD_RELEASED = "hold.released"
     BOOKING_CANCELLED = "booking.cancelled"
+    BOOKING_ACTION_REFUSED = "booking.action_refused"
     OUTBOX_SENT = "outbox.sent"
     OUTBOX_SEND_FAILED = "outbox.send_failed"
+
+
+# Written only by the API, after it rolled back a refused or unconfirmed action
+# (api/transactions.py). Domain code never writes them, so the cross-rules scenario,
+# which calls the domain functions directly, does not either; tests/integration/
+# test_api_actions.py covers them.
+API_ONLY_EVENTS = frozenset(
+    {
+        AuditEvent.EMAIL_ACTION_REFUSED,
+        AuditEvent.BOOKING_ACTION_REFUSED,
+        AuditEvent.DRAFT_PRICE_WARNING_SHOWN,
+    }
+)
 
 
 def write_audit(

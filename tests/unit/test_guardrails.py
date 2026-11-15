@@ -6,6 +6,7 @@ from anemos.guardrails import (
     ProposedOffer,
     all_passed,
     holds_valid,
+    missing_blocks,
     quote_block_once,
     rendered_blocks_unchanged,
 )
@@ -89,6 +90,14 @@ def test_deleted_block_warns_and_names_it() -> None:
     other = "Our offer: Family Suite, 1 room\nAccommodation total: €540.00"
     result = rendered_blocks_unchanged(f"Dear guest,\n{BLOCK}", [BLOCK, other])
     assert result == "edited-price warning: quote block 2 of 2 changed or removed"
+
+
+def test_missing_blocks_are_named_by_position() -> None:
+    other = "Our offer: Family Suite, 1 room\nAccommodation total: €540.00"
+    edited = BLOCK.replace("€390.00", "€350.00")
+    assert missing_blocks(f"{edited}\n{other}", [BLOCK, other]) == [0]
+    assert missing_blocks("Dear guest.", [BLOCK, other]) == [0, 1]
+    assert missing_blocks(f"{BLOCK}\n{other}", [BLOCK, other]) == []
 
 
 def test_no_blocks_nothing_to_check() -> None:

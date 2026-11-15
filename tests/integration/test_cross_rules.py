@@ -26,7 +26,7 @@ from psycopg.errors import ForeignKeyViolation, RestrictViolation
 from psycopg.rows import TupleRow
 
 from anemos.approval import Approved, Invalidated, _flip_stale_holds, approve_draft
-from anemos.audit import AuditEvent
+from anemos.audit import API_ONLY_EVENTS, AuditEvent
 from anemos.clock import FixedClock
 from anemos.inbox import store_email
 from anemos.mailbox import incoming
@@ -127,23 +127,23 @@ def world(committed_db: CommittedDb) -> World:
         "confirmed_cancelled": {"stay": "[2027-07-20,2027-07-23)", "room_type_id": "sea_view"},
     }
     for name, request in approved.items():
-        assert isinstance(approve_draft(conn, clock, drafted(name, **request)), Approved)
+        assert isinstance(approve_draft(conn, clock, drafted(name, **request), version=1), Approved)
 
     # Approved alternatives (Sea View full: Standard and Family Suite offered, no hold).
     for room in (201, 202, 203, 204):
         rows.booking(room_id=room, stay="[2027-06-10,2027-06-13)")
     alternatives = drafted("alternatives", stay="[2027-06-10,2027-06-13)", room_type_id="sea_view")
-    assert isinstance(approve_draft(conn, clock, alternatives), Approved)
+    assert isinstance(approve_draft(conn, clock, alternatives, version=1), Approved)
 
     # Rejected (ask_info), and a pending draft with an owner edit.
     reject_draft(conn, clock, drafted("rejected", children=2, child_ages=[8]))
-    edit_draft(conn, clock, drafted("pending", children=1), "Dear guest, how old?")
+    edit_draft(conn, clock, drafted("pending", children=1), "Dear guest, how old?", base_version=1)
 
     # Invalidated: every Family Suite is taken after the draft was written.
     invalid = drafted("invalidated", stay="[2027-10-01,2027-10-04)", room_type_id="family_suite")
     for room in (301, 302, 303):
         rows.booking(room_id=room, stay="[2027-10-01,2027-10-04)")
-    assert isinstance(approve_draft(conn, clock, invalid), Invalidated)
+    assert isinstance(approve_draft(conn, clock, invalid, version=1), Invalidated)
 
     # Superseded by a newer email; and a draft born superseded (D48).
     drafted("superseded", room_type_id="standard")
@@ -194,7 +194,7 @@ def world(committed_db: CommittedDb) -> World:
     close_email(conn, later, emails["expired_closed"])  # expired -> closed
     _flip_stale_holds(conn, later.now())
     live = drafted("live", at=later, stay="[2027-08-24,2027-08-27)", room_type_id="sea_view")
-    assert isinstance(approve_draft(conn, later, live), Approved)
+    assert isinstance(approve_draft(conn, later, live, version=1), Approved)
     conn.commit()
     return World(conn, later, drafts, emails)
 
@@ -233,10 +233,11 @@ def test_the_scenario_reaches_every_status_the_database_allows(world: World) -> 
 
 def test_the_scenario_performs_every_audited_transition(world: World) -> None:
     """Every AuditEvent appears, so every transition with an audit entry was run
-    (including booking confirmed -> cancelled and email expired -> closed)."""
+    (including booking confirmed -> cancelled and email expired -> closed). Except the
+    API-only events: the scenario calls the domain directly (test_api_actions.py)."""
     events = {e for (e,) in world.conn.execute("SELECT DISTINCT event FROM audit_log")}
     world.conn.commit()
-    assert {event.value for event in AuditEvent} - events == set()
+    assert {event.value for event in set(AuditEvent) - API_ONLY_EVENTS} - events == set()
     cancelled_after_confirm = world.conn.execute(
         "SELECT count(*) FROM bookings WHERE status = 'cancelled' AND id IN ("
         " SELECT (output->>'booking_id')::bigint FROM audit_log WHERE event = 'hold.confirmed')"
@@ -439,8 +440,8 @@ def stale_draft(db: Conn, rows: Rows) -> int:
 @pytest.mark.parametrize(
     "action",
     [
-        lambda db, d: approve_draft(db, TEN_DAYS_LATER, d),
-        lambda db, d: edit_draft(db, TEN_DAYS_LATER, d, "Still interested?"),
+        lambda db, d: approve_draft(db, TEN_DAYS_LATER, d, version=1),
+        lambda db, d: edit_draft(db, TEN_DAYS_LATER, d, "Still interested?", base_version=1),
         lambda db, d: reject_draft(db, TEN_DAYS_LATER, d),
     ],
     ids=["approve", "edit", "reject"],
@@ -516,8 +517,8 @@ def actions_for(table: str, clock: FixedClock) -> dict[str, Callable[[Conn, int]
     }
     by_table: dict[str, dict[str, Callable[[Conn, int], object]]] = {
         "drafts": {
-            "approve": lambda c, i: approve_draft(c, clock, i, confirm_warnings=True),
-            "edit": lambda c, i: edit_draft(c, clock, i, "Changed."),
+            "approve": lambda c, i: approve_draft(c, clock, i, confirm_warnings=True, version=1),
+            "edit": lambda c, i: edit_draft(c, clock, i, "Changed.", base_version=1),
             "reject": lambda c, i: reject_draft(c, clock, i),
             "supersede": lambda c, i: _store_newer(c, clock, "drafts", i),
         },

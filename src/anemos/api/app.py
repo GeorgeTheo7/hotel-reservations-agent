@@ -10,11 +10,13 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from anemos.api import reads
+from anemos.api import actions, reads
 from anemos.api.deps import Connect
+from anemos.api.transactions import record_after_rollback
+from anemos.audit import AuditEvent
 from anemos.clock import Clock, SystemClock
 from anemos.db.connection import connect as db_connect
-from anemos.states import NotFound
+from anemos.states import ActionRefused, Entity, NotFound
 
 log = logging.getLogger("anemos.api")
 
@@ -24,6 +26,8 @@ def create_app(connect: Connect, clock: Clock) -> FastAPI:
     app.state.connect = connect
     app.state.clock = clock
     app.include_router(reads.router)
+    app.include_router(actions.router)
+    app.add_exception_handler(ActionRefused, _refused)
     app.add_exception_handler(NotFound, _not_found)
     app.add_exception_handler(Exception, _internal_error)
     return app
@@ -32,6 +36,26 @@ def create_app(connect: Connect, clock: Clock) -> FastAPI:
 def production_app() -> FastAPI:
     """DATABASE_URL and the system clock; for `python -m anemos.api`."""
     return create_app(lambda: db_connect(), SystemClock())
+
+
+REFUSED_EVENT: dict[Entity, AuditEvent] = {
+    "draft": AuditEvent.DRAFT_ACTION_REFUSED,
+    "email": AuditEvent.EMAIL_ACTION_REFUSED,
+    "booking": AuditEvent.BOOKING_ACTION_REFUSED,
+}
+
+
+def _refused(request: Request, exc: Exception) -> JSONResponse:
+    """Every refused owner action (TransitionRefused, StaleVersion): 409, and one
+    `<entity>.action_refused` audit row. run_action has already rolled the request's
+    transaction back; the row is written on a new connection in its own transaction,
+    so it does not depend on when FastAPI closes the request's connection."""
+    assert isinstance(exc, ActionRefused)
+    record_after_rollback(
+        request.app.state.connect, request.app.state.clock.now(), REFUSED_EVENT[exc.entity],
+        email_id=exc.email_id, draft_id=exc.draft_id, output=exc.audit_output(),
+    )  # fmt: skip
+    return JSONResponse({"error": exc.reason} | exc.response_details(), status_code=409)
 
 
 def _not_found(request: Request, exc: Exception) -> JSONResponse:

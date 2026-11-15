@@ -21,9 +21,9 @@ from psycopg.rows import TupleRow
 
 from anemos.approval import Approved, Invalidated, approve_draft
 from anemos.clock import FixedClock
-from anemos.owner_actions import DraftExpired
+from anemos.owner_actions import DraftExpired, Edited, edit_draft
 from anemos.reservations.loader import load_hotel_data
-from anemos.states import TransitionRefused
+from anemos.states import ActionRefused, StaleVersion, TransitionRefused
 from anemos.stub_drafter import Drafted, draft_reply
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's class is for mypy only
@@ -88,8 +88,8 @@ def book(committed_db: CommittedDb, rooms: tuple[int, ...], stay: str = JUNE) ->
 def approve_and_commit(conn: Conn, draft_id: int) -> object:
     """What the API will do: approve, commit any outcome; roll back on refusal."""
     try:
-        result = approve_draft(conn, FixedClock(NOW), draft_id)
-    except TransitionRefused:
+        result = approve_draft(conn, FixedClock(NOW), draft_id, version=1)
+    except ActionRefused:
         conn.rollback()
         raise
     conn.commit()
@@ -116,7 +116,7 @@ def test_double_approval_sends_once(committed_db: CommittedDb) -> None:
     draft_id = committed_draft(committed_db, "guest@example.test", room_type_id="sea_view")
     first, second = committed_db.connect(), committed_db.connect()
 
-    assert isinstance(approve_draft(first, FixedClock(NOW), draft_id), Approved)
+    assert isinstance(approve_draft(first, FixedClock(NOW), draft_id, version=1), Approved)
     thread, outcome = in_thread(lambda: approve_and_commit(second, draft_id))
     committed_db.wait_until_blocked(second)
     first.commit()
@@ -128,6 +128,58 @@ def test_double_approval_sends_once(committed_db: CommittedDb) -> None:
     assert counts(committed_db.connect()) == {
         "outbox": 1, "held_rooms": [201], "drafts": ["approved"],
     }  # fmt: skip
+
+
+def test_an_approval_waiting_for_an_edit_is_then_stale(committed_db: CommittedDb) -> None:
+    """D67 cannot race: A saves v2 and has not committed; B approves v1 and waits on
+    the sender lock (D61); after A commits, B's check under the lock sees v2."""
+    draft_id = committed_draft(committed_db, "guest@example.test", room_type_id="sea_view")
+    first, second = committed_db.connect(), committed_db.connect()
+
+    edited = edit_draft(first, FixedClock(NOW), draft_id, "Dear guest, v2.", base_version=1)
+    assert isinstance(edited, Edited)
+    assert edited.version == 2  # (its price warning does not matter here)
+    thread, outcome = in_thread(lambda: approve_and_commit(second, draft_id))
+    committed_db.wait_until_blocked(second)
+    first.commit()
+    thread.join(timeout=10)
+
+    assert not thread.is_alive()
+    assert isinstance(outcome.error, StaleVersion)
+    assert (outcome.error.seen, outcome.error.latest) == (1, 2)
+    assert counts(committed_db.connect()) == {
+        "outbox": 0, "held_rooms": None, "drafts": ["pending_approval"],
+    }  # fmt: skip
+
+
+def test_an_edit_waiting_for_another_edit_is_then_stale(committed_db: CommittedDb) -> None:
+    """Two screens both edit from v1: the second waits on the lock, then is refused;
+    the first edit is kept (no lost edit)."""
+    draft_id = committed_draft(committed_db, "guest@example.test", room_type_id="sea_view")
+    first, second = committed_db.connect(), committed_db.connect()
+
+    def edit_from_v1(conn: Conn, text: str) -> object:
+        try:
+            return edit_draft(conn, FixedClock(NOW), draft_id, text, base_version=1)
+        except ActionRefused:
+            conn.rollback()
+            raise
+
+    assert edit_draft(first, FixedClock(NOW), draft_id, "Dear guest, laptop.", base_version=1)
+    thread, outcome = in_thread(lambda: edit_from_v1(second, "Dear guest, phone."))
+    committed_db.wait_until_blocked(second)
+    first.commit()
+    thread.join(timeout=10)
+
+    assert not thread.is_alive()
+    assert isinstance(outcome.error, StaleVersion)
+    assert (outcome.error.seen, outcome.error.latest) == (1, 2)
+    reader = committed_db.connect()
+    bodies = reader.execute(
+        "SELECT body FROM draft_versions WHERE draft_id = %s AND version > 1 ORDER BY version",
+        (draft_id,),
+    ).fetchall()
+    assert bodies == [("Dear guest, laptop.",)]
 
 
 # --- 2. two drafts, the last room -------------------------------------------------------
@@ -143,7 +195,7 @@ def test_two_approvals_competing_for_the_last_room(committed_db: CommittedDb) ->
     draft_b = committed_draft(committed_db, "ben@example.test", room_type_id="sea_view")
     conn_a, conn_b = committed_db.connect(), committed_db.connect()
 
-    assert isinstance(approve_draft(conn_a, FixedClock(NOW), draft_a), Approved)
+    assert isinstance(approve_draft(conn_a, FixedClock(NOW), draft_a, version=1), Approved)
     thread, outcome = in_thread(lambda: approve_and_commit(conn_b, draft_b))
     committed_db.wait_until_blocked(conn_b)  # blocked on the room lock for 204
     conn_a.commit()
@@ -184,7 +236,7 @@ def test_approval_after_72_hours_commits_the_expiry(committed_db: CommittedDb) -
     draft_id = committed_draft(committed_db, "guest@example.test", room_type_id="sea_view")
     conn = committed_db.connect()
     late = FixedClock(NOW + timedelta(hours=72, seconds=1))
-    assert approve_draft(conn, late, draft_id) == DraftExpired(draft_id)
+    assert approve_draft(conn, late, draft_id, version=1) == DraftExpired(draft_id)
     conn.commit()
     assert counts(committed_db.connect()) == {
         "outbox": 0, "held_rooms": None, "drafts": ["expired"],
@@ -237,7 +289,7 @@ def test_two_room_approvals_take_rooms_in_one_order(
     102 while waiting for 101 (which, against A taking 101 then 102, would deadlock)."""
     draft_a, draft_b = two_room_drafts
     conn_a, conn_b = committed_db.connect(), committed_db.connect()
-    assert isinstance(approve_draft(conn_a, FixedClock(NOW), draft_a), Approved)
+    assert isinstance(approve_draft(conn_a, FixedClock(NOW), draft_a, version=1), Approved)
     thread, outcome = in_thread(lambda: approve_and_commit(conn_b, draft_b))
     committed_db.wait_until_blocked(conn_b)
     blocked_on = (

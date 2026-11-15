@@ -104,7 +104,9 @@ def draft_reply(conn: Conn, hotel: HotelData, clock: Clock, email_id: int) -> Dr
         raise LookupError(f"no email {email_id}")
     status, language, received_at = email
     if status != EmailStatus.RECEIVED:
-        raise TransitionRefused(f"email {email_id}", status, EmailStatus.PROCESSING)
+        raise TransitionRefused(
+            "email", email_id, status, EmailStatus.PROCESSING, action="draft_reply"
+        )
     now = clock.now()
     _set_email(conn, email_id, EmailStatus.PROCESSING)
     write_audit(conn, now, "system", AuditEvent.EMAIL_PROCESSING, email_id=email_id)

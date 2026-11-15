@@ -188,3 +188,13 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Decision:** `emails_visible_received_at_id_idx` covers only `status <> 'set_aside'`; set-aside rows are never read for the default view.
 - **Cost:** the planner uses a partial index only if it can prove the query's WHERE implies the index's, so `inbox_query` writes `e.status <> 'set_aside'` literally; dropping or rewording it silently falls back to another plan.
 - **Evidence:** `test_a_second_inbox_page_seeks_in_its_index` requires the index *and* the `ROW(received_at, id) < ROW(...)` index condition on a page with a cursor; replacing the predicate with TRUE, or the row comparison with an OR of two comparisons, fails it.
+
+## 2026-11-15 · "Commit instead of rollback on a refusal" cannot be caught by a refusal test
+- **Symptom:** the planned mutation (commit instead of rollback when an action raises) passed every refusal test.
+- **Cause:** every refusal (TransitionRefused, StaleVersion) is raised before the action writes anything, so committing an empty transaction changes nothing.
+- **Fix:** the rollback is tested where it matters, an exception *after* a write: `approve_draft` flips stale holds (step 3) and then fails building a text with `{{HOLD_UNTIL}}` and nothing held (step 6). `test_a_bug_after_a_write_rolls_everything_back` requires 500 and the stale hold still `hold`; the mutation fails it.
+
+## 2026-11-15 · The audit coverage guard and events only the API writes
+- **Symptom:** after adding `email.action_refused`, `booking.action_refused` and `draft.price_warning_shown`, `test_the_scenario_performs_every_audited_transition` failed.
+- **Cause:** the scenario calls the domain functions directly; these three are written only by the API after it rolled an action back.
+- **Fix:** `audit.API_ONLY_EVENTS` names them; the guard excludes exactly that set, and `test_api_actions.py` covers them (the booking one with the Holds actions). A new domain event is still caught by the guard.

@@ -34,7 +34,13 @@ from anemos.owner_actions import (
     reopen_email,
 )
 from anemos.reservations.loader import load_hotel_data
-from anemos.states import BookingStatus, DraftStatus, EmailStatus, TransitionRefused
+from anemos.states import (
+    BookingStatus,
+    DraftStatus,
+    EmailStatus,
+    StaleVersion,
+    TransitionRefused,
+)
 from anemos.stub_drafter import Drafted, draft_reply
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixtures' classes are for mypy only
@@ -110,8 +116,12 @@ def test_edit_adds_an_owner_version_and_keeps_the_original(
     db: Conn, rows: Rows, clock: FixedClock
 ) -> None:
     _, draft_id = pending_draft(rows)
-    assert edit_draft(db, clock, draft_id, "Dear guest, edited once.") == Edited(2, None)
-    assert edit_draft(db, clock, draft_id, "Dear guest, edited twice.") == Edited(3, None)
+    assert edit_draft(db, clock, draft_id, "Dear guest, edited once.", base_version=1) == Edited(
+        2, None
+    )
+    assert edit_draft(db, clock, draft_id, "Dear guest, edited twice.", base_version=2) == Edited(
+        3, None
+    )
     versions = db.execute(
         "SELECT version, author, body FROM draft_versions WHERE draft_id = %s ORDER BY version",
         (draft_id,),
@@ -129,7 +139,7 @@ def test_blank_edit_is_refused_before_writing(
     _, draft_id = pending_draft(rows)
     before = snapshot(db)
     with pytest.raises(ValueError, match="blank"):
-        edit_draft(db, clock, draft_id, blank)
+        edit_draft(db, clock, draft_id, blank, base_version=1)
     assert snapshot(db) == before
 
 
@@ -169,14 +179,14 @@ def price_check(db: Conn, draft_id: int, version: int) -> object:
 def test_edit_keeping_the_block_verbatim_passes(db: Conn, rows: Rows, clock: FixedClock) -> None:
     draft_id, block = quoted_draft(rows)
     edited = f"Dear Maria,\n\nLovely to hear from you again!\n\n{block}\n\nSee you soon"
-    assert edit_draft(db, clock, draft_id, edited) == Edited(2, None)
+    assert edit_draft(db, clock, draft_id, edited, base_version=1) == Edited(2, None)
     assert price_check(db, draft_id, 2) is True
 
 
 def test_edit_changing_a_price_warns(db: Conn, rows: Rows, clock: FixedClock) -> None:
     draft_id, block = quoted_draft(rows)
     cheaper = block.replace("€390.00", "€350.00")
-    result = edit_draft(db, clock, draft_id, f"Dear guest,\n\n{cheaper}")
+    result = edit_draft(db, clock, draft_id, f"Dear guest,\n\n{cheaper}", base_version=1)
     assert isinstance(result, Edited)
     assert result.price_warning == "edited-price warning: quote block 1 of 1 changed or removed"
     assert price_check(db, draft_id, 2) == result.price_warning
@@ -185,7 +195,7 @@ def test_edit_changing_a_price_warns(db: Conn, rows: Rows, clock: FixedClock) ->
 
 def test_edit_deleting_the_block_warns(db: Conn, rows: Rows, clock: FixedClock) -> None:
     draft_id, _ = quoted_draft(rows)
-    result = edit_draft(db, clock, draft_id, "Dear guest, call us for a price.")
+    result = edit_draft(db, clock, draft_id, "Dear guest, call us for a price.", base_version=1)
     assert isinstance(result, Edited)
     assert result.price_warning is not None
     assert "changed or removed" in result.price_warning
@@ -203,12 +213,39 @@ def test_price_check_against_a_real_stub_draft(db: Conn, rows: Rows, clock: Fixe
         (drafted.draft_id,),
     ).fetchone()
     assert body is not None
-    friendlier = edit_draft(db, clock, drafted.draft_id, body[0].replace("Dear guest,", "Hi,"))
+    friendlier = edit_draft(
+        db, clock, drafted.draft_id, body[0].replace("Dear guest,", "Hi,"), base_version=1
+    )
     assert isinstance(friendlier, Edited)
     assert friendlier.price_warning is None
-    cheaper = edit_draft(db, clock, drafted.draft_id, body[0].replace("€390.00", "€350.00"))
+    cheaper = edit_draft(
+        db, clock, drafted.draft_id, body[0].replace("€390.00", "€350.00"), base_version=2
+    )
     assert isinstance(cheaper, Edited)
     assert cheaper.price_warning is not None
+
+
+@pytest.mark.parametrize("base", [1, 3], ids=["older", "newer-than-latest"])
+def test_an_edit_from_an_old_version_is_refused(
+    db: Conn, rows: Rows, clock: FixedClock, base: int
+) -> None:
+    """D67: editing from v1 after v2 exists would silently drop v2. Nothing written."""
+    _, draft_id = pending_draft(rows)
+    assert edit_draft(db, clock, draft_id, "Dear guest, v2.", base_version=1) == Edited(2, None)
+    before = snapshot(db)
+    with pytest.raises(StaleVersion) as stale:
+        edit_draft(db, clock, draft_id, "Dear guest, from v1.", base_version=base)
+    assert (stale.value.seen, stale.value.latest, stale.value.action) == (base, 2, "edit")
+    assert stale.value.audit_output() == {
+        "action": "edit", "reason": "stale_version", "seen": base, "latest": 2,
+    }  # fmt: skip
+    assert snapshot(db) == before
+
+
+def test_an_expired_draft_is_expired_before_the_version_check(db: Conn, rows: Rows) -> None:
+    _, draft_id = pending_draft(rows)
+    late = FixedClock(PAST_72H)
+    assert edit_draft(db, late, draft_id, "Too late.", base_version=9) == DraftExpired(draft_id)
 
 
 # --- reject -----------------------------------------------------------------------------
@@ -226,7 +263,7 @@ def test_reject_closes_the_email(db: Conn, rows: Rows, clock: FixedClock) -> Non
 
 @pytest.mark.parametrize(
     "action",
-    [lambda db, clock, d: edit_draft(db, clock, d, "Too late."), reject_draft],
+    [lambda db, clock, d: edit_draft(db, clock, d, "Too late.", base_version=1), reject_draft],
     ids=["edit", "reject"],
 )
 def test_action_on_a_draft_past_72_hours_expires_it_instead(
@@ -342,7 +379,7 @@ def test_a_hold_past_expires_at_can_still_be_confirmed(db: Conn, rows: Rows) -> 
 def _cases() -> list[Any]:
     cases: list[Any] = []
     draft_actions: dict[str, Callable[[Conn, FixedClock, int], object]] = {
-        "edit": lambda db, clock, d: edit_draft(db, clock, d, "Changed."),
+        "edit": lambda db, clock, d: edit_draft(db, clock, d, "Changed.", base_version=1),
         "reject": reject_draft,
     }
     for name, action in draft_actions.items():

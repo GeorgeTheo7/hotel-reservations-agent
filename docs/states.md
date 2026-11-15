@@ -108,7 +108,7 @@ Rules:
 - At most **one draft per email** in v1. Owner edits add text versions to that draft; they do not create a new draft.
 - Approving a draft that is not `pending_approval` returns **409** and changes nothing (covers double approval, D10).
 - Approving a draft that is more than 72 hours old but not yet flipped is treated as `expired`: it is flipped (and the flip is committed) and the approval is refused with **409**, the body saying `expired` (D54).
-- The text that is sent is the **latest version** at approval, with `{{HOLD_UNTIL}}` filled in during the approval transaction.
+- The text that is sent is the **latest version** at approval, and it must be the version the owner approved: approval names the version shown and is refused (409 `stale_version`) if a newer one exists (D67). `{{HOLD_UNTIL}}` is filled in during the approval transaction.
 
 ---
 

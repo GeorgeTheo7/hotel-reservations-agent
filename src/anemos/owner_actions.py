@@ -27,7 +27,14 @@ from anemos.clock import Clock
 from anemos.guardrails import PRICE_CHECK, rendered_blocks_unchanged
 from anemos.inbox import lock_sender
 from anemos.reservations.errors import ReasonCode
-from anemos.states import BookingStatus, DraftStatus, EmailStatus, TransitionRefused
+from anemos.states import (
+    BookingStatus,
+    DraftStatus,
+    EmailStatus,
+    NotFound,
+    StaleVersion,
+    TransitionRefused,
+)
 
 type Conn = psycopg.Connection[TupleRow]
 
@@ -51,7 +58,9 @@ class Edited:
 # --- drafts ---------------------------------------------------------------------------
 
 
-def edit_draft(conn: Conn, clock: Clock, draft_id: int, body: str) -> Edited | DraftExpired:
+def edit_draft(
+    conn: Conn, clock: Clock, draft_id: int, body: str, *, base_version: int
+) -> Edited | DraftExpired:
     """pending_approval -> pending_approval: a new text version by the owner (D41).
     The original versions are kept (write-once, D51).
 
@@ -59,6 +68,9 @@ def edit_draft(conn: Conn, clock: Clock, draft_id: int, body: str) -> Edited | D
     (draft_offers.rendered_block) appears verbatim in the new text. Otherwise the
     version's guardrail result records the edited-price warning, and approval refuses
     it unless confirm_warnings (D10). The edit itself is always stored.
+
+    D67: `base_version` is the version the owner edited from; if a newer one exists,
+    StaleVersion is raised under the draft lock and nothing is written (no lost edit).
     """
     if not body.strip():
         raise ValueError("an edited draft cannot be blank")
@@ -74,11 +86,11 @@ def edit_draft(conn: Conn, clock: Clock, draft_id: int, body: str) -> Edited | D
             (draft_id,),
         ).fetchall()
     ]
+    latest = latest_version_number(conn, draft_id)
+    if base_version != latest:
+        raise StaleVersion(draft_id, base_version, latest, action="edit", email_id=email_id)
     price_check = rendered_blocks_unchanged(body, blocks)
-    row = conn.execute(
-        "SELECT max(version) FROM draft_versions WHERE draft_id = %s", (draft_id,)
-    ).fetchone()
-    version = int(row[0]) + 1 if row and row[0] is not None else 1
+    version = latest + 1
     conn.execute(
         "INSERT INTO draft_versions (draft_id, version, author, body, guardrail_results,"
         " created_at) VALUES (%s, %s, 'owner', %s, %s, %s)",
@@ -126,7 +138,7 @@ def close_email(conn: Conn, clock: Clock, email_id: int) -> None:
     now = clock.now()
     status = _lock_email(conn, email_id)
     if status not in (EmailStatus.ESCALATED, EmailStatus.EXPIRED):
-        raise TransitionRefused(f"email {email_id}", status, EmailStatus.CLOSED)
+        raise TransitionRefused("email", email_id, status, EmailStatus.CLOSED, action="close")
     set_email(conn, email_id, EmailStatus.CLOSED)
     write_audit(
         conn, now, "owner", AuditEvent.EMAIL_CLOSED, email_id=email_id, output={"was": status}
@@ -139,7 +151,7 @@ def reopen_email(conn: Conn, clock: Clock, email_id: int) -> None:
     now = clock.now()
     status = _lock_email(conn, email_id)
     if status != EmailStatus.SET_ASIDE:
-        raise TransitionRefused(f"email {email_id}", status, EmailStatus.ESCALATED)
+        raise TransitionRefused("email", email_id, status, EmailStatus.ESCALATED, action="reopen")
     conn.execute(
         "UPDATE emails SET status = %s, reason_codes = %s WHERE id = %s",
         (EmailStatus.ESCALATED, [ReasonCode.OWNER_REOPENED.value], email_id),
@@ -155,7 +167,7 @@ def confirm_hold(conn: Conn, clock: Clock, booking_id: int) -> None:
     `hold`, even after expires_at; an `expired` booking is final."""
     _move_booking(
         conn, clock, booking_id, BookingStatus.HOLD, BookingStatus.CONFIRMED,
-        AuditEvent.HOLD_CONFIRMED,
+        AuditEvent.HOLD_CONFIRMED, "confirm",
     )  # fmt: skip
 
 
@@ -163,7 +175,7 @@ def release_hold(conn: Conn, clock: Clock, booking_id: int) -> None:
     """hold -> cancelled: the owner releases the hold (D46)."""
     _move_booking(
         conn, clock, booking_id, BookingStatus.HOLD, BookingStatus.CANCELLED,
-        AuditEvent.HOLD_RELEASED,
+        AuditEvent.HOLD_RELEASED, "release",
     )  # fmt: skip
 
 
@@ -171,7 +183,7 @@ def cancel_booking(conn: Conn, clock: Clock, booking_id: int) -> None:
     """confirmed -> cancelled: the owner cancels a confirmed booking (D46)."""
     _move_booking(
         conn, clock, booking_id, BookingStatus.CONFIRMED, BookingStatus.CANCELLED,
-        AuditEvent.BOOKING_CANCELLED,
+        AuditEvent.BOOKING_CANCELLED, "cancel",
     )  # fmt: skip
 
 
@@ -191,7 +203,7 @@ def _lock_draft(conn: Conn, draft_id: int) -> int:
         (draft_id,),
     ).fetchone()
     if row is None:
-        raise LookupError(f"no draft {draft_id}")
+        raise NotFound(f"no draft {draft_id}")
     email_id, address = int(row[0]), row[1]
     lock_sender(conn, address)
     conn.execute(
@@ -207,7 +219,7 @@ def _draft_status(conn: Conn, draft_id: int) -> tuple[str, datetime]:
         "SELECT status, created_at FROM drafts WHERE id = %s", (draft_id,)
     ).fetchone()
     if row is None:
-        raise LookupError(f"no draft {draft_id}")
+        raise NotFound(f"no draft {draft_id}")
     return row[0], row[1]
 
 
@@ -231,7 +243,10 @@ def lock_pending_draft(
     email_id = _lock_draft(conn, draft_id)
     status, created_at = _draft_status(conn, draft_id)
     if status != DraftStatus.PENDING_APPROVAL:
-        raise TransitionRefused(f"draft {draft_id}", status, _ACTION_TARGET[action])
+        raise TransitionRefused(
+            "draft", draft_id, status, _ACTION_TARGET[action], action=action,
+            email_id=email_id,
+        )  # fmt: skip
     if _is_due(created_at, now):
         _expire(conn, now, draft_id, email_id)
         write_audit(
@@ -240,6 +255,16 @@ def lock_pending_draft(
         )  # fmt: skip
         return DraftExpired(draft_id)
     return email_id
+
+
+def latest_version_number(conn: Conn, draft_id: int) -> int:
+    """The highest version of a draft (every draft has version 1, written with it)."""
+    row = conn.execute(
+        "SELECT max(version) FROM draft_versions WHERE draft_id = %s", (draft_id,)
+    ).fetchone()
+    if row is None or row[0] is None:
+        raise LookupError(f"draft {draft_id} has no version")  # a bug, not a 404
+    return int(row[0])
 
 
 def _expire(conn: Conn, now: datetime, draft_id: int, email_id: int) -> None:
@@ -257,13 +282,13 @@ def decide_draft(conn: Conn, draft_id: int, status: DraftStatus, now: datetime) 
 def _lock_email(conn: Conn, email_id: int) -> str:
     row = conn.execute("SELECT from_address FROM emails WHERE id = %s", (email_id,)).fetchone()
     if row is None:
-        raise LookupError(f"no email {email_id}")
+        raise NotFound(f"no email {email_id}")
     lock_sender(conn, row[0])
     status = conn.execute(
         "SELECT status FROM emails WHERE id = %s FOR UPDATE", (email_id,)
     ).fetchone()
     if status is None:  # cannot happen: emails are never deleted (D51)
-        raise LookupError(f"no email {email_id}")
+        raise NotFound(f"no email {email_id}")
     return str(status[0])
 
 
@@ -278,15 +303,18 @@ def _move_booking(
     expected: BookingStatus,
     wanted: BookingStatus,
     event: AuditEvent,
+    action: str,
 ) -> None:
     row = conn.execute(
         "SELECT status, email_id FROM bookings WHERE id = %s FOR UPDATE", (booking_id,)
     ).fetchone()
     if row is None:
-        raise LookupError(f"no booking {booking_id}")
+        raise NotFound(f"no booking {booking_id}")
     status, email_id = row
     if status != expected:
-        raise TransitionRefused(f"booking {booking_id}", status, wanted)
+        raise TransitionRefused(
+            "booking", booking_id, status, wanted, action=action, email_id=email_id
+        )
     conn.execute("UPDATE bookings SET status = %s WHERE id = %s", (wanted, booking_id))
     write_audit(
         conn, clock.now(), "owner", event, email_id=email_id, output={"booking_id": booking_id}

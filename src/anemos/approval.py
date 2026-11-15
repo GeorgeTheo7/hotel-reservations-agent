@@ -9,8 +9,9 @@ Steps, in D10's order:
  1. Lock: the sender lock (D61), then the draft and its email (FOR UPDATE). Not
     pending_approval -> TransitionRefused (409, covers double approval). Older than
     72 h -> flipped to expired, DraftExpired (409 "expired", D54).
- 2. Warnings: the latest version's price check (D63). A warning -> PriceWarning (422)
-    unless confirm_warnings; nothing is written.
+ 2. Version (D67): the version the owner saw must be the latest, else StaleVersion
+    (409, nothing written). Then warnings: the latest version's price check (D63).
+    A warning -> PriceWarning (422) unless confirm_warnings; nothing is written.
  3. Flip stale holds: every `hold` past expires_at becomes `expired` (D10, D22).
  4. Re-validate everything the draft states (D47): each offered quote is priced again
     from the database and must match exactly, and each offered plan must still be
@@ -38,7 +39,7 @@ from psycopg.rows import TupleRow
 
 from anemos.audit import AuditEvent, write_audit
 from anemos.clock import Clock
-from anemos.guardrails import PRICE_CHECK
+from anemos.guardrails import PRICE_CHECK, missing_blocks
 from anemos.owner_actions import DraftExpired, decide_draft, lock_pending_draft, set_email
 from anemos.reservations.availability import rooms_for_plan
 from anemos.reservations.errors import FullyBooked, NeedsEscalation, ReasonCode
@@ -50,7 +51,7 @@ from anemos.reservations.model import Party, Stay
 from anemos.reservations.pricing import Quote, price_stay
 from anemos.reservations.quote_template import render_hold_until
 from anemos.reservations.tools import LoadedRequest, line_json, load_request
-from anemos.states import BookingStatus, DraftStatus, EmailStatus
+from anemos.states import BookingStatus, DraftStatus, EmailStatus, StaleVersion
 
 type Conn = psycopg.Connection[TupleRow]
 
@@ -71,7 +72,9 @@ class PriceWarning:
     """The latest version changed a quote block (D63); approve again with
     confirm_warnings=True to send it anyway (D10: 422). Nothing was written."""
 
-    message: str
+    message: str  # for people: which block numbers changed
+    version: int  # the version carrying the warning
+    quote_ids: tuple[int, ...]  # the offers whose rendered_block is no longer in the text
 
 
 @dataclass(frozen=True)
@@ -94,8 +97,10 @@ class _Offer:
 
 
 def approve_draft(
-    conn: Conn, clock: Clock, draft_id: int, *, confirm_warnings: bool = False
+    conn: Conn, clock: Clock, draft_id: int, *, version: int, confirm_warnings: bool = False
 ) -> Approved | PriceWarning | Invalidated | DraftExpired:
+    """Approve the draft as the owner saw it: `version` is the version number on the
+    owner's screen (D67)."""
     now = clock.now()
 
     # 1. Lock; refuse unless pending; expire if past 72 h.
@@ -104,11 +109,14 @@ def approve_draft(
         return locked
     email_id = locked
 
-    # 2. Warnings of the version that would be sent.
-    version, body, results = _latest_version(conn, draft_id)
+    # 2. The version the owner saw must be the one that would be sent (D67); then its
+    # warnings.
+    latest, body, results = _latest_version(conn, draft_id)
+    if version != latest:
+        raise StaleVersion(draft_id, version, latest, action="approve", email_id=email_id)
     price_check = results.get(PRICE_CHECK, True)
     if price_check is not True and not confirm_warnings:
-        return PriceWarning(str(price_check))
+        return PriceWarning(str(price_check), latest, _changed_offers(conn, draft_id, body))
 
     # 3. Flip stale holds (in id order, so two approvals lock them in the same order).
     _flip_stale_holds(conn, now)
@@ -184,6 +192,16 @@ def _latest_version(conn: Conn, draft_id: int) -> tuple[int, str, dict[str, Any]
     if row is None:
         raise LookupError(f"draft {draft_id} has no version")
     return int(row[0]), str(row[1]), dict(row[2])
+
+
+def _changed_offers(conn: Conn, draft_id: int, body: str) -> tuple[int, ...]:
+    """Quote ids of the offers whose rendered block is missing from `body` (D63)."""
+    offers = conn.execute(
+        "SELECT quote_id, rendered_block FROM draft_offers WHERE draft_id = %s ORDER BY quote_id",
+        (draft_id,),
+    ).fetchall()
+    missing = missing_blocks(body, [str(block) for _, block in offers])
+    return tuple(int(offers[i][0]) for i in missing)
 
 
 def _flip_stale_holds(conn: Conn, now: datetime) -> None:

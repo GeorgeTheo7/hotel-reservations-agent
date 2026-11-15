@@ -20,7 +20,7 @@ from anemos.approval import Approved, Invalidated, PriceWarning, approve_draft
 from anemos.clock import FixedClock
 from anemos.owner_actions import DraftExpired, Edited, edit_draft
 from anemos.reservations.loader import load_hotel_data
-from anemos.states import TransitionRefused
+from anemos.states import StaleVersion, TransitionRefused
 from anemos.stub_drafter import Drafted, draft_reply
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixtures' classes are for mypy only
@@ -98,7 +98,7 @@ def snapshot(db: Conn) -> dict[str, list[Any]]:
 
 def test_held_quote_is_held_sent_and_approved(db: Conn, rows: Rows, clock: FixedClock) -> None:
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")
-    result = approve_draft(db, clock, draft_id)
+    result = approve_draft(db, clock, draft_id, version=1)
     assert isinstance(result, Approved)
     hold_until = NOW + timedelta(hours=48)
     assert result.hold_until == hold_until
@@ -123,14 +123,14 @@ def test_held_quote_is_held_sent_and_approved(db: Conn, rows: Rows, clock: Fixed
 def test_deferred_foreign_keys_hold_at_commit(db: Conn, rows: Rows, clock: FixedClock) -> None:
     """Bookings and outbox were written before the draft became approved (D10 order)."""
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")
-    assert isinstance(approve_draft(db, clock, draft_id), Approved)
+    assert isinstance(approve_draft(db, clock, draft_id, version=1), Approved)
     rows.check_deferred_now("bookings_draft_approved_fkey")
     rows.check_deferred_now("outbox_draft_approved_fkey")
 
 
 def test_two_rooms_take_the_two_lowest_numbers(db: Conn, rows: Rows, clock: FixedClock) -> None:
     draft_id = drafted(db, rows, clock, adults=4, rooms=2, room_type_id="standard")
-    result = approve_draft(db, clock, draft_id)
+    result = approve_draft(db, clock, draft_id, version=1)
     assert isinstance(result, Approved)
     holds = holds_of(db, draft_id)
     assert [room for room, *_ in holds] == [101, 102]
@@ -143,7 +143,7 @@ def test_quote_without_hold_is_sent_but_nothing_is_held(
 ) -> None:
     """Ex 4, the min-stay version: hold_allowed is false (D9, cross-rule 4)."""
     draft_id = drafted(db, rows, clock, stay="[2027-08-10,2027-08-13)", room_type_id="sea_view")
-    result = approve_draft(db, clock, draft_id)
+    result = approve_draft(db, clock, draft_id, version=1)
     assert isinstance(result, Approved)
     assert (result.booking_ids, result.hold_until) == ((), None)
     assert holds_of(db, draft_id) == []
@@ -153,7 +153,7 @@ def test_quote_without_hold_is_sent_but_nothing_is_held(
 def test_alternatives_are_sent_and_never_held(db: Conn, rows: Rows, clock: FixedClock) -> None:
     book(rows, SEA_VIEW)
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")
-    assert isinstance(approve_draft(db, clock, draft_id), Approved)
+    assert isinstance(approve_draft(db, clock, draft_id, version=1), Approved)
     assert holds_of(db, draft_id) == []
 
 
@@ -166,7 +166,7 @@ def test_drafts_without_offers_are_sent(
     db: Conn, rows: Rows, clock: FixedClock, request_columns: dict[str, Any]
 ) -> None:
     draft_id = drafted(db, rows, clock, **request_columns)
-    result = approve_draft(db, clock, draft_id)
+    result = approve_draft(db, clock, draft_id, version=1)
     assert isinstance(result, Approved)
     assert result.booking_ids == ()
     assert outbox_of(db, draft_id) is not None
@@ -174,16 +174,16 @@ def test_drafts_without_offers_are_sent(
 
 def test_the_latest_version_is_sent(db: Conn, rows: Rows, clock: FixedClock) -> None:
     draft_id = drafted(db, rows, clock, children=2, child_ages=[8])
-    assert edit_draft(db, clock, draft_id, "Dear Maria, how old are the children?") == Edited(
-        2, None
-    )
-    assert isinstance(approve_draft(db, clock, draft_id), Approved)
+    assert edit_draft(
+        db, clock, draft_id, "Dear Maria, how old are the children?", base_version=1
+    ) == Edited(2, None)
+    assert isinstance(approve_draft(db, clock, draft_id, version=2), Approved)
     assert outbox_of(db, draft_id)[2] == "Dear Maria, how old are the children?"  # type: ignore[index]
 
 
 def test_greek_hold_until(db: Conn, rows: Rows, clock: FixedClock) -> None:
     draft_id = drafted(db, rows, clock, language="el", room_type_id="sea_view")
-    assert isinstance(approve_draft(db, clock, draft_id), Approved)
+    assert isinstance(approve_draft(db, clock, draft_id, version=1), Approved)
     assert "έως την Τετάρτη 3 Μαρτίου 2027" in body_of(db, draft_id)
 
 
@@ -196,16 +196,19 @@ def test_edited_price_needs_confirmation(db: Conn, rows: Rows, clock: FixedClock
         "SELECT body FROM draft_versions WHERE draft_id = %s AND version = 1", (draft_id,)
     ).fetchone()
     assert body is not None
-    edited = edit_draft(db, clock, draft_id, body[0].replace("€390.00", "€350.00"))
+    edited = edit_draft(db, clock, draft_id, body[0].replace("€390.00", "€350.00"), base_version=1)
     assert isinstance(edited, Edited)
     assert edited.price_warning is not None
 
     before = snapshot(db)
-    result = approve_draft(db, clock, draft_id)
-    assert result == PriceWarning(edited.price_warning)
+    result = approve_draft(db, clock, draft_id, version=2)
+    [(quote_id,)] = db.execute(
+        "SELECT quote_id FROM draft_offers WHERE draft_id = %s", (draft_id,)
+    ).fetchall()
+    assert result == PriceWarning(edited.price_warning, version=2, quote_ids=(quote_id,))
     assert snapshot(db) == before  # nothing written
 
-    confirmed = approve_draft(db, clock, draft_id, confirm_warnings=True)
+    confirmed = approve_draft(db, clock, draft_id, confirm_warnings=True, version=2)
     assert isinstance(confirmed, Approved)
     assert "€350.00" in body_of(db, draft_id)
     audit = db.execute(
@@ -233,21 +236,23 @@ def test_price_changed_since_the_quote(db: Conn, rows: Rows, clock: FixedClock) 
         "UPDATE room_rates SET rate_cents = 13500 WHERE room_type_id = 'sea_view'"
         " AND season_id = 'mid'"
     )
-    result = approve_draft(db, clock, draft_id)
+    result = approve_draft(db, clock, draft_id, version=1)
     assert_invalidated(db, draft_id, result, "price changed")
 
 
 def test_room_taken_since_the_quote(db: Conn, rows: Rows, clock: FixedClock) -> None:
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")
     book(rows, SEA_VIEW)
-    assert_invalidated(db, draft_id, approve_draft(db, clock, draft_id), "0 of 1 room(s) free")
+    assert_invalidated(
+        db, draft_id, approve_draft(db, clock, draft_id, version=1), "0 of 1 room(s) free"
+    )
 
 
 def test_one_room_taken_another_is_held(db: Conn, rows: Rows, clock: FixedClock) -> None:
     """D47 checks the offer (type, stay, rooms), not a room number: the next free room."""
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")
     book(rows, [201])
-    assert isinstance(approve_draft(db, clock, draft_id), Approved)
+    assert isinstance(approve_draft(db, clock, draft_id, version=1), Approved)
     assert [room for room, *_ in holds_of(db, draft_id)] == [202]
 
 
@@ -258,7 +263,7 @@ def test_an_alternative_no_longer_free_invalidates_the_draft(
     book(rows, SEA_VIEW)
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")  # Standard + Family Suite
     book(rows, (301, 302, 303))
-    assert_invalidated(db, draft_id, approve_draft(db, clock, draft_id), "family_suite")
+    assert_invalidated(db, draft_id, approve_draft(db, clock, draft_id, version=1), "family_suite")
 
 
 def test_exclusion_violation_in_the_savepoint_invalidates(
@@ -270,7 +275,7 @@ def test_exclusion_violation_in_the_savepoint_invalidates(
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")
     book(rows, [201])
     monkeypatch.setattr(approval, "rooms_for_plan", lambda *args: (201,))
-    result = approve_draft(db, clock, draft_id)
+    result = approve_draft(db, clock, draft_id, version=1)
     assert_invalidated(db, draft_id, result, "taken by another approval")
 
 
@@ -285,7 +290,7 @@ def test_stale_hold_is_flipped_and_its_room_held_again(
     [stale] = book(rows, [201], status="hold", expires_at=NOW - timedelta(hours=1))
     book(rows, (202, 203, 204))
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")
-    assert isinstance(approve_draft(db, clock, draft_id), Approved)
+    assert isinstance(approve_draft(db, clock, draft_id, version=1), Approved)
     old = db.execute("SELECT status FROM bookings WHERE id = %s", (stale,)).fetchone()
     assert old == ("expired",)
     assert [room for room, *_ in holds_of(db, draft_id)] == [201]
@@ -298,7 +303,7 @@ def test_stale_hold_is_flipped_and_its_room_held_again(
 def test_a_live_hold_is_not_flipped(db: Conn, rows: Rows, clock: FixedClock) -> None:
     [live] = book(rows, [201], status="hold", expires_at=NOW + timedelta(minutes=1))
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")
-    assert isinstance(approve_draft(db, clock, draft_id), Approved)
+    assert isinstance(approve_draft(db, clock, draft_id, version=1), Approved)
     assert db.execute("SELECT status FROM bookings WHERE id = %s", (live,)).fetchone() == ("hold",)
     assert [room for room, *_ in holds_of(db, draft_id)] == [202]
 
@@ -309,10 +314,10 @@ def test_a_live_hold_is_not_flipped(db: Conn, rows: Rows, clock: FixedClock) -> 
 def test_double_approval_is_refused(db: Conn, rows: Rows, clock: FixedClock) -> None:
     """D10: 409. The second call changes nothing."""
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")
-    assert isinstance(approve_draft(db, clock, draft_id), Approved)
+    assert isinstance(approve_draft(db, clock, draft_id, version=1), Approved)
     before = snapshot(db)
     with pytest.raises(TransitionRefused) as refused:
-        approve_draft(db, clock, draft_id)
+        approve_draft(db, clock, draft_id, version=1)
     assert refused.value.current == "approved"
     assert snapshot(db) == before
 
@@ -321,7 +326,7 @@ def test_approval_after_72_hours_expires_the_draft(db: Conn, rows: Rows, clock: 
     """D54: flipped to expired, nothing held or sent; the caller commits the flip."""
     draft_id = drafted(db, rows, clock, room_type_id="sea_view")
     late = FixedClock(NOW + timedelta(hours=72, seconds=1))
-    assert approve_draft(db, late, draft_id) == DraftExpired(draft_id)
+    assert approve_draft(db, late, draft_id, version=1) == DraftExpired(draft_id)
     assert status(db, draft_id)[:2] == ("expired", "expired")
     assert holds_of(db, draft_id) == []
     assert outbox_of(db, draft_id) is None
@@ -334,9 +339,66 @@ def test_hold_until_placeholder_without_a_hold_is_a_bug(
 ) -> None:
     """A text promising a hold that does not exist is never sent."""
     draft_id = drafted(db, rows, clock, children=2, child_ages=[8])
-    edit_draft(db, clock, draft_id, "We hold a room for you until {{HOLD_UNTIL}}.")
+    edit_draft(db, clock, draft_id, "We hold a room for you until {{HOLD_UNTIL}}.", base_version=1)
     with pytest.raises(ValueError, match="nothing is held"):
-        approve_draft(db, clock, draft_id)
+        approve_draft(db, clock, draft_id, version=2)
+
+
+# --- the version the owner saw (D67) ----------------------------------------------------
+
+
+def latest_body(db: Conn, draft_id: int) -> str:
+    row = db.execute(
+        "SELECT body FROM draft_versions WHERE draft_id = %s ORDER BY version DESC LIMIT 1",
+        (draft_id,),
+    ).fetchone()
+    assert row is not None
+    return str(row[0])
+
+
+@pytest.mark.parametrize("seen", [1, 3], ids=["older", "newer-than-latest"])
+def test_approving_a_version_that_is_not_the_latest_is_refused(
+    db: Conn, rows: Rows, clock: FixedClock, seen: int
+) -> None:
+    """The phone shows v1, the laptop saved v2: approving v1 would send v2 unseen."""
+    draft_id = drafted(db, rows, clock, room_type_id="sea_view")
+    friendlier = latest_body(db, draft_id).replace("Dear", "Hello")
+    edit_draft(db, clock, draft_id, friendlier, base_version=1)
+    before = snapshot(db)
+    with pytest.raises(StaleVersion) as stale:
+        approve_draft(db, clock, draft_id, version=seen)
+    assert (stale.value.seen, stale.value.latest, stale.value.action) == (seen, 2, "approve")
+    assert snapshot(db) == before  # nothing held, sent or flipped
+    assert isinstance(approve_draft(db, clock, draft_id, version=2), Approved)
+
+
+def test_stale_version_comes_before_the_price_warning(
+    db: Conn, rows: Rows, clock: FixedClock
+) -> None:
+    """D67 order: the owner has not seen v2, so its warning is not theirs to confirm."""
+    draft_id = drafted(db, rows, clock, room_type_id="sea_view")
+    cheaper = latest_body(db, draft_id).replace("€390.00", "€350.00")
+    edited = edit_draft(db, clock, draft_id, cheaper, base_version=1)
+    assert isinstance(edited, Edited)
+    assert edited.price_warning is not None
+    with pytest.raises(StaleVersion):
+        approve_draft(db, clock, draft_id, version=1, confirm_warnings=True)
+
+
+def test_expiry_comes_before_the_version_check(db: Conn, rows: Rows, clock: FixedClock) -> None:
+    draft_id = drafted(db, rows, clock, room_type_id="sea_view")
+    edit_draft(db, clock, draft_id, "Dear guest, edited.", base_version=1)
+    late = FixedClock(NOW + timedelta(hours=72, seconds=1))
+    assert approve_draft(db, late, draft_id, version=1) == DraftExpired(draft_id)
+
+
+def test_a_refused_transition_comes_before_the_version_check(
+    db: Conn, rows: Rows, clock: FixedClock
+) -> None:
+    draft_id = drafted(db, rows, clock, room_type_id="sea_view")
+    assert isinstance(approve_draft(db, clock, draft_id, version=1), Approved)
+    with pytest.raises(TransitionRefused):
+        approve_draft(db, clock, draft_id, version=7)
 
 
 # --- arrival already passed (D64) -----------------------------------------------------
@@ -355,7 +417,7 @@ def test_offer_whose_check_in_has_passed_is_invalidated(db: Conn, rows: Rows) ->
     result = draft_reply(db, load_hotel_data(db), drafting, email_id)
     assert isinstance(result, Drafted)
     approving = FixedClock(received + timedelta(hours=60))
-    outcome = approve_draft(db, approving, result.draft_id)
+    outcome = approve_draft(db, approving, result.draft_id, version=1)
     assert_invalidated(db, result.draft_id, outcome, "check-in on 2027-06-01 at 15:00 has passed")
 
 
@@ -368,4 +430,4 @@ def test_approval_exactly_at_the_check_in_moment_is_still_valid(db: Conn, rows: 
         db, load_hotel_data(db), FixedClock(received + timedelta(hours=1)), email_id
     )
     assert isinstance(result, Drafted)
-    assert isinstance(approve_draft(db, FixedClock(CHECK_IN), result.draft_id), Approved)
+    assert isinstance(approve_draft(db, FixedClock(CHECK_IN), result.draft_id, version=1), Approved)
