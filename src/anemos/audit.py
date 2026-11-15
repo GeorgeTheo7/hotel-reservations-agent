@@ -43,6 +43,7 @@ class AuditEvent(StrEnum):
     LLM_CALLED = "llm.called"
     LLM_FAILED = "llm.failed"
     LLM_REFUSED_BUDGET = "llm.refused_budget"
+    RUN_DISCARDED = "run.discarded"
 
 
 # Written only by the API, after it rolled back a refused or unconfirmed action
@@ -62,6 +63,12 @@ API_ONLY_EVENTS = frozenset(
 LLM_EVENTS = frozenset(
     {AuditEvent.LLM_CALLED, AuditEvent.LLM_FAILED, AuditEvent.LLM_REFUSED_BUDGET}
 )
+
+
+# Written only by a run whose email changed while the model was working (D65). The
+# cross-rules scenario runs no model, so it never writes it;
+# tests/integration/test_extraction_run.py covers it.
+RUN_EVENTS = frozenset({AuditEvent.RUN_DISCARDED})
 
 
 def write_audit(

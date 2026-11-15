@@ -1,14 +1,18 @@
 """The OpenAI implementation of `ModelClient` (D3: the plain `openai` SDK).
 
-- Responses API with structured outputs: the SDK turns the pydantic schema into a strict
-  JSON schema and parses the reply back into it.
+- Responses API with structured outputs: the pydantic schema is sent as a strict JSON
+  schema (the SDK's own converter), and the reply is parsed here, not by the SDK. The
+  SDK's `parse` tries to parse a cut-off reply before returning it, which loses both the
+  reason (incomplete: max_output_tokens) and the usage; parsing here keeps both.
 - `store=False`: OpenAI does not keep the request or response.
 - The SDK's own retries are off (`max_retries=0`); the adapter retries once, so every
   attempt is budgeted and audited.
 - The API key (OPENAI_API_KEY) is read when the first call is made, never at import or
   construction, so tests and CI never need one.
 - Errors are sorted: timeout, connection, 429 and 5xx are transient; any other status,
-  a refusal, an incomplete or unparsable reply is permanent.
+  a refusal, an incomplete or unparsable reply is permanent. A reply that arrived is
+  billed at its reported usage; only a reply without readable usage keeps the reserved
+  maximum (cost_unknown).
 """
 
 import os
@@ -17,11 +21,25 @@ import httpx2
 import openai
 import pydantic
 from openai import Omit, OpenAI, omit
+from openai.lib._pydantic import to_strict_json_schema  # the SDK's own strict converter
+from openai.types.responses import Response, ResponseTextConfigParam
 from openai.types.shared_params import Reasoning
 from pydantic import BaseModel
 
 from anemos.llm.adapter import PermanentError, Prompt, Reply, Settings, TransientError
 from anemos.llm.pricing import Usage
+
+
+def text_format(schema: type[BaseModel]) -> ResponseTextConfigParam:
+    """The `text.format` request field: a strict JSON schema named after the model."""
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": schema.__name__,
+            "schema": to_strict_json_schema(schema),
+            "strict": True,
+        }
+    }
 
 
 class OpenAIClient:
@@ -54,11 +72,11 @@ class OpenAIClient:
             Reasoning(effort=settings.reasoning_effort) if settings.reasoning_effort else omit
         )
         try:
-            response = client.responses.parse(
+            response = client.responses.create(
                 model=settings.model,
                 instructions=prompt.instructions,
                 input=prompt.input,
-                text_format=schema,
+                text=text_format(schema),
                 max_output_tokens=settings.max_output_tokens,
                 store=False,
                 timeout=settings.timeout_s,
@@ -71,17 +89,28 @@ class OpenAIClient:
                 raise TransientError(f"HTTP {exc.status_code}: {exc.message}") from exc
             raise PermanentError(f"HTTP {exc.status_code}: {exc.message}") from exc
         except (openai.APIResponseValidationError, pydantic.ValidationError, ValueError) as exc:
-            # A reply arrived, but it could not be read: tokens were spent, amount unknown.
+            # A reply arrived, but it could not be read at all: tokens spent, amount unknown.
             raise PermanentError(f"unreadable reply: {exc}", cost_unknown=True) from exc
-        if response.usage is None:
-            raise PermanentError("reply without usage", cost_unknown=True)
-        usage = Usage(
-            input_tokens=response.usage.input_tokens,
-            cached_input_tokens=response.usage.input_tokens_details.cached_tokens,
-            output_tokens=response.usage.output_tokens,
-        )
-        if response.status != "completed":
-            raise PermanentError(f"reply {response.status}: {response.incomplete_details}", usage)
-        if response.output_parsed is None:
-            raise PermanentError("no parsed output (refusal or empty reply)", usage)
-        return Reply(response.output_parsed, usage, response.model)
+        return _read(response, schema)
+
+
+def _read[T: BaseModel](response: Response, schema: type[T]) -> Reply[T]:
+    if response.usage is None:
+        raise PermanentError("reply without usage", cost_unknown=True)
+    usage = Usage(
+        input_tokens=response.usage.input_tokens,
+        cached_input_tokens=response.usage.input_tokens_details.cached_tokens,
+        output_tokens=response.usage.output_tokens,
+    )
+    if response.status != "completed":
+        reason = response.incomplete_details.reason if response.incomplete_details else None
+        raise PermanentError(f"reply {response.status}: {reason}", usage)
+    for item in response.output:
+        for part in getattr(item, "content", None) or []:
+            if getattr(part, "type", None) == "refusal":
+                raise PermanentError(f"refusal: {part.refusal}", usage)
+    try:
+        output = schema.model_validate_json(response.output_text)
+    except pydantic.ValidationError as exc:
+        raise PermanentError(f"unparsable reply: {exc}", usage) from exc
+    return Reply(output, usage, response.model)

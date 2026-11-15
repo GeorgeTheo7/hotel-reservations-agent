@@ -146,10 +146,14 @@ class LLM:
         step: str,
         prompt_version: str,
         email_id: int | None = None,
+        settings: Settings | None = None,
     ) -> Result[T]:
-        model = self.settings.model
+        """`settings` replaces the adapter's defaults for this call (a prompt carries its
+        own output limit and reasoning effort)."""
+        settings = settings or self.settings
+        model = settings.model
         bound = max_cost(model, max_input_tokens=max_input_tokens(prompt, schema),
-                         max_output_tokens=self.settings.max_output_tokens)  # fmt: skip
+                         max_output_tokens=settings.max_output_tokens)  # fmt: skip
         call = _Call(email_id, step, model, prompt_version)
         for attempt in range(1, ATTEMPTS + 1):
             try:
@@ -159,7 +163,7 @@ class LLM:
                 raise
             start = self.timer()
             try:
-                reply = self.client.send(prompt, schema, self.settings)
+                reply = self.client.send(prompt, schema, settings)
             except ClientError as exc:
                 latency = self._ms(start)
                 if exc.usage is not None:

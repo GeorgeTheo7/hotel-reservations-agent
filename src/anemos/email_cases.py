@@ -27,7 +27,7 @@ from pydantic import (
 )
 
 from anemos.db.seed import ROOM_TYPES, ROOMS
-from anemos.extraction import ExtractionFlag, Script
+from anemos.extraction import ExtractionFlag, ExtractionOutput, Kind, Script
 from anemos.mailbox import IncomingEmail, incoming
 from anemos.reservations.datespec import (
     ApproximateDates,
@@ -48,9 +48,6 @@ ROOM_TYPE_IDS = frozenset(row[0] for row in ROOM_TYPES)
 type AgentTool = Literal["check_availability", "quote_price", "suggest_alternatives",
                          "search_policies"]  # fmt: skip
 type Route = Literal["quote", "ask_info", "policy", "decline", "escalate", "set_aside"]
-# request: asks for a stay. question: a policy question only. other: anything else a
-# guest writes (complaint, cancellation, change, invoice). spam: set aside.
-type Kind = Literal["request", "question", "other", "spam"]
 
 Count = Annotated[StrictInt, Field(ge=0)]
 Text = Annotated[StrictStr, Field(pattern=r"\S")]  # not blank
@@ -241,6 +238,28 @@ class EmailCase(_Strict):
     def message_id(self) -> str:
         return f"<{self.id}@{MESSAGE_ID_DOMAIN}>"
 
+    def gold_output(self) -> ExtractionOutput | None:
+        """The extraction the model should return, from the labels (None for a thread
+        reply, which is never extracted). Spam and questions have no extraction labels:
+        their party and date fields are null or empty."""
+        if self.labels.kind is None:
+            return None
+        e = self.labels.extraction
+        fields = e.model_dump(mode="json") if e is not None else {}
+        return ExtractionOutput.model_validate({
+            "kind": self.labels.kind,
+            "language": self.labels.language,
+            "script": self.labels.script.value,
+            "flags": fields.get("flags", []),
+            "date_spec": _full_date_spec(fields.get("date_spec")),
+            "adults": fields.get("adults"),
+            "children": fields.get("children"),
+            "child_ages": fields.get("child_ages", []),
+            "rooms": fields.get("rooms"),
+            "room_type": fields.get("room_type"),
+            "arrival_time": fields.get("arrival_time"),
+        })  # fmt: skip
+
     def incoming(self) -> IncomingEmail:
         """The email as the mailbox adapter delivers it (normalised by `incoming`)."""
         return incoming(
@@ -248,6 +267,24 @@ class EmailCase(_Strict):
             subject=self.email.subject, body=self.email.body,
             received_at=self.email.received_at, in_reply_to=self.email.in_reply_to,
         )  # fmt: skip
+
+
+def _full_date_spec(spec: dict[str, object] | None) -> dict[str, object] | None:
+    """A label date_spec with every optional key written out, as the strict model
+    output has it (labels may leave out year, nights, ambiguous_order, ...)."""
+    if spec is None:
+        return None
+    full = dict(spec)
+    for key in ("check_in", "check_out"):
+        if isinstance(full.get(key), dict):
+            full[key] = {"year": None, "ambiguous_order": False} | full[key]  # type: ignore[operator]
+    defaults: dict[str, dict[str, object]] = {
+        "exact": {"check_out": None, "nights": None},
+        "relative": {"nights": None},
+        "holiday": {"tradition": "unspecified", "year": None, "nights": None},
+        "approximate": {"year": None, "nights": None},
+    }
+    return defaults[str(full["kind"])] | full
 
 
 # --- loading ---------------------------------------------------------------------------

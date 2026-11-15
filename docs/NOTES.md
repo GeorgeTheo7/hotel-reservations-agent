@@ -210,3 +210,15 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** the mutations were undone with `git checkout`, which cannot restore files git does not track yet; the new API files were untracked, so each mutation stayed in place.
 - **Evidence:** the failure counts only grew (9, 11, 12, … 15) and every later mutation also failed the status-filter tests; checking the source showed all seven mutations still in it. Re-run from a clean source, each mutation failed only the test meant for it.
 - **Fix:** 16a's re-run restored from backup copies; from 16b on, new files are `git add`-ed first, each mutation is undone with `git checkout`, `git diff` must show exactly the one changed line, and the tree must be clean at the end.
+
+## 2026-11-16 · A claim held across the model call deadlocks the run against itself
+- **Symptom:** the mutation that kept the claim's transaction open across the model call did not fail the extraction tests; it hung until the 300 s timeout.
+- **Cause:** the model call's audit row is written on its own connection with `email_id` as a foreign key; checking that key needs a share lock on the email row, which the leaked claim still holds `FOR UPDATE`. The run waits on itself. (In production it would also block every other run for that sender, D61.)
+- **Evidence:** with a 5 s `lock_timeout` on the run's test connections, the mutation fails `test_no_lock_is_held_while_the_model_works` and the gold-case test in 12 s.
+- **Fix:** the code already commits the claim before the call (D65); every connection the app opens (`db.connection.connect`: API, runs, migrations, the test harness) now sets `lock_timeout` 5 s and `statement_timeout` 30 s, so a leaked lock fails the next run fast instead of hanging it, in production as in CI.
+
+## 2026-11-16 · The SDK's `responses.parse` hides why a reply was cut off
+- **Symptom:** a reply stopped at `max_output_tokens` (status `incomplete`) was recorded as "unreadable reply" and billed at the reserved maximum.
+- **Cause:** `responses.parse` parses the partial JSON before returning, so the error is a JSON validation error and the response, with its `status`, `incomplete_details` and `usage`, never reaches us.
+- **Evidence:** `test_a_reply_cut_off_at_the_output_limit_escalates_and_stores_nothing`, through `process_email` against a simulated endpoint.
+- **Fix:** the client calls `responses.create` with the same strict schema (the SDK's own converter) and parses the reply itself: usage first, then status, then refusal, then the JSON. A cut-off reply is now `reply incomplete: max_output_tokens`, billed at its real usage; the reserved maximum stays only for a reply with no readable usage.

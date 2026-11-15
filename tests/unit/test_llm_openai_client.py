@@ -123,14 +123,25 @@ def test_timeouts_and_connection_errors_are_transient(failure: Exception) -> Non
 def test_an_incomplete_reply_is_permanent_and_billed() -> None:
     handler, _ = answering(httpx2.Response(200, json=reply(
         status="incomplete", incomplete_details={"reason": "max_output_tokens"})))  # fmt: skip
-    with pytest.raises(PermanentError, match="incomplete") as error:
+    with pytest.raises(PermanentError, match="incomplete: max_output_tokens") as error:
         client(handler).send(PROMPT, Out, SETTINGS)
     assert error.value.usage == Usage(120, 20, 30)
 
 
-def test_output_that_does_not_fit_the_schema_has_an_unknown_cost() -> None:
+def test_output_that_does_not_fit_the_schema_is_permanent_and_billed() -> None:
+    """The reply is parsed here, after its usage is read, so it is billed at its real
+    cost (not the reserved maximum)."""
     handler, _ = answering(httpx2.Response(200, json=reply('{"adults": "two"}')))
-    with pytest.raises(PermanentError, match="unreadable reply") as error:
+    with pytest.raises(PermanentError, match="unparsable reply") as error:
+        client(handler).send(PROMPT, Out, SETTINGS)
+    assert (error.value.usage, error.value.cost_unknown) == (Usage(120, 20, 30), False)
+
+
+def test_a_reply_without_usage_has_an_unknown_cost() -> None:
+    no_usage = reply()
+    no_usage["usage"] = None
+    handler, _ = answering(httpx2.Response(200, json=no_usage))
+    with pytest.raises(PermanentError, match="without usage") as error:
         client(handler).send(PROMPT, Out, SETTINGS)
     assert error.value.cost_unknown is True
 
@@ -139,7 +150,7 @@ def test_a_refusal_is_permanent_and_billed() -> None:
     refusal = reply()
     refusal["output"][0]["content"] = [{"type": "refusal", "refusal": "I can't help."}]
     handler, _ = answering(httpx2.Response(200, json=refusal))
-    with pytest.raises(PermanentError, match="no parsed output") as error:
+    with pytest.raises(PermanentError, match="refusal: I can't help") as error:
         client(handler).send(PROMPT, Out, SETTINGS)
     assert error.value.usage == Usage(120, 20, 30)
 

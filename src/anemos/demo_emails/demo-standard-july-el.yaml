@@ -6,7 +6,7 @@ email:
   from: "Nikos Fictional <nikos@example.test>"
   subject: "Δωμάτιο τον Ιούλιο"
   received_at: "2026-11-14T09:00:00+00:00"
-  body: "Καλησπέρα, έχετε δίκλινο για 10 με 13 Ιουλίου 2027;"
+  body: "Καλησπέρα, έχετε δίκλινο standard για δύο άτομα, 10 με 13 Ιουλίου 2027;"
 
 labels:
   language: el
