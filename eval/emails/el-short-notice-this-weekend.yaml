@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: el-short-notice-this-weekend
 split: held_out
 tags: [short_notice, this_weekend, relative_date]
@@ -17,6 +17,7 @@ email:
 labels:
   language: el
   script: greek
+  kind: request
   extraction:
     date_spec: {kind: relative, phrase: this_weekend, nights: null}
     adults: 2

@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: demo-closed-november
 split: demo
 
@@ -11,6 +11,7 @@ email:
 labels:
   language: en
   script: latin
+  kind: request
   extraction:
     date_spec:
       kind: exact

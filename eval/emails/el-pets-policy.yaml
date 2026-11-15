@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: el-pets-policy
 split: dev
 tags: [policy_question, pets]
@@ -17,6 +17,7 @@ email:
 labels:
   language: el
   script: greek
+  kind: question
   extraction: null
   route: policy
   required_tools: [search_policies]

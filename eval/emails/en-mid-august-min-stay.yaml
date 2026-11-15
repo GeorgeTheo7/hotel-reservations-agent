@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: en-mid-august-min-stay
 split: dev
 tags: [min_stay_10_20_aug, min_stay_version]
@@ -18,6 +18,7 @@ email:
 labels:
   language: en
   script: latin
+  kind: request
   extraction:
     date_spec:
       kind: exact

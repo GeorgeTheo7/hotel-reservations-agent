@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: en-western-easter-closed
 split: dev
 tags: [easter, western_easter, closed, holiday_date]
@@ -19,6 +19,7 @@ email:
 labels:
   language: en
   script: latin
+  kind: request
   extraction:
     date_spec: {kind: holiday, holiday: easter, tradition: western, year: 2027, nights: 3}
     adults: 2

@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: el-complaint-legal
 split: dev
 tags: [complaint, legal_threat]
@@ -19,6 +19,7 @@ email:
 labels:
   language: el
   script: greek
+  kind: other
   extraction:                # no new request; the extraction carries only the flag
     flags: [legal_threat]
   route: escalate

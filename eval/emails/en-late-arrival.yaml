@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: en-late-arrival
 split: dev
 tags: [late_arrival]
@@ -19,6 +19,7 @@ email:
 labels:
   language: en
   script: latin
+  kind: request
   extraction:
     date_spec:
       kind: exact
@@ -28,5 +29,6 @@ labels:
     children: 0
     rooms: 1
     room_type: standard
+    arrival_time: "00:00"
   route: escalate
   reason_codes: [LATE_ARRIVAL]

@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: el-infant-cot
 split: dev
 tags: [infant_cot]
@@ -19,6 +19,7 @@ email:
 labels:
   language: el
   script: greek
+  kind: request
   extraction:
     date_spec:
       kind: exact

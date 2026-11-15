@@ -1,4 +1,4 @@
-# Test-email format (schema version 1)
+# Test-email format (schema version 2)
 
 One YAML file per email, named `<id>.yaml`. The same format and loader
 (`anemos.email_cases`) serve the evaluation set (`eval/emails/`), the demo inbox
@@ -12,7 +12,7 @@ Each file is one email on its own. Superseding sequences (a second email from th
 guest) are out of scope for the eval files; the integration tests cover them.
 
 ```yaml
-schema_version: 1                       # required; the only version
+schema_version: 2                       # required; version 1 files were migrated, 1 is refused
 id: en-quote-sea-view-june              # lowercase words joined by "-"; equals the file name;
                                         # the Message-ID is <id@cases.example.test>
 split: dev                              # dev | held_out | demo (demo: never in the evaluation)
@@ -36,6 +36,10 @@ labels:
   language: en                          # two-letter code: en, el, or another ("other language")
   script: latin                         # greek | latin (D5); el + latin = Greeklish;
                                         # en needs latin, greek needs el
+  kind: request                         # request (asks for a stay) | question (a policy question)
+                                        # | other (complaint, cancellation, change, invoice …)
+                                        # | spam; required, null exactly for a thread reply
+                                        # (in_reply_to set: never extracted)
   extraction:                           # gold extraction; null for spam or a pure question
     date_spec:                          # null if the guest gave no dates
       kind: exact
@@ -49,6 +53,8 @@ labels:
     room_type: sea_view                 # a seeded room type id, or null if none named
     flags: []                           # legal_threat | billing_request | medical_need |
                                         # accessibility_need | injection_suspected
+    arrival_time: null                  # "HH:MM" when the guest says when they arrive at the
+                                        # hotel; 00:00-05:59 is after midnight (late, D69)
   route: quote                          # quote | ask_info | policy | decline | escalate | set_aside
   reason_codes: []                      # spec reason codes; non-empty exactly when route is escalate
   required_tools: [check_availability, quote_price]   # also suggest_alternatives, search_policies
@@ -67,7 +73,7 @@ The other `date_spec` kinds mirror `anemos.reservations.datespec` field for fiel
 ```
 
 Optional keys: `tags`, `in_reply_to`, `world`, `nights`, `year`, `ambiguous_order`,
-`flags`, `reason_codes`, `required_tools`, `policy_ids`, `holds`, `forbidden_phrases`
+`flags`, `arrival_time`, `reason_codes`, `required_tools`, `policy_ids`, `holds`, `forbidden_phrases`
 (all default to empty, null, false or 0).
 
 An email with no request but with a flag (e.g. a complaint with a legal threat) sets

@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: el-christmas-holiday
 split: dev
 tags: [holiday_not_easter]
@@ -17,6 +17,7 @@ email:
 labels:
   language: el
   script: greek
+  kind: request
   extraction:
     date_spec: {kind: holiday, holiday: christmas, tradition: unspecified, year: null, nights: 3}
     adults: 2

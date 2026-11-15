@@ -31,7 +31,7 @@ pytestmark = pytest.mark.unit
 EVAL_EMAILS = Path(__file__).resolve().parents[2] / "eval" / "emails"
 
 VALID: dict[str, Any] = {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "en-valid-case",
     "split": "dev",
     "tags": ["tetris"],
@@ -61,6 +61,7 @@ VALID: dict[str, Any] = {
     "labels": {
         "language": "en",
         "script": "latin",
+        "kind": "request",
         "extraction": {
             "date_spec": {
                 "kind": "exact",
@@ -73,6 +74,7 @@ VALID: dict[str, Any] = {
             "rooms": 1,
             "room_type": None,
             "flags": ["accessibility_need"],
+            "arrival_time": "21:30",
         },
         "route": "quote",
         "reason_codes": [],
@@ -156,6 +158,40 @@ def test_world_and_optional_labels_default_to_empty() -> None:
     assert (case.labels.holds, case.labels.required_tools) == (0, [])
 
 
+@pytest.mark.parametrize("kind", ["request", "question", "other", "spam"])
+def test_every_kind_is_accepted(kind: str) -> None:
+    def set_kind(data: dict[str, Any]) -> None:
+        labels(data)["kind"] = kind
+
+    assert parse(changed(set_kind)).labels.kind == kind
+
+
+def test_a_thread_reply_has_no_kind() -> None:
+    """Thread replies skip extraction (no model call), so their kind is null."""
+
+    def reply(data: dict[str, Any]) -> None:
+        data["email"]["in_reply_to"] = "<outbox-1@anemos.invalid>"
+        labels(data)["kind"] = None
+
+    case = parse(changed(reply))
+    assert (case.labels.kind, case.email.in_reply_to) == (None, "<outbox-1@anemos.invalid>")
+
+
+def test_spam_has_a_kind_but_no_extraction() -> None:
+    def spam(data: dict[str, Any]) -> None:
+        labels(data).update(kind="spam", extraction=None, route="set_aside", required_tools=[],
+                            policy_ids=[])  # fmt: skip
+
+    case = parse(changed(spam))
+    assert (case.labels.kind, case.labels.extraction) == ("spam", None)
+
+
+def test_a_version_1_file_is_refused_with_a_hint() -> None:
+    old = changed(_set("schema_version", 1))
+    with pytest.raises(CaseError, match="schema version 1 is no longer read; migrate"):
+        parse_case(yaml.safe_dump(old), name=old["id"])
+
+
 def test_greeklish_is_el_in_latin_script() -> None:
     def greeklish(data: dict[str, Any]) -> None:
         labels(data).update(language="el", script="latin")
@@ -188,7 +224,19 @@ def _set(path: str, value: Any) -> Callable[[dict[str, Any]], None]:
 
 BAD: dict[str, tuple[Callable[[dict[str, Any]], None], str]] = {
     "unknown-key": (_set("labels.reason_code", ["DISCOUNT"]), "reason_code"),
-    "schema-version-2": (_set("schema_version", 2), "schema_version"),
+    "schema-version-3": (_set("schema_version", 3), "schema_version"),
+    "unknown-kind": (_set("labels.kind", "booking"), "kind"),
+    "kind-null-without-reply": (_set("labels.kind", None), "kind is null exactly when"),
+    "reply-with-a-kind": (
+        _set("email.in_reply_to", "<old@example.test>"),
+        "kind is null exactly when",
+    ),
+    "kind-key-missing": (lambda data: labels(data).pop("kind"), r"labels\.kind\s+Field required"),
+    "arrival-24-00": (_set("labels.extraction.arrival_time", "24:00"), "arrival_time"),
+    "arrival-without-leading-zero": (
+        _set("labels.extraction.arrival_time", "7:30"),
+        "arrival_time",
+    ),
     "real-looking-sender": (_set("email.from", "Guest <guest@gmail.com>"), "fictional data"),
     "naive-received-at": (_set("email.received_at", "2026-12-01T10:00:00"), "received_at"),
     "escalate-without-codes": (_set("labels.route", "escalate"), "reason_codes are given"),

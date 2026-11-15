@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: el-greeklish-transfer-policy
 split: held_out
 tags: [greeklish, policy_question, transfer]
@@ -16,6 +16,7 @@ email:
 labels:
   language: el
   script: latin
+  kind: question
   extraction: null
   route: policy
   required_tools: [search_policies]

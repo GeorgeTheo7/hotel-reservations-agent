@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: el-spam-crypto
 split: held_out
 tags: [spam]
@@ -16,5 +16,6 @@ email:
 labels:
   language: el
   script: greek
+  kind: spam
   extraction: null
   route: set_aside

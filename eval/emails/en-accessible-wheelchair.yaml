@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: en-accessible-wheelchair
 split: dev
 tags: [accessible_room]
@@ -20,6 +20,7 @@ email:
 labels:
   language: en
   script: latin
+  kind: request
   extraction:
     date_spec:
       kind: exact

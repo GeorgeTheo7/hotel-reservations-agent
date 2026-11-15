@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: en-thread-reply
 split: held_out
 tags: [thread_reply]
@@ -16,6 +16,7 @@ email:
 labels:
   language: en
   script: latin
+  kind: null
   extraction: null
   route: escalate
   reason_codes: [THREAD_REPLY]

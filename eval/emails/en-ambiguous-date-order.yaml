@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: en-ambiguous-date-order
 split: held_out
 tags: [ambiguous_date_order]
@@ -19,6 +19,7 @@ email:
 labels:
   language: en
   script: latin
+  kind: request
   extraction:
     date_spec:
       kind: exact

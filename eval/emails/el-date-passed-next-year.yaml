@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: el-date-passed-next-year
 split: dev
 tags: [date_passed_next_year]
@@ -19,6 +19,7 @@ email:
 labels:
   language: el
   script: greek
+  kind: request
   extraction:
     date_spec:
       kind: exact

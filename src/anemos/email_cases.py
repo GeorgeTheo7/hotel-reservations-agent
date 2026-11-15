@@ -48,6 +48,9 @@ ROOM_TYPE_IDS = frozenset(row[0] for row in ROOM_TYPES)
 type AgentTool = Literal["check_availability", "quote_price", "suggest_alternatives",
                          "search_policies"]  # fmt: skip
 type Route = Literal["quote", "ask_info", "policy", "decline", "escalate", "set_aside"]
+# request: asks for a stay. question: a policy question only. other: anything else a
+# guest writes (complaint, cancellation, change, invoice). spam: set aside.
+type Kind = Literal["request", "question", "other", "spam"]
 
 Count = Annotated[StrictInt, Field(ge=0)]
 Text = Annotated[StrictStr, Field(pattern=r"\S")]  # not blank
@@ -128,6 +131,10 @@ class Extraction(_Strict):
     rooms: Annotated[StrictInt, Field(ge=1)] | None = None
     room_type: StrictStr | None = None  # a seeded room type id; None = no type named
     flags: list[ExtractionFlag] = []
+    # When the guest arrives at the hotel, if stated; 00:00-05:59 is after midnight (D69).
+    arrival_time: Annotated[StrictStr, Field(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")] | None = (
+        None
+    )
 
     @model_validator(mode="after")
     def check(self) -> Self:
@@ -148,6 +155,7 @@ class Extraction(_Strict):
 class Labels(_Strict):
     language: Annotated[StrictStr, Field(pattern=r"^[a-z]{2}$")]
     script: Script
+    kind: Kind | None  # required key; null exactly for a thread reply (never extracted)
     extraction: Extraction | None  # None: spam, or a question with no request in it
     route: Route
     reason_codes: list[ReasonCode] = []
@@ -214,13 +222,20 @@ class World(_Strict):
 
 
 class EmailCase(_Strict):
-    schema_version: Literal[1]  # the only version; a new one gets its own models
+    schema_version: Literal[2]  # version 1 files were migrated; only 2 is read
     id: Annotated[StrictStr, Field(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")]
     split: Literal["dev", "held_out", "demo"]
     tags: list[Text] = []
     email: Email
     world: World = World()
     labels: Labels
+
+    @model_validator(mode="after")
+    def check(self) -> Self:
+        # Thread replies skip extraction (no model call), so nothing produces a kind.
+        if (self.labels.kind is None) != (self.email.in_reply_to is not None):
+            raise ValueError("labels.kind is null exactly when email.in_reply_to is set")
+        return self
 
     @property
     def message_id(self) -> str:
@@ -245,7 +260,11 @@ class CaseError(ValueError):
 def parse_case(text: str, *, name: str) -> EmailCase:
     """Parse one case from YAML text; `name` (the file stem) must equal its id."""
     try:
-        case = EmailCase.model_validate(yaml.safe_load(text))
+        data = yaml.safe_load(text)
+        if isinstance(data, dict) and data.get("schema_version") == 1:
+            raise CaseError(f"{name}: schema version 1 is no longer read; migrate it to 2 "
+                            "(docs/email-format.md)")  # fmt: skip
+        case = EmailCase.model_validate(data)
     except (ValidationError, yaml.YAMLError) as exc:
         raise CaseError(f"{name}: {exc}") from exc
     if case.id != name:
