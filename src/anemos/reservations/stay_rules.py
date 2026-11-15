@@ -1,11 +1,12 @@
 """Calendar rules of a stay: closed nights, minimum stay, open part, cancellation
-deadline, hold permission (D9) and the two request escalations SHORT_NOTICE and GROUP.
+deadline, hold permission (D9) and the request escalations SHORT_NOTICE, GROUP and
+LATE_ARRIVAL.
 
 All pure: the calendar comes from HotelData, times are passed in (never "now").
 """
 
 from collections.abc import Sequence
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from anemos.reservations.errors import Closed, MinStay, NeedsEscalation, ReasonCode
 from anemos.reservations.hotel_data import HotelData
@@ -17,6 +18,8 @@ FREE_CANCELLATION_DAYS = 14
 FREE_CANCELLATION_DAYS_HIGH = 30
 SHORT_NOTICE = timedelta(hours=48)
 GROUP_FROM_ROOMS = 3
+LAST_CHECK_IN = time(22, 0)  # D69
+EARLIEST_MORNING = time(6, 0)  # before this an arrival is after midnight, i.e. late
 
 
 def min_stay_for(hotel: HotelData, arrival: date) -> int | None:
@@ -115,6 +118,14 @@ def short_notice(arrival: date, received_at: datetime) -> NeedsEscalation | None
     lead = check_in_moment(arrival) - received_at.astimezone(UTC)
     if lead < SHORT_NOTICE:
         return NeedsEscalation(ReasonCode.SHORT_NOTICE, f"{lead} before check-in on {arrival}")
+    return None
+
+
+def late_arrival(arrival: time) -> NeedsEscalation | None:
+    """D69: check-in ends at 22:00 hotel time. 22:01 to 05:59 is late; 00:00-05:59 is
+    after midnight (the latest case), not early. Exactly 22:00 is on time."""
+    if arrival > LAST_CHECK_IN or arrival < EARLIEST_MORNING:
+        return NeedsEscalation(ReasonCode.LATE_ARRIVAL, f"arrival at {arrival:%H:%M}")
     return None
 
 

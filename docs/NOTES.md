@@ -227,3 +227,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Symptom:** the first real smoke run (gpt-6-luna) failed all 15 calls with HTTP 400 "Invalid schema for response_format 'ExtractionOutput': 'oneOf' is not permitted"; nothing was spent.
 - **Cause:** `date_spec` was a pydantic discriminated union (`Field(discriminator="kind")`), which pydantic writes as `oneOf`; strict structured outputs accept `anyOf` only. The tests used a simulated endpoint that accepts any schema.
 - **Fix:** a plain union (`anyOf`; each date kind has its own fixed `kind`, so one variant matches). A unit test walks the schema as sent and checks OpenAI's strict rules: no `oneOf`, `additionalProperties: false` on every object, every property required. `prompt_version` now hashes the prompt file *and* the schema as sent (`extraction_v1@21acca18`), so a schema change is a new version too.
+
+## 2026-11-16 · The router and `build_offer` ordered two room escalations differently
+- **Finding:** with an accessibility need and fewer adults than rooms, both `UNACCOMPANIED_CHILDREN` and `ACCESSIBILITY` apply. D70 puts `UNACCOMPANIED_CHILDREN` first; `build_offer` checks the need first and returns `ACCESSIBILITY`.
+- **Evidence:** `test_room_rules_agree_with_build_offer` compares the two over 27 parties × rooms 1–3 × three room types × need yes/no; they agreed everywhere except this corner.
+- **Fix:** `build_offer` now follows D70: with an accessibility need it checks an adult in every room asked for before the Accessible plan, so both return `UNACCOMPANIED_CHILDREN`. The agreement test has no skip any more; `test_accessibility_need_checks_adults_per_room_first` covers it in `test_offer.py`. Removing the new check fails both (2 and 13 tests). The pricing-example tests are unchanged and pass.
+

@@ -7,8 +7,9 @@ Order:
    and re-checked. A min-stay version that reaches closed nights is MIN_STAY_CLOSED
    (D57); no calendar for the year is returned as is.
 2. Rooms. GROUP first (3+ rooms), then the room plan: the requested type if it fits;
-   else the smallest fitting plan (D27); with an accessibility need, only the
-   Accessible room (D33). An adult in every room (D32) is checked by pricing.
+   else the smallest fitting plan (D27); with an accessibility need, an adult in
+   every room asked for first (D32, in the router's order, D70), then only the
+   Accessible room (D33). Otherwise an adult in every room is checked by pricing.
 3. Price the result.
 
 Every substitution is recorded in `Offer.changes`, with the same names as the
@@ -31,7 +32,13 @@ from anemos.reservations.errors import (
 )
 from anemos.reservations.hotel_data import HotelData
 from anemos.reservations.model import Party, RoomRequest
-from anemos.reservations.occupancy import RoomPlan, fits, smallest_fitting_plan
+from anemos.reservations.occupancy import (
+    RoomPlan,
+    adult_count,
+    adults_cover_rooms,
+    fits,
+    smallest_fitting_plan,
+)
 from anemos.reservations.pricing import Quote, price_stay
 from anemos.reservations.stay_rules import check_stay, group, min_stay_version, open_part
 
@@ -133,6 +140,13 @@ def _room_plan(
 ) -> RoomPlan | NeedsEscalation:
     """Which room type and how many rooms to price."""
     if accessibility_need:
+        # D70: an adult in every room asked for (D32) is checked before the need, as
+        # the router does; both escalate, this keeps the reason code the same.
+        if not adults_cover_rooms(party, request.rooms):
+            return NeedsEscalation(
+                ReasonCode.UNACCOMPANIED_CHILDREN,
+                f"{adult_count(party)} adult(s) for {request.rooms} room(s)",
+            )
         # D33: only the Accessible room, one room; a 2-room request cannot be met by
         # the one Accessible room, so it is escalated rather than substituted.
         if request.rooms > 1:

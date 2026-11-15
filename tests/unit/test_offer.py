@@ -201,6 +201,18 @@ def test_accessibility_need_with_two_rooms_escalates() -> None:
     assert escalation(result) is ReasonCode.ACCESSIBILITY
 
 
+@pytest.mark.parametrize(
+    ("party", "rooms"),
+    [(Party.of(1), 2), (Party.of(0, (10, 12, 14)), 1)],
+    ids=["one-adult-two-rooms", "three-teens"],
+)
+def test_accessibility_need_checks_adults_per_room_first(party: Party, rooms: int) -> None:
+    """D70: too few adults is UNACCOMPANIED_CHILDREN before the need is looked at,
+    the same code the router gives; both conditions apply in each of these."""
+    result = offer(STAY, party, rooms=rooms, accessibility_need=True)
+    assert escalation(result) is ReasonCode.UNACCOMPANIED_CHILDREN
+
+
 def test_unknown_room_type_is_a_bug() -> None:
     with pytest.raises(ValueError, match="unknown room type"):
         offer(STAY, Party.of(2), room_type_id="penthouse")

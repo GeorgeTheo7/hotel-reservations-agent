@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 
@@ -14,6 +14,7 @@ from anemos.reservations.stay_rules import (
     check_stay,
     group,
     hold_allowed,
+    late_arrival,
     min_stay_for,
     min_stay_version,
     open_part,
@@ -319,3 +320,26 @@ def test_naive_wall_clock_subtraction_would_be_wrong() -> None:
 def test_group_from_three_rooms(rooms: int, is_group: bool) -> None:
     result = group(rooms)
     assert (result is not None and result.reason == ReasonCode.GROUP) is is_group
+
+
+# --- LATE_ARRIVAL (D69) ---
+
+
+@pytest.mark.parametrize(
+    ("arrival", "is_late"),
+    [
+        (time(15, 0), False),
+        (time(21, 59), False),
+        (time(22, 0), False),  # check-in ends at 22:00: on time
+        (time(22, 1), True),
+        (time(23, 59), True),
+        (time(0, 0), True),  # after midnight is the latest case, not early
+        (time(0, 30), True),
+        (time(5, 59), True),
+        (time(6, 0), False),
+        (time(11, 0), False),
+    ],
+)
+def test_late_arrival_from_2201_to_0559(arrival: time, is_late: bool) -> None:
+    result = late_arrival(arrival)
+    assert (result is not None and result.reason == ReasonCode.LATE_ARRIVAL) is is_late
