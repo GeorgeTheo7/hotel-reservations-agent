@@ -10,6 +10,9 @@
   connections at once (the approval transaction, races). It uses its own database
   `<dev db>_commit_test`, so leftovers can never reach the rolled-back tests; the
   operational tables are truncated before and after every test, the 2027 seed stays.
+- API audit coverage: before truncating, `committed_db` records which audit events a
+  test in a `test_api_*.py` module committed. `API_COVERAGE_TEST` (moved to the end of
+  the run) then checks every event in audit.API_ONLY_EVENTS was written by one of them.
 
 Run with: uv run --env-file .env pytest -m integration
 """
@@ -19,6 +22,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -343,14 +347,66 @@ class CommittedDb:
         self._conns.clear()
 
 
+# --- API audit coverage --------------------------------------------------------------
+
+API_TEST_PREFIX = "test_api_"
+API_COVERAGE_TEST = "test_every_api_only_event_is_written_by_an_api_test"
+
+
+class ApiAuditCoverage:
+    """Audit events committed by API tests in this run, and whether every API test ran
+    (a run with -k or a single file cannot prove coverage, so the check skips)."""
+
+    def __init__(self) -> None:
+        self.seen: set[str] = set()
+        self.complete = False
+
+
+API_AUDIT = ApiAuditCoverage()
+_deselected_api_tests: list[str] = []
+
+
+def _is_api_test(item: pytest.Item) -> bool:
+    """An integration API test. tests/unit/test_api_app.py has the same prefix but
+    writes no audit rows, and `-m integration` deselects it, so it must not count."""
+    return item.path.parent == Path(__file__).parent and item.path.name.startswith(API_TEST_PREFIX)
+
+
+def pytest_deselected(items: list[pytest.Item]) -> None:
+    _deselected_api_tests.extend(i.nodeid for i in items if _is_api_test(i))
+
+
+@pytest.hookimpl(trylast=True)  # after -k / -m deselection
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Move the coverage test to the end, and note whether every API test is selected:
+    no API test deselected, and every test_api_*.py file collected."""
+    guard = [i for i in items if i.name == API_COVERAGE_TEST]
+    for item in guard:
+        items.remove(item)
+        items.append(item)
+    on_disk = {p.name for p in Path(__file__).parent.glob(f"{API_TEST_PREFIX}*.py")}
+    collected = {i.path.name for i in items if _is_api_test(i)}
+    API_AUDIT.complete = bool(guard) and collected == on_disk and not _deselected_api_tests
+
+
 @pytest.fixture
-def committed_db(commit_test_db: str) -> Iterator[CommittedDb]:
+def api_audit() -> ApiAuditCoverage:
+    """The run's API audit coverage (tests/ is not a package, so tests reach it here)."""
+    return API_AUDIT
+
+
+@pytest.fixture
+def committed_db(commit_test_db: str, request: pytest.FixtureRequest) -> Iterator[CommittedDb]:
     harness = CommittedDb(commit_test_db)
     harness.reset()  # in case an earlier run stopped before its teardown
     try:
         yield harness
     finally:
         harness.close_all()
+        if request.node.path.name.startswith(API_TEST_PREFIX):
+            with connect(commit_test_db) as conn:
+                found = conn.execute("SELECT DISTINCT event FROM audit_log").fetchall()
+            API_AUDIT.seen.update(event for (event,) in found)
         harness.reset()
 
 

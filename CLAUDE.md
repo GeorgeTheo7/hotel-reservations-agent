@@ -9,7 +9,7 @@ Design decisions live in `docs/SPEC.md`. If the spec and the code disagree, stop
 - Propose a plan and wait for my OK before changes that touch more than one file.
 - Don't add a dependency without asking and giving the reason.
 - Don't change the spec silently: suggest the change, I decide.
-- When proposing a commit, always show the full message: title, body, and the Co-Authored-By line.
+- Commit messages are short: a title, plus a body only when there is a finding worth recording. When proposing a commit, show the full message, including the Co-Authored-By line.
 ## Rules of the design
 - Prices and availability are computed in code from the database, never by the model.
 - Tools that change data (hold a room, send a reply) run only after the owner's approval.

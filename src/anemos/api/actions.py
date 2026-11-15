@@ -1,4 +1,5 @@
-"""Draft and email actions: edit, approve, reject, close, reopen.
+"""Owner actions: edit, approve, reject (drafts); close, reopen (emails); confirm,
+release, cancel (bookings, the Holds page).
 
 Each endpoint runs one domain function through `run_action` (transactions.py), then
 maps the result to HTTP:
@@ -27,12 +28,15 @@ from anemos.audit import AuditEvent
 from anemos.owner_actions import (
     DraftExpired,
     Edited,
+    cancel_booking,
     close_email,
+    confirm_hold,
     edit_draft,
     reject_draft,
+    release_hold,
     reopen_email,
 )
-from anemos.states import DraftStatus, EmailStatus
+from anemos.states import BookingStatus, DraftStatus, EmailStatus
 
 router = APIRouter(dependencies=[Depends(require_owner)])
 
@@ -76,6 +80,11 @@ class DraftDecided(BaseModel):
 class EmailMoved(BaseModel):
     email_id: int
     status: EmailStatus
+
+
+class BookingMoved(BaseModel):
+    booking_id: int
+    status: BookingStatus
 
 
 def expired(result: DraftExpired) -> JSONResponse:
@@ -173,3 +182,28 @@ def close(conn: ConnDep, clock: ClockDep, email_id: int) -> EmailMoved:
 def reopen(conn: ConnDep, clock: ClockDep, email_id: int) -> EmailMoved:
     run_action(conn, lambda c: reopen_email(c, clock, email_id))
     return EmailMoved(email_id=email_id, status=EmailStatus.ESCALATED)
+
+
+# --- bookings (Holds page) ---------------------------------------------------------------
+
+
+@router.post("/bookings/{booking_id}/confirm", responses={409: {}, 404: {}})
+def confirm(conn: ConnDep, clock: ClockDep, booking_id: int) -> BookingMoved:
+    """hold -> confirmed: deposit received (D43); allowed past expires_at while the
+    booking is still a hold."""
+    run_action(conn, lambda c: confirm_hold(c, clock, booking_id))
+    return BookingMoved(booking_id=booking_id, status=BookingStatus.CONFIRMED)
+
+
+@router.post("/bookings/{booking_id}/release", responses={409: {}, 404: {}})
+def release(conn: ConnDep, clock: ClockDep, booking_id: int) -> BookingMoved:
+    """hold -> cancelled (D46)."""
+    run_action(conn, lambda c: release_hold(c, clock, booking_id))
+    return BookingMoved(booking_id=booking_id, status=BookingStatus.CANCELLED)
+
+
+@router.post("/bookings/{booking_id}/cancel", responses={409: {}, 404: {}})
+def cancel(conn: ConnDep, clock: ClockDep, booking_id: int) -> BookingMoved:
+    """confirmed -> cancelled (D46)."""
+    run_action(conn, lambda c: cancel_booking(c, clock, booking_id))
+    return BookingMoved(booking_id=booking_id, status=BookingStatus.CANCELLED)

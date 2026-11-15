@@ -198,3 +198,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Symptom:** after adding `email.action_refused`, `booking.action_refused` and `draft.price_warning_shown`, `test_the_scenario_performs_every_audited_transition` failed.
 - **Cause:** the scenario calls the domain functions directly; these three are written only by the API after it rolled an action back.
 - **Fix:** `audit.API_ONLY_EVENTS` names them; the guard excludes exactly that set, and `test_api_actions.py` covers them (the booking one with the Holds actions). A new domain event is still caught by the guard.
+
+## 2026-11-15 · The API audit coverage guard skipped itself in exactly the run CI makes
+- **Symptom:** `test_every_api_only_event_is_written_by_an_api_test` passed with all API files, but was *skipped* under `pytest -m integration`, the CI command.
+- **Cause:** it skips unless every `test_api_*` test ran; `tests/unit/test_api_app.py` has the same prefix, and `-m integration` deselects it, so the run looked partial.
+- **Evidence:** `SKIPPED … not every API test ran` in the full integration run; after the fix it runs and passes there, and both guard mutations (no test writes `booking.action_refused`; an untested event added to `API_ONLY_EVENTS`) fail under `-m integration`.
+- **Fix:** only API test files in `tests/integration/` count, and with `CI=true` an incomplete run fails instead of skipping. Lesson: a guard that can skip must be shown running in the exact CI command.
