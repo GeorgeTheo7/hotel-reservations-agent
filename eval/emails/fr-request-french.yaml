@@ -1,0 +1,33 @@
+schema_version: 2
+id: fr-request-french
+split: held_out
+tags: [other_language]
+
+email:
+  from: "Camille Fictional <camille@example.test>"
+  subject: "Demande de réservation"
+  received_at: "2027-02-17T10:50:00+00:00"
+  body: |
+    Bonjour,
+
+    Nous souhaiterions réserver une chambre double pour deux adultes
+    du 12 au 16 septembre 2027. Quel serait le prix ?
+
+    Cordialement,
+    Camille
+
+labels:
+  language: fr
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 12, month: 9, year: 2027}
+      check_out: {day: 16, month: 9, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: escalate
+  reason_codes: [LANGUAGE]

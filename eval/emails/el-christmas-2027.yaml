@@ -1,0 +1,28 @@
+schema_version: 2
+id: el-christmas-2027
+split: dev
+tags: [holiday_not_easter, closed]
+
+email:
+  from: "Sofia Fictional <sofia@example.test>"
+  subject: "Χριστούγεννα 2027"
+  received_at: "2027-01-10T12:10:00+00:00"
+  body: |
+    Καλησπέρα,
+
+    Θα θέλαμε να περάσουμε τα Χριστούγεννα του 2027 στο νησί, δύο άτομα,
+    3 νύχτες. Έχετε διαθεσιμότητα;
+
+    Σοφία
+
+labels:
+  language: el
+  script: greek
+  kind: request
+  extraction:
+    date_spec: {kind: holiday, holiday: christmas, tradition: unspecified, year: 2027, nights: 3}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: ask_info          # today's code (D28); becomes decline with D68 (week 4 step 6)

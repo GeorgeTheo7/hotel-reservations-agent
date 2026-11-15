@@ -1,0 +1,50 @@
+schema_version: 2
+id: en-fully-booked-decline
+split: dev
+tags: [fully_booked, none_found, world]
+
+email:
+  from: "Sam Fictional <sam@example.test>"
+  subject: "Early September"
+  received_at: "2027-03-08T13:15:00+00:00"
+  body: |
+    Hello,
+
+    Do you have a double room for two adults from 6 to 9 September 2027?
+
+    Sam
+
+# Every room, the Accessible one included, is booked from 25 Aug to 20 Sep 2027,
+# so nothing is free for the stay or for any same-length stay within +-7 days.
+world:
+  bookings:
+    - {room: 101, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 102, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 103, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 104, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 105, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 106, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 107, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 201, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 202, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 203, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 204, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 301, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 302, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+    - {room: 303, check_in: "2027-08-25", check_out: "2027-09-20", status: confirmed}
+
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 6, month: 9, year: 2027}
+      check_out: {day: 9, month: 9, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: decline
+  required_tools: [check_availability, suggest_alternatives]

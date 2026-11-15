@@ -1,0 +1,28 @@
+schema_version: 2
+id: en-whole-month-june
+split: held_out
+tags: [whole_month]
+
+email:
+  from: "Lucy Fictional <lucy@example.test>"
+  subject: "June holiday"
+  received_at: "2026-12-14T08:20:00+00:00"
+  body: |
+    Hello,
+
+    We'd like to come sometime in June next year for 5 nights, two adults.
+    What would a double room cost?
+
+    Lucy
+
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec: {kind: approximate, part: whole_month, month: 6, year: null, nights: 5}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: ask_info

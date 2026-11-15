@@ -1,0 +1,26 @@
+schema_version: 2
+id: en-invoice-vat
+split: dev
+tags: [billing]
+
+email:
+  from: "Oliver Fictional <oliver@example.test>"
+  subject: "Invoice for our stay"
+  received_at: "2026-11-24T14:05:00+00:00"
+  body: |
+    Hello,
+
+    Could you please send me an invoice for our stay in September, made out to
+    my company with our VAT number? I'll send the company details in a reply.
+
+    Thanks,
+    Oliver
+
+labels:
+  language: en
+  script: latin
+  kind: other
+  extraction:
+    flags: [billing_request]
+  route: escalate
+  reason_codes: [BILLING]

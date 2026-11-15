@@ -1,0 +1,33 @@
+schema_version: 2
+id: el-change-dates
+split: dev
+tags: [change]
+
+email:
+  from: "Christina Fictional <christina@example.test>"
+  subject: "Αλλαγή ημερομηνιών κράτησης"
+  received_at: "2027-02-25T10:30:00+00:00"
+  body: |
+    Καλημέρα σας,
+
+    Έχουμε κράτηση για 10 έως 14 Ιουνίου 2027. Θα μπορούσαμε να τη μεταφέρουμε
+    στις 17 έως 21 Ιουνίου; Είμαστε πάλι δύο άτομα.
+
+    Ευχαριστώ,
+    Χριστίνα
+
+labels:
+  language: el
+  script: greek
+  kind: other
+  extraction:                # the new dates the guest asks for
+    date_spec:
+      kind: exact
+      check_in: {day: 17, month: 6, year: 2027}
+      check_out: {day: 21, month: 6, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: escalate
+  reason_codes: [CHANGE]

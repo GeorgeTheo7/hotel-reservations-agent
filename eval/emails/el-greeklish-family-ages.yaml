@@ -1,0 +1,33 @@
+schema_version: 2
+id: el-greeklish-family-ages
+split: dev
+tags: [greeklish, children_ages]
+
+email:
+  from: "Manos Fictional <manos@example.test>"
+  subject: "oikogeneiako domatio Septemvrio"
+  received_at: "2027-02-21T20:00:00+00:00"
+  body: |
+    Kalispera, eimaste 2 enilikes kai 2 paidia (5 kai 9 xronon).
+    Thelame mia oikogeneiaki souita apo 2 eos 6 Septemvriou 2027.
+    Poso kostizei?
+
+    Manos
+
+labels:
+  language: el
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 2, month: 9, year: 2027}
+      check_out: {day: 6, month: 9, year: 2027}
+    adults: 2
+    children: 2
+    child_ages: [5, 9]
+    rooms: 1
+    room_type: family_suite
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 1

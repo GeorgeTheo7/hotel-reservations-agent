@@ -1,0 +1,32 @@
+schema_version: 2
+id: en-group-nine-adults
+split: dev
+tags: [group, over_capacity]
+
+email:
+  from: "Chris Fictional <chris@example.test>"
+  subject: "Nine of us in June"
+  received_at: "2027-01-26T17:40:00+00:00"
+  body: |
+    Hi,
+
+    Nine friends (all adults) are looking for a place from 20 to 24 June 2027.
+    Can you fit us in? Please let me know the best price.
+
+    Chris
+
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 20, month: 6, year: 2027}
+      check_out: {day: 24, month: 6, year: 2027}
+    adults: 9
+    children: 0
+    rooms: null
+    room_type: null
+  route: escalate
+  reason_codes: [GROUP]

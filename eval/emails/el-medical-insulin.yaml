@@ -1,0 +1,34 @@
+schema_version: 2
+id: el-medical-insulin
+split: held_out
+tags: [medical]
+
+email:
+  from: "Andreas Fictional <andreas@example.test>"
+  subject: "Δωμάτιο με ψυγείο για ινσουλίνη"
+  received_at: "2027-03-15T16:20:00+00:00"
+  body: |
+    Καλησπέρα,
+
+    Θα θέλαμε ένα δίκλινο για δύο ενήλικες από 6 έως 10 Σεπτεμβρίου 2027.
+    Η σύζυγός μου κάνει αιμοκάθαρση και ινσουλίνη, οπότε χρειαζόμαστε ψυγείο
+    στο δωμάτιο. Υπάρχει μονάδα αιμοκάθαρσης κοντά στο ξενοδοχείο;
+
+    Ανδρέας
+
+labels:
+  language: el
+  script: greek
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 6, month: 9, year: 2027}
+      check_out: {day: 10, month: 9, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+    flags: [medical_need]
+  route: escalate
+  reason_codes: [MEDICAL]

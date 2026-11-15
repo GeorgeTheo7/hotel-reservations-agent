@@ -1,0 +1,30 @@
+schema_version: 2
+id: el-approximate-late-june
+split: dev
+tags: [approximate_dates, window_options]
+
+email:
+  from: "Eleftheria Fictional <eleftheria@example.test>"
+  subject: "Τέλη Ιουνίου"
+  received_at: "2027-01-14T19:30:00+00:00"
+  body: |
+    Γεια σας,
+
+    Σκεφτόμαστε να έρθουμε τέλη Ιουνίου για μία εβδομάδα, δύο ενήλικες.
+    Τι διαθεσιμότητα έχετε σε δίκλινο standard;
+
+    Ελευθερία
+
+labels:
+  language: el
+  script: greek
+  kind: request
+  extraction:
+    date_spec: {kind: approximate, part: late, month: 6, year: null, nights: 7}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: standard
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 0

@@ -1,0 +1,34 @@
+schema_version: 2
+id: en-accessible-party-three
+split: dev
+tags: [accessible_room, accessibility_escalation]
+
+email:
+  from: "Grace Fictional <grace@example.test>"
+  subject: "Accessible room for three"
+  received_at: "2027-01-22T11:00:00+00:00"
+  body: |
+    Hello,
+
+    I use a wheelchair and will be travelling with my husband and our adult son.
+    We would need a step-free room for the three of us from 3 to 7 June 2027.
+
+    Kind regards,
+    Grace
+
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 3, month: 6, year: 2027}
+      check_out: {day: 7, month: 6, year: 2027}
+    adults: 3
+    children: 0
+    rooms: 1
+    room_type: null
+    flags: [accessibility_need]
+  route: escalate
+  reason_codes: [ACCESSIBILITY]

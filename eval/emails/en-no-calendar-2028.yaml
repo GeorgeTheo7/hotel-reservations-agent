@@ -1,0 +1,32 @@
+schema_version: 2
+id: en-no-calendar-2028
+split: dev
+tags: [no_calendar]
+
+email:
+  from: "Ben Fictional <ben@example.test>"
+  subject: "Planning ahead: July 2028"
+  received_at: "2027-02-02T09:45:00+00:00"
+  body: |
+    Hi,
+
+    We like to plan early. Could you quote a sea view double for two adults
+    from 10 to 17 July 2028?
+
+    Ben
+
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 10, month: 7, year: 2028}
+      check_out: {day: 17, month: 7, year: 2028}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: sea_view
+  route: escalate
+  reason_codes: [NO_CALENDAR]
