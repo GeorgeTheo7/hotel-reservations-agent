@@ -54,6 +54,15 @@ def test_fills_an_inbox_and_a_second_run_stores_nothing(committed_db: CommittedD
         " (SELECT count(*) FROM drafts)"
     ).fetchone()
     assert counts == (6, 5, 5)
+    # Every email went through the real run: extracted (by the scripted gold client,
+    # named in the audit, at no cost) and routed in code.
+    audit = conn.execute(
+        "SELECT (SELECT count(*) FROM audit_log WHERE event = 'email.routed'),"
+        " (SELECT count(*) FROM audit_log WHERE event = 'llm.called'"
+        "  AND output->>'response_model' = 'gold-labels' AND cost_micro_usd = 0)"
+    ).fetchone()
+    conn.commit()
+    assert audit == (6, 6)
 
 
 def test_a_mailbox_of_eval_cases_is_stored_once(committed_db: CommittedDb) -> None:

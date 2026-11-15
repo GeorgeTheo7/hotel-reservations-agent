@@ -14,7 +14,6 @@ from typing import Any
 import pytest
 import yaml
 
-from anemos.demo_inbox import request_columns
 from anemos.email_cases import (
     CaseError,
     EmailCase,
@@ -117,8 +116,9 @@ def test_every_demo_case_loads_and_can_be_drafted() -> None:
     assert len(cases) == 6
     for case in cases:
         assert (case.split, case.world.bookings) == ("demo", []), case.id
-        if case.labels.route != "set_aside":
-            assert request_columns(case)["adults"] is not None, case.id
+        if case.labels.route != "set_aside":  # the demo answers with these labels
+            gold = case.gold_output()
+            assert gold is not None and gold.adults is not None, case.id
 
 
 def test_eval_and_demo_ids_do_not_overlap() -> None:
