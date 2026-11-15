@@ -118,6 +118,22 @@ def test_sent_at_exactly_when_sent(
         rows.outbox(approved, **overrides)
 
 
+def test_next_attempt_not_before_created(
+    rows: Rows, expect_violation: ExpectViolation, approved: int
+) -> None:
+    """Migration 0011."""
+    with expect_violation(CheckViolation, "outbox_next_attempt_not_before_created"):
+        rows.outbox(approved, next_attempt_at=rows.T0 - timedelta(seconds=1))
+
+
+def test_next_attempt_may_be_empty_or_later(rows: Rows) -> None:
+    """NULL = due now (never tried)."""
+    _, _, first = rows.approved_draft()
+    rows.outbox(first, next_attempt_at=None)
+    _, _, second = rows.approved_draft()
+    rows.outbox(second, next_attempt_at=rows.T0 + timedelta(minutes=1))
+
+
 def test_not_sent_before_created(
     rows: Rows, expect_violation: ExpectViolation, approved: int
 ) -> None:

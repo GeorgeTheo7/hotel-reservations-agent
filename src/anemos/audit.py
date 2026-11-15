@@ -35,6 +35,8 @@ class AuditEvent(StrEnum):
     HOLD_CONFIRMED = "hold.confirmed"
     HOLD_RELEASED = "hold.released"
     BOOKING_CANCELLED = "booking.cancelled"
+    OUTBOX_SENT = "outbox.sent"
+    OUTBOX_SEND_FAILED = "outbox.send_failed"
 
 
 def write_audit(

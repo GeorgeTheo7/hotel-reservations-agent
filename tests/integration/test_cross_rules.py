@@ -42,6 +42,7 @@ from anemos.owner_actions import (
     reopen_email,
 )
 from anemos.reservations.loader import load_hotel_data
+from anemos.sender import FakeTransport, send_due
 from anemos.states import (
     FINAL_BOOKING_STATUSES,
     FINAL_DRAFT_STATUSES,
@@ -178,11 +179,12 @@ def world(committed_db: CommittedDb) -> World:
     cancelled = _booking_of(conn, drafts["confirmed_cancelled"])
     confirm_hold(conn, clock, cancelled)
     cancel_booking(conn, clock, cancelled)  # confirmed -> cancelled
-    conn.execute(
-        "UPDATE outbox SET status = 'sent', attempts = 1, sent_at = %s WHERE draft_id = %s",
-        (NOW, drafts["decline"]),
-    )
     conn.commit()
+    # The sender: two runs' worth of claims, the first attempt scripted to fail. The
+    # oldest outbox row gets a failed attempt (waiting for its retry), the next is sent,
+    # the rest stay pending.
+    report = send_due(committed_db.connect, clock, FakeTransport(fail_first=1), limit=2)
+    assert (len(report.failed), len(report.sent)) == (1, 1)
 
     # 73 hours later: an owner action on a 73-hour-old draft expires it (D54); the
     # stale-hold sweep expires every hold from the first round; then one more hold is
@@ -456,6 +458,24 @@ def test_time_plus_a_click_gives_expired_never_invalidated(
         (stale_draft,),
     ).fetchone()
     assert row == ("expired", "expired", [])
+
+
+def test_the_sender_only_delivers_and_the_rules_still_hold(
+    world: World, committed_db: CommittedDb
+) -> None:
+    """Step 15 against rules 2 and 5: sending every due message only moves outbox rows
+    pending -> sent; nothing else changes, no row appears, rules 1-4 still hold."""
+    before = state(world.conn)
+    send_due(committed_db.connect, FixedClock(NOW + timedelta(days=1)), FakeTransport())
+    after = state(world.conn)
+    for table in ("emails", "drafts", "bookings"):
+        assert after[table] == before[table], table
+    assert after["outbox"].keys() == before["outbox"].keys()  # nothing created
+    moved = {i: (before["outbox"][i], after["outbox"][i]) for i in before["outbox"]
+             if before["outbox"][i] != after["outbox"][i]}  # fmt: skip
+    assert moved, "the scenario had no pending outbox row"
+    assert set(moved.values()) == {("pending", "sent")}
+    assert_rules_1_to_4(world.conn)
 
 
 # --- rule 6: nothing changes a final status --------------------------------------------

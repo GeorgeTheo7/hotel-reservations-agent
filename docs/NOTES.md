@@ -165,3 +165,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Evidence:** `emails: no row in ['processing', 'set_aside']` and `bookings: no row in ['hold']` from `test_the_scenario_reaches_every_status_the_database_allows`.
 - **Fix:** the scenario keeps one email `set_aside` and one `processing` (raw SQL, standing in for the router and a run in flight) and the live hold moved to 24–27 Aug; the guard reads allowed statuses from the CHECK constraints in pg_catalog, so a new status fails it.
 - **Trade-off:** rules 3 and 6 can only break if the code *and* the database fail (deferred foreign key, D51 trigger), so their checkers are shown failing with planted rows and a trigger switched off in a rolled-back transaction, not with a code mutation.
+
+## 2026-11-15 · "The plan uses the index" is not proof the index expression is used (step 15)
+- **Symptom:** the mutation that dropped `coalesce(next_attempt_at, created_at)` from the sender's claim query passed `test_the_claim_query_uses_the_due_index`.
+- **Cause:** `outbox_pending_due_idx` is partial (`WHERE status = 'pending'`); with sequential scans off, the planner can use it just to find pending rows, so its name appears in the plan without its key being used.
+- **Evidence:** `EXPLAIN` of the real query shows `Index Cond: (COALESCE(next_attempt_at, created_at) <= …)` under the index scan; the mutated query only filters. The tightened test fails on the mutation, passes on the real query.
+- **Fix:** the test requires the index condition on the coalesce expression, not the index name; the claim query repeats the index expression exactly in WHERE and ORDER BY. Trade-off: the test reads plan text, so a Postgres version that formats plans differently would need the string updated.

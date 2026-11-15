@@ -163,6 +163,38 @@ def test_sent_outbox_row_frozen(
             db.execute("DELETE FROM outbox WHERE id = %s", (outbox_id,))
 
 
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [("attempts", 3), ("last_error", "timeout"), ("next_attempt_at", "2026-11-13T09:00Z")],
+)
+def test_pending_outbox_retry_columns_may_change(
+    db: Conn, rows: Rows, column: str, value: object
+) -> None:
+    """Step 15: the sender updates these on a pending row; the D51 triggers allow it."""
+    _, _, draft_id = rows.approved_draft()
+    outbox_id = rows.outbox(draft_id)
+    db.execute(
+        sql.SQL("UPDATE outbox SET {} = %s WHERE id = %s").format(sql.Identifier(column)),
+        (value, outbox_id),
+    )
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [("attempts", 3), ("last_error", "timeout"), ("next_attempt_at", "2026-11-13T09:00Z")],
+)
+def test_sent_outbox_retry_columns_frozen(
+    db: Conn, rows: Rows, expect_violation: ExpectViolation, column: str, value: object
+) -> None:
+    _, _, draft_id = rows.approved_draft()
+    outbox_id = rows.outbox(draft_id, status="sent", attempts=1, sent_at=rows.T0)
+    with expect_violation(RestrictViolation, "outbox_final_status"):
+        db.execute(
+            sql.SQL("UPDATE outbox SET {} = %s WHERE id = %s").format(sql.Identifier(column)),
+            (value, outbox_id),
+        )
+
+
 def test_pending_outbox_row_can_retry_and_be_sent(db: Conn, rows: Rows) -> None:
     """states.md: a failed send stays pending with an attempt count and the last error."""
     _, _, draft_id = rows.approved_draft()
