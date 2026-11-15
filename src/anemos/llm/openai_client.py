@@ -101,6 +101,7 @@ def _read[T: BaseModel](response: Response, schema: type[T]) -> Reply[T]:
         input_tokens=response.usage.input_tokens,
         cached_input_tokens=response.usage.input_tokens_details.cached_tokens,
         output_tokens=response.usage.output_tokens,
+        reasoning_tokens=response.usage.output_tokens_details.reasoning_tokens or 0,
     )
     if response.status != "completed":
         reason = response.incomplete_details.reason if response.incomplete_details else None

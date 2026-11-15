@@ -124,7 +124,8 @@ def test_a_call_returns_its_output_cost_and_latency(budget: Budget, audit: Recor
         "cost_micro_usd": result.cost_micro_usd, "latency_ms": 250, "error": None,
     }  # fmt: skip
     assert row["output"] == {"attempt": 1, "response_model": "gpt-6-luna",
-                             "cached_input_tokens": 200, "result": {"adults": 2}}  # fmt: skip
+                             "cached_input_tokens": 200, "reasoning_tokens": 0,
+                             "result": {"adults": 2}}  # fmt: skip
     assert audit.committed == 1  # its own transaction
 
 

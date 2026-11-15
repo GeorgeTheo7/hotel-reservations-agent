@@ -48,12 +48,17 @@ class Usage:
     input_tokens: int  # including cached
     cached_input_tokens: int
     output_tokens: int  # including reasoning
+    reasoning_tokens: int = 0  # part of output_tokens (billed as output), for reports
 
     def __post_init__(self) -> None:
-        if min(self.input_tokens, self.cached_input_tokens, self.output_tokens) < 0:
+        counts = (self.input_tokens, self.cached_input_tokens, self.output_tokens,
+                  self.reasoning_tokens)  # fmt: skip
+        if min(counts) < 0:
             raise ValueError(f"negative token count: {self}")
         if self.cached_input_tokens > self.input_tokens:
             raise ValueError(f"more cached than input tokens: {self}")
+        if self.reasoning_tokens > self.output_tokens:
+            raise ValueError(f"more reasoning than output tokens: {self}")
 
 
 def price_of(model: str) -> Price:

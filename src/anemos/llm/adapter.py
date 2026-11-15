@@ -75,6 +75,7 @@ class Result[T: BaseModel]:
     cost_micro_usd: int
     latency_ms: int
     attempts: int
+    response_model: str = ""  # the model name the response gives (may be a dated snapshot)
 
 
 class ClientError(Exception):
@@ -124,7 +125,7 @@ class LLM:
         client: ModelClient,
         settings: Settings,
         budget: Budget,
-        connect: Callable[[], Conn],
+        connect: Callable[[], Conn] | None,
         clock: Clock,
         *,
         sleep: Callable[[float], None] = time.sleep,
@@ -196,11 +197,13 @@ class LLM:
                 input_tokens=reply.usage.input_tokens, output_tokens=reply.usage.output_tokens,
                 output={"attempt": attempt, "response_model": reply.response_model,
                         "cached_input_tokens": reply.usage.cached_input_tokens,
+                        "reasoning_tokens": reply.usage.reasoning_tokens,
                         # What the model returned, for monitoring and debugging (week 8);
                         # the prompt itself is not stored: prompt_version identifies it.
                         "result": reply.output.model_dump(mode="json")},
             )  # fmt: skip
-            return Result(reply.output, model, reply.usage, spent, latency, attempt)
+            return Result(reply.output, model, reply.usage, spent, latency, attempt,
+                          reply.response_model)  # fmt: skip
         raise AssertionError("unreachable: the last attempt returns or raises")
 
     def _ms(self, start: float) -> int:
@@ -218,7 +221,10 @@ class LLM:
         error: str | None = None,
         output: dict[str, object] | None = None,
     ) -> None:
-        """One row in its own short transaction, on its own connection."""
+        """One row in its own short transaction, on its own connection. No connection
+        (an evaluation run, whose results file is its record): no row."""
+        if self.connect is None:
+            return
         with self.connect() as conn:
             write_llm_audit(
                 conn, self.clock.now(), event, email_id=call.email_id, step=call.step,

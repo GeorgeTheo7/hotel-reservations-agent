@@ -72,7 +72,9 @@ def test_a_reply_is_parsed_with_its_usage() -> None:
     handler, seen = answering(httpx2.Response(200, json=reply()))
     result = client(handler).send(PROMPT, Out, SETTINGS)
     assert result.output == Out(adults=2)
-    assert result.usage == Usage(input_tokens=120, cached_input_tokens=20, output_tokens=30)
+    assert result.usage == Usage(
+        input_tokens=120, cached_input_tokens=20, output_tokens=30, reasoning_tokens=4
+    )
     assert result.response_model == "gpt-6-luna-2026-10-01"
     [request] = seen
     body = json.loads(request.content)
@@ -125,7 +127,7 @@ def test_an_incomplete_reply_is_permanent_and_billed() -> None:
         status="incomplete", incomplete_details={"reason": "max_output_tokens"})))  # fmt: skip
     with pytest.raises(PermanentError, match="incomplete: max_output_tokens") as error:
         client(handler).send(PROMPT, Out, SETTINGS)
-    assert error.value.usage == Usage(120, 20, 30)
+    assert error.value.usage == Usage(120, 20, 30, 4)
 
 
 def test_output_that_does_not_fit_the_schema_is_permanent_and_billed() -> None:
@@ -134,7 +136,7 @@ def test_output_that_does_not_fit_the_schema_is_permanent_and_billed() -> None:
     handler, _ = answering(httpx2.Response(200, json=reply('{"adults": "two"}')))
     with pytest.raises(PermanentError, match="unparsable reply") as error:
         client(handler).send(PROMPT, Out, SETTINGS)
-    assert (error.value.usage, error.value.cost_unknown) == (Usage(120, 20, 30), False)
+    assert (error.value.usage, error.value.cost_unknown) == (Usage(120, 20, 30, 4), False)
 
 
 def test_a_reply_without_usage_has_an_unknown_cost() -> None:
@@ -152,7 +154,7 @@ def test_a_refusal_is_permanent_and_billed() -> None:
     handler, _ = answering(httpx2.Response(200, json=refusal))
     with pytest.raises(PermanentError, match="refusal: I can't help") as error:
         client(handler).send(PROMPT, Out, SETTINGS)
-    assert error.value.usage == Usage(120, 20, 30)
+    assert error.value.usage == Usage(120, 20, 30, 4)
 
 
 def test_no_key_is_needed_until_the_first_call(monkeypatch: pytest.MonkeyPatch) -> None:

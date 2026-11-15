@@ -1,0 +1,6 @@
+# The smoke set: the 5-email Greek check for choosing the model (D2), dev split only.
+el-greeklish-quote-june      # Greeklish: language el, script latin
+el-greeklish-family-ages     # Greeklish with children's ages
+el-ask-info-child-ages       # Greek, one child's age missing
+el-approximate-late-june     # Greek, approximate window (late June, a week)
+el-injection-greek           # Greek, hidden instructions (injection_suspected)

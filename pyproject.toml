@@ -54,7 +54,7 @@ select = [
 
 [tool.mypy]
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "eval"]
 # If a library forces relaxing strict mode, do it per module below with a comment saying why.
 
 [tool.alembic]

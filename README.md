@@ -89,8 +89,14 @@ Release only a reservation whose call is certainly over (no run in progress), an
 the cost the OpenAI dashboard shows for it. Releasing appends a line; the ledger is
 never edited.
 
-Evaluations (anything that calls a model) will live under `eval/` and are never run by
-pytest or CI.
+Evaluations (anything that calls a model) live under `eval/` and are never run by
+pytest or CI. The smoke run extracts the 5 emails in `eval/sets/smoke.txt` with a real
+model and records every call in `eval/results/` (needs `OPENAI_API_KEY` in `.env`; a
+dirty working tree is refused unless `--allow-dirty`):
+
+```sh
+uv run --env-file .env python eval/smoke.py --model gpt-6-luna --repeat 3
+```
 
 ## Everyday commands
 
