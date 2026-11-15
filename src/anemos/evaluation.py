@@ -26,8 +26,9 @@ from typing import Any
 from anemos.email_cases import EmailCase, load_cases
 from anemos.extraction import ExtractionOutput
 from anemos.extraction_run import build_prompt
-from anemos.llm.adapter import LLM, ClientError, LLMError
+from anemos.llm.adapter import LLM, ClientError, LLMError, max_input_tokens
 from anemos.llm.budget import BudgetExceeded
+from anemos.llm.pricing import max_cost
 from anemos.prompts import PromptSpec
 from anemos.reservations.datespec import resolve
 from anemos.reservations.model import rooms_or_default
@@ -279,3 +280,128 @@ def rescore(data: dict[str, Any], cases: Sequence[EmailCase]) -> tuple[list[Row]
             row = replace(row, fields=score(expected, got, case.email.received_at))
         rows.append(row)
     return rows, summarise(rows)
+
+
+# --- the extraction eval: fields and routing over the dev split ---------------------------
+
+# Cases that need model judgement the agent loop (week 5) will bring; the router alone
+# cannot reach their labels. Scored for fields, reported apart for routing.
+NOT_BUILT_YET = frozenset({
+    "en-discount-as-agreed", "el-group-wedding", "el-complaint-legal", "el-cancellation",
+    "el-change-dates", "el-pets-policy", "el-greeklish-transfer-policy",
+})  # fmt: skip
+
+# SPEC Evaluation plan targets. Dates are scored as `stay` (resolved by code).
+FIELD_TARGETS: dict[str, float] = {"stay": 0.95, "adults": 0.95, "child_ages": 0.95}
+ROUTE_ACCURACY_TARGET = 0.90
+ESCALATION_RECALL_TARGET = 0.95
+ESCALATION_PRECISION_TARGET = 0.80
+
+
+def dev_cases(eval_dir: Path, ids: Sequence[str] = ()) -> list[EmailCase]:
+    """The dev split (sorted by id), or the listed dev cases. Held-out cases are refused:
+    they are for milestone runs only."""
+    cases = {c.id: c for c in load_cases(eval_dir / "emails")}
+    unknown = [i for i in ids if i not in cases]
+    if unknown:
+        raise SetError(f"no such case {unknown}")
+    chosen = [cases[i] for i in ids] if ids else [c for c in cases.values() if c.split == "dev"]
+    held_out = [c.id for c in chosen if c.split != "dev"]
+    if held_out:
+        raise SetError(f"not dev cases (held-out cases are for milestone runs): {held_out}")
+    return chosen
+
+
+def estimate_max_cost(cases: Sequence[EmailCase], spec: PromptSpec, model: str) -> int:
+    """The most the cases can cost, in micro-dollars: per case the adapter's own
+    reservation (every input token uncached, the whole output limit used)."""
+    total = 0
+    for case in cases:
+        prompt = build_prompt(case.email.subject, case.email.body.strip(), spec)
+        total += max_cost(model, max_input_tokens=max_input_tokens(prompt, ExtractionOutput),
+                          max_output_tokens=spec.max_output_tokens)  # fmt: skip
+    return total
+
+
+def field_accuracy(rows: Sequence[Row]) -> dict[str, float]:
+    """Share right per field over *every* case: a failed call is wrong on every field."""
+    if not rows:
+        return {}
+    return {f: sum(bool(r.fields and r.fields[f]) for r in rows) / len(rows) for f in FIELDS}
+
+
+@dataclass(frozen=True)
+class CaseOutcome:
+    """How one case ended in the run, against its labels. route: the draft's route, or
+    "escalate" / "set_aside" when there is no draft."""
+
+    case_id: str
+    expected_route: str
+    expected_codes: tuple[str, ...]
+    expected_holds: int
+    route: str
+    codes: tuple[str, ...]
+    holds: int
+    failed: bool  # the model call failed (the run escalated SYSTEM_ERROR)
+
+    @property
+    def matches(self) -> bool:
+        return not self.failed and (self.route, sorted(self.codes), self.holds) == (
+            self.expected_route, sorted(self.expected_codes), self.expected_holds,
+        )  # fmt: skip
+
+
+@dataclass(frozen=True)
+class RoutingScore:
+    cases: int  # scored: not-built-yet cases left out
+    route_correct: int
+    escalations_expected: int
+    escalations_caught: int  # labelled escalate, escalated by a run whose call succeeded
+    escalated: int  # escalated by a run whose call succeeded
+    escalated_rightly: int  # ... and labelled escalate
+    codes_exact: int  # among escalations caught: the same reason codes
+    not_built_yet: list[str]
+    failed: list[str]
+
+    @property
+    def route_accuracy(self) -> float | None:
+        return self.route_correct / self.cases if self.cases else None
+
+    @property
+    def recall(self) -> float | None:
+        return (
+            self.escalations_caught / self.escalations_expected
+            if self.escalations_expected
+            else None
+        )
+
+    @property
+    def precision(self) -> float | None:
+        return self.escalated_rightly / self.escalated if self.escalated else None
+
+
+def score_routing(outcomes: Sequence[CaseOutcome]) -> RoutingScore:
+    """Route accuracy and escalation recall/precision per email, not-built-yet cases left
+    out. A failed call is never a correct escalation, though the run escalates it
+    (SYSTEM_ERROR): it is wrong for route accuracy, a miss for recall when the case is
+    labelled escalate, and left out of precision (it is not a routing decision)."""
+    scored = [o for o in outcomes if o.case_id not in NOT_BUILT_YET]
+    ok = [o for o in scored if not o.failed]
+    expected = [o for o in scored if o.expected_route == "escalate"]
+    caught = [o for o in expected if not o.failed and o.route == "escalate"]
+    escalated = [o for o in ok if o.route == "escalate"]
+    return RoutingScore(
+        cases=len(scored),
+        route_correct=sum(o.route == o.expected_route for o in ok),
+        escalations_expected=len(expected),
+        escalations_caught=len(caught),
+        escalated=len(escalated),
+        escalated_rightly=sum(o.expected_route == "escalate" for o in escalated),
+        codes_exact=sum(sorted(o.codes) == sorted(o.expected_codes) for o in caught),
+        not_built_yet=sorted(o.case_id for o in outcomes if o.case_id in NOT_BUILT_YET),
+        failed=sorted(o.case_id for o in outcomes if o.failed),
+    )
+
+
+def meets(value: float | None, target: float) -> bool:
+    return value is not None and value >= target

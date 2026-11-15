@@ -16,6 +16,7 @@ import pytest
 
 from anemos.db.seed import hotel_data
 from anemos.email_cases import EmailCase, load_cases
+from anemos.evaluation import NOT_BUILT_YET
 from anemos.reservations.datespec import resolve
 from anemos.reservations.errors import ReasonCode
 from anemos.routing import EmailFacts, Escalate, Resolved, Routed, SetAside, ToAgent, route
@@ -78,6 +79,7 @@ def gold(case: EmailCase) -> Outcome:
 
 def test_every_case_is_counted_once() -> None:
     assert len(CASES) == 43
+    assert set(WEEK_5) == NOT_BUILT_YET  # one list, in anemos.evaluation
     listed = set(WEEK_5) | set(BY_TOOLS)
     assert listed <= set(CASES), f"listed but no such case: {listed - set(CASES)}"
     assert not set(WEEK_5) & set(BY_TOOLS)

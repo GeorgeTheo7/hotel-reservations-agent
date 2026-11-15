@@ -28,32 +28,22 @@ from typing import Any
 import psycopg
 import pytest
 from psycopg import sql
-from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 
 from anemos.clock import FixedClock
-from anemos.db.connection import connect, database_url
+from anemos.db.connection import connect
 from anemos.db.migrate import upgrade
+from anemos.db.scratch import (
+    OPERATIONAL_TABLES,
+    SEED_TABLES,
+    dev_database_name,
+    recreate_database,
+    truncate,
+)
 from anemos.db.seed import seed
 
 type Conn = psycopg.Connection[TupleRow]
-
-
-def recreate_database(name: str) -> str:
-    """Drop and create database `name`; return its conninfo. Only `*_test` names allowed."""
-    if not name.endswith("_test"):
-        raise ValueError(f"refusing to recreate {name!r}: test database names end in _test")
-    with connect(autocommit=True) as admin:
-        admin.execute(
-            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name))
-        )
-        admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
-    return make_conninfo(database_url(), dbname=name)
-
-
-def dev_database_name() -> str:
-    return str(conninfo_to_dict(database_url())["dbname"])
 
 
 @pytest.fixture(scope="session")
@@ -273,18 +263,6 @@ def commit_test_db() -> str:
     return conninfo
 
 
-# Every table the system writes while running; inventory and seed tables are kept.
-# Listed explicitly (no CASCADE): a new table that references one of these makes the
-# TRUNCATE fail loudly, and a harness test checks this list covers every non-seed table.
-OPERATIONAL_TABLES = (
-    "audit_log", "outbox", "draft_offers", "draft_versions", "drafts", "quotes",
-    "requests", "emails", "bookings",
-)  # fmt: skip
-SEED_TABLES = (
-    "room_types", "rooms", "seasons", "season_periods", "room_rates", "min_stay_rules",
-    "extra_bed_rates",
-)  # fmt: skip
-
 LOCK_WAIT_TIMEOUT_S = 5.0
 
 
@@ -316,12 +294,7 @@ class CommittedDb:
         return Rows(conn)
 
     def reset(self) -> None:
-        with connect(self.conninfo, autocommit=True) as admin:
-            admin.execute(
-                sql.SQL("TRUNCATE {} RESTART IDENTITY").format(
-                    sql.SQL(", ").join(map(sql.Identifier, OPERATIONAL_TABLES))
-                )
-            )
+        truncate(self.conninfo)
 
     def wait_until_blocked(self, conn: Conn, timeout_s: float = LOCK_WAIT_TIMEOUT_S) -> None:
         """Poll pg_stat_activity until `conn`'s server process waits on a lock.

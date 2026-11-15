@@ -23,6 +23,7 @@ from psycopg.rows import TupleRow
 
 from anemos.clock import FixedClock
 from anemos.email_cases import EmailCase, load_cases
+from anemos.evaluation import NOT_BUILT_YET
 from anemos.extraction import ExtractionFlag
 from anemos.extraction_run import process_email
 from anemos.inbox import store_email
@@ -141,6 +142,7 @@ def routed(committed_db: CommittedDb, email_id: int) -> dict[str, Any]:
 
 def test_every_case_is_counted_once() -> None:
     assert len(CASES) == 43 and set(WEEK_5) <= set(CASES) and len(EXACT) == 36
+    assert set(WEEK_5) == NOT_BUILT_YET  # one list, in anemos.evaluation
 
 
 @pytest.mark.parametrize("case_id", EXACT)

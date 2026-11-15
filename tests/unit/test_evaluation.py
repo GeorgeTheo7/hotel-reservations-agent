@@ -12,18 +12,26 @@ from typing import Any
 import pytest
 
 from anemos.clock import FixedClock
-from anemos.email_cases import EmailCase
+from anemos.email_cases import EmailCase, load_cases
 from anemos.evaluation import (
+    FIELD_TARGETS,
     FIELDS,
+    NOT_BUILT_YET,
+    CaseOutcome,
     Row,
     SetError,
     consistency,
+    dev_cases,
+    estimate_max_cost,
+    field_accuracy,
     git_state,
     load_set,
+    meets,
     report,
     rescore,
     run_cases,
     score,
+    score_routing,
     summarise,
 )
 from anemos.extraction import ExtractionOutput
@@ -364,3 +372,107 @@ def test_rescore_uses_todays_scorer_without_a_model_call() -> None:
     assert rows[0].fields is not None and all(rows[0].fields.values())
     assert rows[1].fields is None  # a failed call stays failed
     assert (summary.calls, summary.failed, summary.accuracy["rooms"]) == (2, 1, 1.0)
+
+
+# --- the extraction eval: routing scores, targets, estimate ------------------------------
+
+
+def oc(
+    case_id: str,
+    expected: str,
+    got: str,
+    *,
+    failed: bool = False,
+    codes: tuple[str, ...] = (),
+    expected_codes: tuple[str, ...] = (),
+) -> CaseOutcome:
+    return CaseOutcome(case_id, expected, expected_codes, 0, got, codes, 0, failed)
+
+
+def test_a_failed_call_is_never_a_correct_escalation() -> None:
+    """The run escalates a failed call (SYSTEM_ERROR), but that is no routing decision:
+    a miss for recall when labelled escalate, out of precision, wrong for route accuracy."""
+    score_ = score_routing([
+        oc("a", "escalate", "escalate", failed=True, codes=("SYSTEM_ERROR",)),
+        oc("b", "escalate", "escalate", codes=("LEGAL",), expected_codes=("LEGAL",)),
+        oc("c", "quote", "escalate", failed=True, codes=("SYSTEM_ERROR",)),
+    ])  # fmt: skip
+    assert (score_.escalations_caught, score_.escalations_expected) == (1, 2)  # recall 1/2
+    assert (score_.escalated_rightly, score_.escalated) == (1, 1)  # precision 1/1
+    assert (score_.route_correct, score_.cases) == (1, 3)
+    assert score_.failed == ["a", "c"]
+    assert score_.codes_exact == 1
+    assert (score_.recall, score_.precision) == (0.5, 1.0)
+
+
+def test_recall_precision_and_route_accuracy() -> None:
+    """Recall and precision differ here, so swapping them cannot pass."""
+    score_ = score_routing([
+        oc("e1", "escalate", "escalate"), oc("e2", "escalate", "quote"),
+        oc("e3", "escalate", "ask_info"), oc("q1", "quote", "quote"),
+        oc("q2", "quote", "escalate"), oc("s", "set_aside", "set_aside"),
+    ])  # fmt: skip
+    assert score_.recall == 1 / 3  # e1 of e1, e2, e3
+    assert score_.precision == 1 / 2  # e1 of e1, q2
+    assert score_.route_accuracy == 3 / 6
+
+
+def test_not_built_yet_cases_are_left_out_of_routing_totals() -> None:
+    score_ = score_routing([oc("el-change-dates", "escalate", "escalate", codes=("MODEL",)),
+                            oc("x", "quote", "quote")])  # fmt: skip
+    assert (score_.cases, score_.escalations_expected, score_.escalated) == (1, 0, 0)
+    assert score_.not_built_yet == ["el-change-dates"]
+    assert (score_.recall, score_.precision) == (None, None)  # empty denominators
+
+
+def test_failed_calls_count_as_wrong_on_every_field() -> None:
+    right = Row("a", "m", fields=dict.fromkeys(FIELDS, True))
+    failed = Row("b", "m", error="boom")
+    assert set(field_accuracy([right, failed]).values()) == {0.5}
+
+
+@pytest.mark.parametrize(("right", "passes"), [(32, True), (31, True), (30, False)])
+def test_the_95_percent_target_at_32_cases(right: int, passes: bool) -> None:
+    assert meets(right / 32, FIELD_TARGETS["stay"]) is passes
+
+
+def test_dev_cases_refuse_held_out_and_unknown_ids() -> None:
+    assert {c.split for c in dev_cases(EVAL)} == {"dev"} and len(dev_cases(EVAL)) == 32
+    with pytest.raises(SetError, match="held-out"):
+        dev_cases(EVAL, ["fr-request-french"])
+    with pytest.raises(SetError, match="no such case"):
+        dev_cases(EVAL, ["nope"])
+
+
+def test_the_estimate_is_the_adapters_worst_case_per_case() -> None:
+    cases = dev_cases(EVAL)
+    total = estimate_max_cost(cases, CURRENT_EXTRACTION, "gpt-6-luna")
+    one = estimate_max_cost(cases[:1], CURRENT_EXTRACTION, "gpt-6-luna")
+    assert 0 < one < total < 100_000  # under $0.10 for the dev split
+
+
+def eval_module() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("extraction_eval", EVAL / "extraction_eval.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_eval_stops_before_any_call_over_the_cost_limit(clean_repo: Path) -> None:
+    client = ScriptedClient.of([])
+    code = eval_module().main(["--model", "gpt-6-luna", "--max-usd", "0.0001"],
+                              client=client, repo=clean_repo)  # fmt: skip
+    assert code == 3 and client.sent == []
+
+
+def test_the_eval_refuses_held_out_and_a_dirty_tree(clean_repo: Path) -> None:
+    module = eval_module()
+    held = module.main(["--model", "gpt-6-luna", "--case", "fr-request-french"], repo=clean_repo)
+    (clean_repo / "a.txt").write_text("changed\n", encoding="utf-8")
+    dirty = module.main(["--model", "gpt-6-luna"], repo=clean_repo)
+    assert (held, dirty) == (2, 2)
+
+
+def test_not_built_yet_is_the_week_5_list_of_the_gold_tests() -> None:
+    assert len(NOT_BUILT_YET) == 7 and {c.id for c in load_cases(EVAL / "emails")} >= NOT_BUILT_YET
