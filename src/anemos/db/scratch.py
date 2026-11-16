@@ -19,6 +19,7 @@ from anemos.db.seed import seed
 type Conn = psycopg.Connection[TupleRow]
 
 # Every table the system writes while running; inventory and seed tables are kept.
+# policy_chunks is seed data (D15): written by `seed`, never by a run, so it stays.
 # Listed explicitly (no CASCADE): a new table that references one of these makes the
 # TRUNCATE fail loudly, and a harness test checks this list covers every non-seed table.
 OPERATIONAL_TABLES = (
@@ -27,7 +28,7 @@ OPERATIONAL_TABLES = (
 )  # fmt: skip
 SEED_TABLES = (
     "room_types", "rooms", "seasons", "season_periods", "room_rates", "min_stay_rules",
-    "extra_bed_rates",
+    "extra_bed_rates", "policy_chunks",
 )  # fmt: skip
 
 

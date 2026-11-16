@@ -196,3 +196,35 @@ def test_the_adapter_retries_a_503_through_the_real_client(tmp_path: Path) -> No
     assert (result.output, result.attempts, len(seen)) == (Out(adults=2), 2, 2)
     assert rows == ["llm.failed", "llm.called"]
     assert budget.open_reservations() == []
+
+
+# --- embeddings (D15) ---------------------------------------------------------------------
+
+
+def embedding_reply(*vectors: list[float], tokens: int = 7) -> dict[str, Any]:
+    """Items deliberately out of order: the client must put them back by index."""
+    data = [{"object": "embedding", "index": i, "embedding": v} for i, v in enumerate(vectors)]
+    return {"object": "list", "data": list(reversed(data)), "model": "text-embedding-3-small",
+            "usage": {"prompt_tokens": tokens, "total_tokens": tokens}}  # fmt: skip
+
+
+def test_embeddings_come_back_in_input_order_with_their_usage() -> None:
+    handler, seen = answering(httpx2.Response(200, json=embedding_reply([1.0, 0.0], [0.0, 1.0])))
+    reply_ = client(handler).embed(["wifi", "parking"], "text-embedding-3-small", 5.0)
+    assert reply_.vectors == ((1.0, 0.0), (0.0, 1.0))
+    assert reply_.usage == Usage(input_tokens=7, cached_input_tokens=0, output_tokens=0)
+    assert reply_.response_model == "text-embedding-3-small"
+    [request] = seen
+    body = json.loads(request.content)
+    assert request.url.path.endswith("/embeddings")
+    assert body == {"model": "text-embedding-3-small", "input": ["wifi", "parking"],
+                    "encoding_format": "float"}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("status", "error"), [(429, TransientError), (503, TransientError), (400, PermanentError)]
+)
+def test_embedding_errors_are_sorted_like_responses(status: int, error: type[Exception]) -> None:
+    handler, _ = answering(httpx2.Response(status, json={"error": {"message": "no"}}))
+    with pytest.raises(error):
+        client(handler).embed(["wifi"], "text-embedding-3-small", 5.0)

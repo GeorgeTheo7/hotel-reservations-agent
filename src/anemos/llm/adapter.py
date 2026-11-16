@@ -1,4 +1,5 @@
-"""The LLM adapter (D3): every model call in the project goes through `LLM.structured`.
+"""The LLM adapter (D3): every model call in the project goes through `LLM.structured`
+or `LLM.embed` (embeddings, D15), which share one attempt loop (`_attempts`).
 
 `LLM` holds what is the same for every provider: the spend cap (budget.py), one retry
 on a transient error, timing, cost from token usage (pricing.py), and one audit row per
@@ -19,7 +20,7 @@ a short wait; any other error is not retried.
 
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
@@ -121,6 +122,40 @@ class ModelClient(Protocol):
         ...
 
 
+type Vector = tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class EmbedReply:
+    """What an embedding client returns: one vector per text, in order."""
+
+    vectors: tuple[Vector, ...]
+    usage: Usage
+    response_model: str
+
+
+@dataclass(frozen=True)
+class EmbedResult:
+    vectors: tuple[Vector, ...]
+    model: str
+    usage: Usage
+    cost_micro_usd: int
+    latency_ms: int
+    attempts: int
+    response_model: str
+
+
+class EmbedClient(Protocol):
+    def embed(self, texts: Sequence[str], model: str, timeout_s: float) -> EmbedReply:
+        """One attempt. Raises TransientError or PermanentError."""
+        ...
+
+
+def max_embed_input_tokens(texts: Sequence[str]) -> int:
+    """Same bound as for a prompt: bytes of each text, plus framing per text."""
+    return sum(len(t.encode("utf-8")) + FRAMING_TOKENS for t in texts)
+
+
 def max_input_tokens(prompt: Prompt, schema: type[BaseModel]) -> int:
     schema_text = json.dumps(schema.model_json_schema())
     sent = prompt.instructions + prompt.input + schema_text
@@ -138,8 +173,10 @@ class LLM:
         *,
         sleep: Callable[[float], None] = time.sleep,
         timer: Callable[[], float] = time.monotonic,
+        embed_client: EmbedClient | None = None,
     ) -> None:
         self.client = client
+        self.embed_client = embed_client
         self.settings = settings
         self.budget = budget
         self.connect = connect
@@ -164,6 +201,76 @@ class LLM:
         bound = max_cost(model, max_input_tokens=max_input_tokens(prompt, schema),
                          max_output_tokens=settings.max_output_tokens)  # fmt: skip
         call = _Call(email_id, step, model, prompt_version)
+        reply, spent, latency, attempt = self._attempts(
+            call, bound, lambda: self.client.send(prompt, schema, settings),
+            usage_of=lambda r: r.usage,
+            output_of=lambda r: {
+                "response_model": r.response_model,
+                "cached_input_tokens": r.usage.cached_input_tokens,
+                "reasoning_tokens": r.usage.reasoning_tokens,
+                # What the model returned, for monitoring and debugging (week 8); the
+                # prompt itself is not stored: prompt_version identifies it.
+                "result": r.output.model_dump(mode="json"),
+            },
+        )  # fmt: skip
+        return Result(reply.output, model, reply.usage, spent, latency, attempt,
+                      reply.response_model)  # fmt: skip
+
+    def embed(
+        self,
+        texts: Sequence[str],
+        *,
+        model: str,
+        dimensions: int,
+        step: str,
+        input_version: str,
+        email_id: int | None = None,
+        timeout_s: float = 30.0,
+    ) -> EmbedResult:
+        """One vector per text, through the same budget, retry and audit as `structured`.
+        `input_version` names what was embedded (e.g. `policies@<hash>`), stored where a
+        prompt's version goes. A reply with the wrong number of vectors or dimensions is
+        a permanent failure, billed at its usage: a vector of another size could not be
+        compared with the stored ones (D15)."""
+        if self.embed_client is None:
+            raise LLMError(f"{step}: no embedding client configured")
+        if not texts:
+            raise ValueError("nothing to embed")
+        client = self.embed_client
+        bound = max_cost(model, max_input_tokens=max_embed_input_tokens(texts),
+                         max_output_tokens=0)  # fmt: skip
+
+        def send() -> EmbedReply:
+            reply = client.embed(texts, model, timeout_s)
+            sizes = {len(v) for v in reply.vectors}
+            if len(reply.vectors) != len(texts) or sizes - {dimensions}:
+                raise PermanentError(
+                    f"expected {len(texts)} vectors of {dimensions} dimensions, got "
+                    f"{len(reply.vectors)} of {sorted(sizes)}", reply.usage,
+                )  # fmt: skip
+            return reply
+
+        reply, spent, latency, attempt = self._attempts(
+            _Call(email_id, step, model, input_version), bound, send,
+            usage_of=lambda r: r.usage,
+            output_of=lambda r: {"response_model": r.response_model, "count": len(r.vectors),
+                                 "dimensions": dimensions},
+        )  # fmt: skip
+        return EmbedResult(reply.vectors, model, reply.usage, spent, latency, attempt,
+                           reply.response_model)  # fmt: skip
+
+    def _attempts[R](
+        self,
+        call: "_Call",
+        bound: int,
+        send: Callable[[], R],
+        *,
+        usage_of: Callable[[R], Usage],
+        output_of: Callable[[R], dict[str, object]],
+    ) -> tuple[R, int, int, int]:
+        """The attempt loop every call shares (module docstring, steps 1-4). Returns the
+        reply, its cost, its latency and the attempt number."""
+        model = call.model
         for attempt in range(1, ATTEMPTS + 1):
             try:
                 reservation = self.budget.reserve(model, bound)
@@ -172,7 +279,7 @@ class LLM:
                 raise
             start = self.timer()
             try:
-                reply = self.client.send(prompt, schema, settings)
+                reply = send()
             except ClientError as exc:
                 latency = self._ms(start)
                 if exc.usage is not None:
@@ -189,7 +296,7 @@ class LLM:
                 if exc.transient and attempt < ATTEMPTS:
                     self.sleep(RETRY_WAIT_S)
                     continue
-                raise LLMError(f"{step}: {type(exc).__name__}: {exc}") from exc
+                raise LLMError(f"{call.step}: {type(exc).__name__}: {exc}") from exc
             except BaseException as exc:  # a bug: record it, then let it surface
                 self.budget.settle(reservation, 0)
                 self._audit(
@@ -198,20 +305,15 @@ class LLM:
                 )  # fmt: skip
                 raise
             latency = self._ms(start)
-            spent = cost(model, reply.usage)
+            usage = usage_of(reply)
+            spent = cost(model, usage)
             self.budget.settle(reservation, spent)
             self._audit(
                 call, AuditEvent.LLM_CALLED, latency_ms=latency, cost_micro_usd=spent,
-                input_tokens=reply.usage.input_tokens, output_tokens=reply.usage.output_tokens,
-                output={"attempt": attempt, "response_model": reply.response_model,
-                        "cached_input_tokens": reply.usage.cached_input_tokens,
-                        "reasoning_tokens": reply.usage.reasoning_tokens,
-                        # What the model returned, for monitoring and debugging (week 8);
-                        # the prompt itself is not stored: prompt_version identifies it.
-                        "result": reply.output.model_dump(mode="json")},
+                input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+                output={"attempt": attempt, **output_of(reply)},
             )  # fmt: skip
-            return Result(reply.output, model, reply.usage, spent, latency, attempt,
-                          reply.response_model)  # fmt: skip
+            return reply, spent, latency, attempt
         raise AssertionError("unreachable: the last attempt returns or raises")
 
     def _ms(self, start: float) -> int:

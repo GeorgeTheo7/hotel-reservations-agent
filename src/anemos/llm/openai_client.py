@@ -1,4 +1,4 @@
-"""The OpenAI implementation of `ModelClient` (D3: the plain `openai` SDK).
+"""The OpenAI implementation of `ModelClient` and `EmbedClient` (D3: the plain `openai` SDK).
 
 - Responses API with structured outputs: the pydantic schema is sent as a strict JSON
   schema (the SDK's own converter), and the reply is parsed here, not by the SDK. The
@@ -16,6 +16,7 @@
 """
 
 import os
+from collections.abc import Sequence
 
 import httpx2
 import openai
@@ -26,7 +27,14 @@ from openai.types.responses import Response, ResponseTextConfigParam
 from openai.types.shared_params import Reasoning
 from pydantic import BaseModel
 
-from anemos.llm.adapter import PermanentError, Prompt, Reply, Settings, TransientError
+from anemos.llm.adapter import (
+    EmbedReply,
+    PermanentError,
+    Prompt,
+    Reply,
+    Settings,
+    TransientError,
+)
 from anemos.llm.pricing import Usage
 
 
@@ -94,6 +102,29 @@ class OpenAIClient:
             # A reply arrived, but it could not be read at all: tokens spent, amount unknown.
             raise PermanentError(f"unreadable reply: {exc}", cost_unknown=True) from exc
         return _read(response, schema)
+
+    def embed(self, texts: Sequence[str], model: str, timeout_s: float) -> EmbedReply:
+        """Embeddings endpoint, default dimensions; vectors put back in input order."""
+        client = self._openai()
+        try:
+            response = client.embeddings.create(
+                model=model, input=list(texts), encoding_format="float", timeout=timeout_s
+            )
+        except openai.APIConnectionError as exc:
+            raise TransientError(f"{type(exc).__name__}: {exc}") from exc
+        except openai.APIStatusError as exc:
+            if exc.status_code == 429 or exc.status_code >= 500:
+                raise TransientError(f"HTTP {exc.status_code}: {exc.message}") from exc
+            raise PermanentError(
+                f"HTTP {exc.status_code}: {exc.message}", request_refused=True
+            ) from exc
+        except (openai.APIResponseValidationError, pydantic.ValidationError, ValueError) as exc:
+            raise PermanentError(f"unreadable reply: {exc}", cost_unknown=True) from exc
+        usage = Usage(input_tokens=response.usage.prompt_tokens, cached_input_tokens=0,
+                      output_tokens=0)  # fmt: skip
+        ordered = sorted(response.data, key=lambda item: item.index)
+        vectors = tuple(tuple(float(x) for x in item.embedding) for item in ordered)
+        return EmbedReply(vectors, usage, response.model)
 
 
 def _read[T: BaseModel](response: Response, schema: type[T]) -> Reply[T]:

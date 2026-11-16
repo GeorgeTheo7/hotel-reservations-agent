@@ -24,3 +24,4 @@ Design decisions live in `docs/SPEC.md`. If the spec and the code disagree, stop
 ## Tests
 - Unit tests make no LLM or network calls.
 - Anything that calls a model is an evaluation, lives under `eval/`, and records model, settings, commit and time.
+- A build step that calls a model (e.g. policy embeddings) lives in src/, goes through the LLM adapter, and records model, commit, dirty flag and time in its output.

@@ -4,6 +4,7 @@ Idempotent: running it again gives the same rows.
 - Room types, rooms, seasons, rates and extra-bed rates are upserted (inserted or
   updated by key).
 - The 2027 calendar (season periods, minimum stays) is replaced as a whole.
+- The policy chunks are replaced as a whole (anemos.policies.store).
 - Bookings are never touched.
 
 Run: uv run --env-file .env python -m anemos.db.seed
@@ -16,6 +17,7 @@ from psycopg import sql
 from psycopg.rows import TupleRow
 
 from anemos.db.connection import connect
+from anemos.policies.store import load_policy_chunks
 from anemos.reservations.hotel_data import HotelData, MinStayRule, SeasonPeriod
 from anemos.reservations.model import ExtraBedBand, ExtraBeds, RoomType, Season
 from anemos.reservations.money import Cents
@@ -125,6 +127,9 @@ def seed(conn: psycopg.Connection[TupleRow]) -> None:
             " ON CONFLICT (band) DO UPDATE SET rate_cents = EXCLUDED.rate_cents",
             list(EXTRA_BED_RATES.items()),
         )
+        # The policies are seed data too (D15): replaced as a whole from the packaged
+        # policies.md and embeddings.json, no network.
+        load_policy_chunks(conn)
 
 
 def hotel_data() -> HotelData:
@@ -169,6 +174,7 @@ def main() -> None:
                 "season_periods",
                 "min_stay_rules",
                 "extra_bed_rates",
+                "policy_chunks",
             )
         }
     print("Seeded:", ", ".join(f"{table} {row[0] if row else 0}" for table, row in counts.items()))

@@ -12,6 +12,8 @@ import psycopg
 import pytest
 from psycopg.rows import TupleRow
 
+from anemos.policies import load_policies
+
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's class is for mypy only
     from conftest import CommittedDb
 
@@ -62,6 +64,13 @@ def test_reset_keeps_the_2027_seed(committed_db: CommittedDb) -> None:
     conn = committed_db.connect()
     assert count(conn, "rooms") == 14
     assert count(conn, "season_periods") > 0
+    assert count(conn, "policy_chunks") == len(load_policies())  # seed data (D15)
+
+
+def test_policy_chunks_are_seed_data_on_purpose(committed_db: CommittedDb) -> None:
+    """Written by `seed`, never by a run: kept between committed tests, never truncated."""
+    assert "policy_chunks" in committed_db.SEED_TABLES
+    assert "policy_chunks" not in committed_db.OPERATIONAL_TABLES
 
 
 def test_every_table_is_either_reset_or_seed(committed_db: CommittedDb) -> None:

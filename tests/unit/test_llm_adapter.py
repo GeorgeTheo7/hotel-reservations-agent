@@ -20,10 +20,11 @@ from anemos.llm.adapter import (
     Prompt,
     Settings,
     TransientError,
+    max_embed_input_tokens,
     max_input_tokens,
 )
 from anemos.llm.budget import Budget, BudgetExceeded
-from anemos.llm.fake import Answer, ScriptedClient
+from anemos.llm.fake import Answer, HashingEmbedClient, ScriptedClient
 from anemos.llm.pricing import Usage, cost, max_cost
 
 pytestmark = pytest.mark.unit
@@ -255,3 +256,76 @@ def test_a_scripted_answer_must_fit_the_schema() -> None:
     client = ScriptedClient.of([Answer({"children": 2})])
     with pytest.raises(ValueError):
         client.send(PROMPT, Out, SETTINGS)
+
+
+# --- embeddings (D15) ---------------------------------------------------------------------
+
+EMBED_MODEL = "text-embedding-3-small"
+
+
+def make_embedder(embedder: HashingEmbedClient, budget: Budget, audit: Recorder) -> LLM:
+    return LLM(ScriptedClient(), SETTINGS, budget, audit, FixedClock(NOW),  # type: ignore[arg-type]
+               sleep=lambda _: None, timer=Ticks(), embed_client=embedder)  # fmt: skip
+
+
+def embed(llm: LLM, texts: list[str], dimensions: int = 8) -> Any:
+    return llm.embed(texts, model=EMBED_MODEL, dimensions=dimensions, step="policy_embeddings",
+                     input_version="policies@abc")  # fmt: skip
+
+
+def test_embed_returns_one_vector_per_text_and_settles_the_budget(
+    budget: Budget, audit: Recorder
+) -> None:
+    embedder = HashingEmbedClient(dimensions=8)
+    result = embed(make_embedder(embedder, budget, audit), ["breakfast time", "pets allowed"])
+    assert len(result.vectors) == 2 and {len(v) for v in result.vectors} == {8}
+    assert result.usage == Usage(4, 0, 0)  # one token per word in the fake
+    assert result.cost_micro_usd == cost(EMBED_MODEL, Usage(4, 0, 0))
+    assert budget.spent() == result.cost_micro_usd and budget.open_reservations() == []
+    [row] = audit.rows
+    assert (row["event"], row["step"], row["model"], row["prompt_version"]) == (
+        "llm.called",
+        "policy_embeddings",
+        EMBED_MODEL,
+        "policies@abc",
+    )
+    assert row["output"] == {"attempt": 1, "response_model": EMBED_MODEL, "count": 2,
+                             "dimensions": 8}  # fmt: skip
+
+
+def test_embed_reserves_its_maximum_before_the_call(tmp_path: Path, audit: Recorder) -> None:
+    """A cap below the bound refuses the call: nothing is sent."""
+    texts = ["x" * 1_000]
+    bound = max_cost(EMBED_MODEL, max_input_tokens=max_embed_input_tokens(texts),
+                     max_output_tokens=0)  # fmt: skip
+    small = Budget(FixedClock(NOW), bound - 1, tmp_path / "ledger.jsonl")
+    embedder = HashingEmbedClient(dimensions=8)
+    with pytest.raises(BudgetExceeded):
+        embed(make_embedder(embedder, small, audit), texts)
+    assert embedder.calls == [] and audit.events() == ["llm.refused_budget"]
+
+
+def test_embed_retries_a_transient_error_once(budget: Budget, audit: Recorder) -> None:
+    embedder = HashingEmbedClient(dimensions=8, fail_with=[TransientError("timeout")])
+    result = embed(make_embedder(embedder, budget, audit), ["wifi"])
+    assert result.attempts == 2 and len(embedder.calls) == 2
+    assert audit.events() == ["llm.failed", "llm.called"]
+
+
+def test_embed_refuses_vectors_of_another_size_and_bills_them(
+    budget: Budget, audit: Recorder
+) -> None:
+    """A reply of 8 dimensions when 1536 are expected could not be compared with the
+    stored vectors: a permanent failure, billed at its reported usage, not retried."""
+    embedder = HashingEmbedClient(dimensions=8)
+    with pytest.raises(LLMError, match="1536 dimensions"):
+        embed(make_embedder(embedder, budget, audit), ["wifi"], dimensions=1536)
+    assert len(embedder.calls) == 1 and audit.events() == ["llm.failed"]
+    assert budget.spent() == cost(EMBED_MODEL, Usage(1, 0, 0))
+
+
+def test_embed_without_an_embedding_client_is_refused(budget: Budget, audit: Recorder) -> None:
+    llm, _ = make(ScriptedClient(), budget, audit)
+    with pytest.raises(LLMError, match="no embedding client"):
+        embed(llm, ["wifi"])
+    assert audit.rows == [] and budget.spent() == 0

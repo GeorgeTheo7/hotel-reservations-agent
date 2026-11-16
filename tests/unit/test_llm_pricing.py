@@ -2,7 +2,7 @@
 
 import pytest
 
-from anemos.llm.pricing import PRICES, UnknownModel, Usage, cost, max_cost
+from anemos.llm.pricing import EMBEDDING_MODELS, PRICES, UnknownModel, Usage, cost, max_cost
 
 pytestmark = pytest.mark.unit
 
@@ -45,6 +45,17 @@ def test_impossible_usage_is_refused(counts: tuple[int, int, int]) -> None:
 
 
 def test_the_price_table_is_sane() -> None:
-    """Cached input is never dearer than input, output never cheaper."""
+    """Cached input is never dearer than input, output never cheaper; an embedding
+    model has no output tokens and no cache discount."""
+    assert set(PRICES) >= EMBEDDING_MODELS
     for model, price in PRICES.items():
-        assert 0 < price.cached_input <= price.input <= price.output, model
+        if model in EMBEDDING_MODELS:
+            assert 0 < price.input == price.cached_input and price.output == 0, model
+        else:
+            assert 0 < price.cached_input <= price.input <= price.output, model
+
+
+def test_an_embedding_costs_its_input_tokens() -> None:
+    """text-embedding-3-small at $0.02/M: 4,000 tokens = 80 µ$."""
+    assert cost("text-embedding-3-small", Usage(4_000, 0, 0)) == 80
+    assert max_cost("text-embedding-3-small", max_input_tokens=4_000, max_output_tokens=0) == 80

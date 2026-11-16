@@ -34,7 +34,10 @@ PRICES: dict[str, Price] = {
     "gpt-6-luna": Price(input=100_000, cached_input=10_000, output=500_000),
     "gpt-5.6-luna": Price(input=200_000, cached_input=20_000, output=1_200_000),
     "gpt-5.4-mini": Price(input=750_000, cached_input=75_000, output=4_500_000),
+    # Embeddings (week 5, read 2026-11-16): input only; no cache discount, no output tokens.
+    "text-embedding-3-small": Price(input=20_000, cached_input=20_000, output=0),
 }
+EMBEDDING_MODELS = frozenset({"text-embedding-3-small"})
 
 
 class UnknownModel(LookupError):

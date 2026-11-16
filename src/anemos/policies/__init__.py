@@ -3,7 +3,8 @@
 Each heading is followed by a line `<!-- policy_id: some-id -->`. The id is written
 out, not derived from the heading, so a reworded title keeps its id: drafts cite
 policies by id (guardrail 6) and eval labels name them. Pure: reads the packaged file,
-no database. Week 5 adds the table and the embeddings on top of this.
+no database. `embeddings` holds the vectors (and the build step that makes them),
+`store` loads chunks and vectors into `policy_chunks`.
 """
 
 import re

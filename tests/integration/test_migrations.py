@@ -26,6 +26,7 @@ APP_TABLES_AT_HEAD = [
     ("extra_bed_rates",),
     ("min_stay_rules",),
     ("outbox",),
+    ("policy_chunks",),
     ("quotes",),
     ("requests",),
     ("room_rates",),
