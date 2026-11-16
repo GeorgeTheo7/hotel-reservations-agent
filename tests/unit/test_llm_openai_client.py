@@ -15,7 +15,20 @@ import pytest
 from pydantic import BaseModel
 
 from anemos.clock import FixedClock
-from anemos.llm.adapter import LLM, PermanentError, Prompt, Settings, TransientError
+from anemos.llm.adapter import (
+    LLM,
+    IncompleteReply,
+    PermanentError,
+    Prompt,
+    Settings,
+    Tool,
+    ToolCall,
+    ToolOutput,
+    Transcript,
+    TransientError,
+    UserText,
+    max_turn_input_tokens,
+)
 from anemos.llm.budget import Budget
 from anemos.llm.openai_client import OpenAIClient
 from anemos.llm.pricing import Usage
@@ -228,3 +241,89 @@ def test_embedding_errors_are_sorted_like_responses(status: int, error: type[Exc
     handler, _ = answering(httpx2.Response(status, json={"error": {"message": "no"}}))
     with pytest.raises(error):
         client(handler).embed(["wifi"], "text-embedding-3-small", 5.0)
+
+
+# --- tool turns (D11) ----------------------------------------------------------------------
+
+
+class Draft(BaseModel):
+    """Write the reply."""
+
+    text: str
+    policy_ids: list[str]
+    note: str | None
+
+
+TOOLS = (Tool("write_draft", "Write the reply.", Draft),)
+TRANSCRIPT = Transcript("You are the agent.", (
+    UserText("<email>Καλησπέρα</email>"),
+    ToolCall("call_1", "search_policies", '{"query": "pets"}'),
+    ToolOutput("call_1", "pets: no pets, assistance dogs welcome"),
+))  # fmt: skip
+CALL = {"type": "function_call", "id": "fc_1", "call_id": "call_2", "name": "write_draft",
+        "arguments": '{"text":"Γεια","policy_ids":["pets"],"note":null}',
+        "status": "completed"}  # fmt: skip
+REASONING = {"type": "reasoning", "id": "rs_1", "summary": []}
+
+
+def turn_reply(*output: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    return reply() | {"output": list(output)} | extra
+
+
+def test_a_turn_sends_the_whole_transcript_and_strict_tools() -> None:
+    handler, seen = answering(httpx2.Response(200, json=turn_reply(CALL)))
+    result = client(handler).send_turn(TRANSCRIPT, TOOLS, SETTINGS)
+    assert result.call == ToolCall("call_2", "write_draft", CALL["arguments"])
+    assert (result.usage, result.response_model) == (Usage(120, 20, 30, 4), "gpt-6-luna-2026-10-01")
+    body = json.loads(seen[0].content)
+    assert (body["tool_choice"], body["parallel_tool_calls"], body["store"]) == (
+        "required",
+        False,
+        False,
+    )
+    assert "previous_response_id" not in body
+    assert body["instructions"] == "You are the agent."
+    assert body["input"] == [
+        {"role": "user", "content": "<email>Καλησπέρα</email>"},
+        {"type": "function_call", "call_id": "call_1", "name": "search_policies",
+         "arguments": '{"query": "pets"}'},
+        {"type": "function_call_output", "call_id": "call_1",
+         "output": "pets: no pets, assistance dogs welcome"},
+    ]  # fmt: skip
+    [tool] = body["tools"]
+    assert (tool["type"], tool["name"], tool["strict"]) == ("function", "write_draft", True)
+    assert tool["parameters"]["additionalProperties"] is False
+    assert tool["parameters"]["required"] == ["text", "policy_ids", "note"]
+
+
+def test_the_turn_bound_covers_what_is_sent() -> None:
+    """The adapter's bound is computed from pydantic's schema; the strict schema as sent
+    is longer, so check the bound against the request's own bytes."""
+    handler, seen = answering(httpx2.Response(200, json=turn_reply(CALL)))
+    client(handler).send_turn(TRANSCRIPT, TOOLS, SETTINGS)
+    body = json.loads(seen[0].content)
+    sent = json.dumps([body["instructions"], body["input"], body["tools"]], ensure_ascii=False)
+    assert max_turn_input_tokens(TRANSCRIPT, TOOLS) >= len(sent.encode("utf-8"))
+
+
+def test_a_reasoning_item_beside_the_call_is_ignored() -> None:
+    handler, _ = answering(httpx2.Response(200, json=turn_reply(REASONING, CALL)))
+    assert client(handler).send_turn(TRANSCRIPT, TOOLS, SETTINGS).call.call_id == "call_2"
+
+
+@pytest.mark.parametrize("output", [[], [CALL, CALL | {"id": "fc_2", "call_id": "call_3"}]],
+                         ids=["no_call", "two_calls"])  # fmt: skip
+def test_anything_but_exactly_one_call_is_permanent_and_billed(output: list[Any]) -> None:
+    handler, _ = answering(httpx2.Response(200, json=turn_reply(*output)))
+    with pytest.raises(PermanentError, match="exactly one tool call") as error:
+        client(handler).send_turn(TRANSCRIPT, TOOLS, SETTINGS)
+    assert error.value.usage == Usage(120, 20, 30, 4)
+
+
+def test_a_turn_cut_off_at_the_output_limit_is_an_incomplete_reply() -> None:
+    handler, _ = answering(httpx2.Response(200, json=turn_reply(
+        CALL | {"arguments": '{"text":"Γει'}, status="incomplete",
+        incomplete_details={"reason": "max_output_tokens"})))  # fmt: skip
+    with pytest.raises(IncompleteReply) as error:
+        client(handler).send_turn(TRANSCRIPT, TOOLS, SETTINGS)
+    assert (error.value.reason, error.value.usage) == ("max_output_tokens", Usage(120, 20, 30, 4))

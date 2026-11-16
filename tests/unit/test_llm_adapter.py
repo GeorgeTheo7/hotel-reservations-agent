@@ -4,27 +4,45 @@ No database: audit rows go to a recording stand-in for a connection (the real SQ
 covered by tests/integration/test_llm_audit.py).
 """
 
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from anemos.clock import FixedClock
 from anemos.llm.adapter import (
     LLM,
+    IncompleteReply,
+    InvalidArguments,
     LLMError,
     PermanentError,
     Prompt,
+    ReplyCutOff,
     Settings,
+    Tool,
+    ToolCall,
+    ToolOutput,
+    Transcript,
     TransientError,
+    UnknownTool,
+    UserText,
+    flat_schema_problems,
     max_embed_input_tokens,
     max_input_tokens,
+    max_turn_input_tokens,
 )
 from anemos.llm.budget import Budget, BudgetExceeded
-from anemos.llm.fake import Answer, HashingEmbedClient, ScriptedClient
+from anemos.llm.fake import (
+    Answer,
+    HashingEmbedClient,
+    OnTranscript,
+    ScriptedClient,
+    ToolCallStep,
+)
 from anemos.llm.pricing import Usage, cost, max_cost
 
 pytestmark = pytest.mark.unit
@@ -329,3 +347,199 @@ def test_embed_without_an_embedding_client_is_refused(budget: Budget, audit: Rec
     with pytest.raises(LLMError, match="no embedding client"):
         embed(llm, ["wifi"])
     assert audit.rows == [] and budget.spent() == 0
+
+
+# --- tool turns (D11) ----------------------------------------------------------------------
+
+
+class Quote(BaseModel):
+    """Price the stored request."""
+
+
+class Draft(BaseModel):
+    text: str
+    offer_quote_ids: list[int]
+    note: str | None  # the one anyOf allowed: X | None
+
+
+TOOLS = (Tool("quote_price", "Price the request.", Quote),
+         Tool("write_draft", "Write the reply.", Draft))  # fmt: skip
+TRANSCRIPT = Transcript("You are the agent.", (UserText("<email>Καλησπέρα</email>"),))
+DRAFT = {"text": "Αγαπητή Ελένη, ευχαριστούμε.", "offer_quote_ids": [3], "note": None}
+
+
+def turn(llm: LLM, transcript: Transcript = TRANSCRIPT) -> Any:
+    return llm.tool_turn(transcript, TOOLS, step="agent", prompt_version="agent_v1@abc",
+                         email_id=7)  # fmt: skip
+
+
+def test_a_turn_returns_one_validated_call(budget: Budget, audit: Recorder) -> None:
+    client = ScriptedClient.of([ToolCallStep("write_draft", DRAFT, "call_a", USAGE)])
+    result = turn(make(client, budget, audit)[0])
+    assert result.call == ToolCall("call_a", "write_draft", json.dumps(DRAFT, ensure_ascii=False))
+    assert (result.tool, result.args) == (TOOLS[1], Draft.model_validate(DRAFT))
+    assert (result.attempts, result.cost_micro_usd) == (1, cost("gpt-6-luna", USAGE))
+    assert budget.spent() == result.cost_micro_usd and budget.open_reservations() == []
+    [row] = audit.rows
+    assert (row["event"], row["email_id"], row["step"], row["prompt_version"]) == (
+        "llm.called", 7, "agent", "agent_v1@abc")  # fmt: skip
+    assert {k: row["output"][k] for k in ("tool", "call_id", "arguments")} == {
+        "tool": "write_draft", "call_id": "call_a", "arguments": DRAFT}  # fmt: skip
+    [sent] = client.turns
+    assert (sent.transcript, sent.tools, sent.settings) == (TRANSCRIPT, TOOLS, SETTINGS)
+
+
+def test_an_unknown_tool_is_never_a_call(budget: Budget, audit: Recorder) -> None:
+    client = ScriptedClient.of([ToolCallStep("hold_room", {"room": 201}, "call_x", USAGE)])
+    with pytest.raises(UnknownTool, match="hold_room") as error:
+        turn(make(client, budget, audit)[0])
+    assert error.value.call == ToolCall("call_x", "hold_room", '{"room": 201}')
+    assert len(client.turns) == 1  # not retried
+    assert budget.spent() == cost("gpt-6-luna", USAGE)  # billed at its usage
+    assert audit.events() == ["llm.failed"]
+
+
+@pytest.mark.parametrize("arguments", [
+    '{"text": "Hi", "offer_quote_ids": [3]',  # cut-off JSON
+    {"text": "Hi", "offer_quote_ids": ["three"], "note": None},  # wrong type
+    {"text": "Hi", "note": None},  # a field missing
+], ids=["broken_json", "wrong_type", "missing_field"])  # fmt: skip
+def test_invalid_arguments_are_never_a_call(
+    arguments: dict[str, Any] | str, budget: Budget, audit: Recorder
+) -> None:
+    client = ScriptedClient.of([ToolCallStep("write_draft", arguments, "call_b", USAGE)])
+    with pytest.raises(InvalidArguments, match="write_draft") as error:
+        turn(make(client, budget, audit)[0])
+    assert (error.value.call.call_id, error.value.call.name) == ("call_b", "write_draft")
+    assert len(client.turns) == 1
+    assert budget.spent() == cost("gpt-6-luna", USAGE)
+    assert audit.events() == ["llm.failed"]
+
+
+def test_a_reply_cut_off_at_the_output_limit_is_typed(budget: Budget, audit: Recorder) -> None:
+    client = ScriptedClient.of([IncompleteReply("max_output_tokens", USAGE)])
+    with pytest.raises(ReplyCutOff):
+        turn(make(client, budget, audit)[0])
+    assert len(client.turns) == 1 and budget.spent() == cost("gpt-6-luna", USAGE)
+
+
+def test_another_incomplete_reply_is_a_plain_failure(budget: Budget, audit: Recorder) -> None:
+    client = ScriptedClient.of([IncompleteReply("content_filter", USAGE)])
+    with pytest.raises(LLMError) as error:
+        turn(make(client, budget, audit)[0])
+    assert type(error.value) is LLMError
+
+
+def test_a_transient_error_in_a_turn_is_retried_once(budget: Budget, audit: Recorder) -> None:
+    client = ScriptedClient.of([TransientError("timeout"), ToolCallStep("quote_price", {})])
+    llm, slept = make(client, budget, audit)
+    assert turn(llm).attempts == 2
+    assert audit.events() == ["llm.failed", "llm.called"] and len(slept) == 1
+
+
+def test_the_turn_reserves_the_bound_over_transcript_and_tools(
+    budget: Budget, audit: Recorder
+) -> None:
+    seen: list[int] = []
+
+    def look(transcript: Transcript) -> ToolCallStep:
+        [reservation] = budget.open_reservations()
+        seen.append(reservation.micro_usd)
+        return ToolCallStep("quote_price", {})
+
+    turn(make(ScriptedClient.of([OnTranscript(look)]), budget, audit)[0])
+    bound = max_turn_input_tokens(TRANSCRIPT, TOOLS)
+    assert seen == [max_cost("gpt-6-luna", max_input_tokens=bound, max_output_tokens=500)]
+
+
+def test_the_input_bound_counts_every_tool_schema() -> None:
+    without = max_turn_input_tokens(TRANSCRIPT, TOOLS[:1])
+    schema = json.dumps(Draft.model_json_schema())
+    assert max_turn_input_tokens(TRANSCRIPT, TOOLS) >= without + len(schema.encode("utf-8"))
+
+
+def test_the_input_bound_counts_the_whole_transcript() -> None:
+    output = "Δωμάτιο " * 100
+    longer = TRANSCRIPT.then(ToolCall("call_1", "quote_price", "{}"),
+                             ToolOutput("call_1", output))  # fmt: skip
+    extra = len(("call_1quote_price{}" + "call_1" + output).encode("utf-8"))
+    assert max_turn_input_tokens(longer, TOOLS) >= max_turn_input_tokens(TRANSCRIPT, TOOLS) + extra
+
+
+def test_a_turn_needs_distinct_tool_names(budget: Budget, audit: Recorder) -> None:
+    llm = make(ScriptedClient(), budget, audit)[0]
+    with pytest.raises(ValueError, match="each name once"):
+        llm.tool_turn(TRANSCRIPT, (TOOLS[0], TOOLS[0]), step="agent", prompt_version="v@1")
+
+
+def test_a_tool_step_can_answer_from_the_transcript(budget: Budget, audit: Recorder) -> None:
+    """The gold agent (step 8) picks its next call from earlier tool outputs."""
+
+    def from_output(transcript: Transcript) -> ToolCallStep:
+        last = transcript.items[-1]
+        assert isinstance(last, ToolOutput)
+        return ToolCallStep("write_draft", {"text": "Hi", "offer_quote_ids": [int(last.output)],
+                                            "note": None})  # fmt: skip
+
+    client = ScriptedClient.of([OnTranscript(from_output)])
+    after = TRANSCRIPT.then(ToolCall("call_1", "quote_price", "{}"), ToolOutput("call_1", "42"))
+    result = turn(make(client, budget, audit)[0], after)
+    assert result.args == Draft(text="Hi", offer_quote_ids=[42], note=None)
+
+
+def test_a_structured_call_refuses_a_tool_step_and_a_turn_an_answer() -> None:
+    with pytest.raises(AssertionError, match="got a tool step"):
+        ScriptedClient.of([ToolCallStep("quote_price", {})]).send(PROMPT, Out, SETTINGS)
+    with pytest.raises(AssertionError, match="non-tool step"):
+        ScriptedClient.of([Answer({"adults": 2})]).send_turn(TRANSCRIPT, TOOLS, SETTINGS)
+
+
+# --- flat argument schemas ------------------------------------------------------------------
+
+
+class Code(BaseModel):
+    code: Literal["COMPLAINT", "DISCOUNT"]
+    note: Literal["a", "b"] | None
+    count: int | None = None
+    ids: list[str]
+
+
+def test_the_x_or_none_any_of_is_flat() -> None:
+    """The one anyOf allowed: one plain type (an enum too) and null."""
+    assert flat_schema_problems(Draft) == [] and flat_schema_problems(Code) == []
+    assert Code.model_json_schema()["properties"]["note"]["anyOf"][1] == {"type": "null"}
+
+
+class Inner(BaseModel):
+    x: int
+
+
+class TwoTypes(BaseModel):
+    v: int | str  # anyOf of two plain types
+
+
+class ListOrNone(BaseModel):
+    v: list[int] | None  # anyOf of an array and null
+
+
+class Nested(BaseModel):
+    v: Inner  # $ref / $defs
+
+
+class AnObject(BaseModel):
+    v: dict[str, int]  # an object
+
+
+class OneOf(BaseModel):
+    v: int = Field(json_schema_extra={"oneOf": [{"type": "integer"}]})
+
+
+class AllOf(BaseModel):
+    v: int = Field(json_schema_extra={"allOf": [{"type": "integer"}]})
+
+
+@pytest.mark.parametrize("args", [TwoTypes, ListOrNone, Nested, AnObject, OneOf, AllOf])
+def test_every_other_shape_is_refused(args: type[BaseModel]) -> None:
+    assert flat_schema_problems(args)
+    with pytest.raises(ValueError, match="not flat"):
+        Tool("t", "d", args)

@@ -1,5 +1,6 @@
-"""The LLM adapter (D3): every model call in the project goes through `LLM.structured`
-or `LLM.embed` (embeddings, D15), which share one attempt loop (`_attempts`).
+"""The LLM adapter (D3): every model call in the project goes through `LLM.structured`,
+`LLM.tool_turn` (the agent loop's turns, D11) or `LLM.embed` (embeddings, D15), which
+share one attempt loop (`_attempts`).
 
 `LLM` holds what is the same for every provider: the spend cap (budget.py), one retry
 on a transient error, timing, cost from token usage (pricing.py), and one audit row per
@@ -22,11 +23,11 @@ import json
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 import psycopg
 from psycopg.rows import TupleRow
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from anemos.audit import AuditEvent, write_llm_audit
 from anemos.clock import Clock
@@ -112,13 +113,172 @@ class PermanentError(ClientError):
     """Not worth a retry: bad request, authentication, output that does not parse."""
 
 
+class IncompleteReply(PermanentError):
+    """The reply did not complete (`reason` as the provider gives it, e.g.
+    "max_output_tokens"). Billed at its usage like any permanent failure."""
+
+    def __init__(self, reason: str | None, usage: Usage) -> None:
+        super().__init__(f"reply incomplete: {reason}", usage)
+        self.reason = reason
+
+
 class LLMError(Exception):
     """The call failed for good (after the retry, if any); already audited."""
+
+
+# --- tool calling (D11): one validated tool call per turn ---------------------------------
+#
+# We keep the transcript and send all of it on every turn (no provider-side state), so
+# earlier turns are a byte-identical prefix (cached price) and a scripted client can
+# replay a run. The model's call is kept with its arguments exactly as it wrote them.
+
+
+@dataclass(frozen=True)
+class UserText:
+    text: str  # may contain untrusted text (an email), already delimited by the caller
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    call_id: str
+    name: str
+    arguments: str  # JSON, exactly as the model wrote it (resent unchanged)
+
+
+@dataclass(frozen=True)
+class ToolOutput:
+    call_id: str
+    output: str
+
+
+type Item = UserText | ToolCall | ToolOutput
+
+
+@dataclass(frozen=True)
+class Transcript:
+    instructions: str  # trusted: ours
+    items: tuple[Item, ...] = ()
+
+    def then(self, *items: Item) -> "Transcript":
+        return Transcript(self.instructions, self.items + items)
+
+
+_PLAIN_TYPES = frozenset({"string", "integer", "number", "boolean"})
+_NESTING = frozenset({"anyOf", "oneOf", "allOf", "not", "$ref", "$defs", "properties",
+                      "items", "if", "then", "else"})  # fmt: skip
+_NULL = {"type": "null"}
+
+
+def _is_plain(schema: object) -> bool:
+    return (isinstance(schema, dict) and schema.get("type") in _PLAIN_TYPES
+            and not _NESTING & schema.keys())  # fmt: skip
+
+
+def _is_flat_property(schema: dict[str, Any]) -> bool:
+    """A plain value (string, number, integer, boolean; an enum is a plain string), a
+    list of plain values, or the one anyOf pydantic writes for `X | None`: one plain
+    type and null (strict mode needs nullable fields for optional arguments)."""
+    if _is_plain(schema):
+        return True
+    if (schema.get("type") == "array" and _is_plain(schema.get("items"))
+            and not (_NESTING - {"items"}) & schema.keys()):  # fmt: skip
+        return True
+    any_of = schema.get("anyOf")
+    if isinstance(any_of, list) and not (_NESTING - {"anyOf"}) & schema.keys():
+        others = [s for s in any_of if s != _NULL]
+        return len(any_of) == 2 and len(others) == 1 and _is_plain(others[0])
+    return False
+
+
+def flat_schema_problems(args: type[BaseModel]) -> list[str]:
+    """Why an arguments model is not flat (empty if it is): an object of flat properties
+    only, no oneOf, allOf, $ref or nested object, and anyOf only as `X | None`."""
+    schema = args.model_json_schema()
+    problems = [f"top level: {k}" for k in sorted((_NESTING - {"properties"}) & schema.keys())]
+    if schema.get("type") != "object":
+        problems.append("top level: not an object")
+    for name, prop in schema.get("properties", {}).items():
+        if not _is_flat_property(prop):
+            problems.append(f"{name}: {json.dumps(prop, sort_keys=True)}")
+    return problems
+
+
+@dataclass(frozen=True)
+class Tool:
+    """A function the model may call. `args` must be flat (`flat_schema_problems`);
+    a tool that is not is a programming error, refused when it is defined."""
+
+    name: str
+    description: str
+    args: type[BaseModel]
+
+    def __post_init__(self) -> None:
+        if problems := flat_schema_problems(self.args):
+            raise ValueError(f"tool {self.name}: arguments not flat: {'; '.join(problems)}")
+
+
+@dataclass(frozen=True)
+class TurnReply:
+    """What a client returns for a turn: the one call the model made, not yet checked."""
+
+    call: ToolCall
+    usage: Usage
+    response_model: str
+
+
+@dataclass(frozen=True)
+class TurnResult:
+    call: ToolCall  # append it to the transcript as is
+    tool: Tool
+    args: BaseModel  # validated: an instance of tool.args
+    model: str
+    usage: Usage
+    cost_micro_usd: int
+    latency_ms: int
+    attempts: int
+    response_model: str
+
+
+class ReplyCutOff(LLMError):
+    """The turn's reply stopped at the output limit: there is no call to answer."""
+
+
+class RejectedCall(LLMError):
+    """The model called something that cannot run. `call` is what it wrote, so the
+    loop can answer that call_id with the error (D11 decides what it counts as)."""
+
+    def __init__(self, message: str, call: ToolCall) -> None:
+        super().__init__(message)
+        self.call = call
+
+
+class UnknownTool(RejectedCall):
+    """A tool name that is not among this turn's tools."""
+
+
+class InvalidArguments(RejectedCall):
+    """Arguments that are not JSON or do not validate against the tool's model."""
+
+
+class _Rejected(PermanentError):
+    """Carries a RejectedCall through the attempt loop (billed, audited, not retried)."""
+
+    def __init__(self, typed: RejectedCall, usage: Usage) -> None:
+        super().__init__(str(typed), usage)
+        self.typed = typed
 
 
 class ModelClient(Protocol):
     def send[T: BaseModel](self, prompt: Prompt, schema: type[T], settings: Settings) -> Reply[T]:
         """One attempt. Raises TransientError or PermanentError."""
+        ...
+
+    def send_turn(
+        self, transcript: Transcript, tools: Sequence[Tool], settings: Settings
+    ) -> TurnReply:
+        """One attempt of a tool turn: the model must make exactly one call (tool choice
+        required, no parallel calls). Raises TransientError or PermanentError
+        (IncompleteReply for a cut-off reply)."""
         ...
 
 
@@ -160,6 +320,26 @@ def max_input_tokens(prompt: Prompt, schema: type[BaseModel]) -> int:
     schema_text = json.dumps(schema.model_json_schema())
     sent = prompt.instructions + prompt.input + schema_text
     return len(sent.encode("utf-8")) + FRAMING_TOKENS
+
+
+def _item_text(item: Item) -> str:
+    match item:
+        case UserText(text):
+            return text
+        case ToolCall(call_id, name, arguments):
+            return call_id + name + arguments
+        case ToolOutput(call_id, output):
+            return call_id + output
+
+
+def max_turn_input_tokens(transcript: Transcript, tools: Sequence[Tool]) -> int:
+    """Bytes of everything a turn sends: the instructions, every transcript item and
+    every tool definition (name, description, arguments schema), plus framing per part.
+    The strict schema as sent adds `additionalProperties` and `required` to the pydantic
+    schema; the per-tool framing covers that (a test checks against what is sent)."""
+    parts = [transcript.instructions, *(_item_text(i) for i in transcript.items)]
+    parts += [t.name + t.description + json.dumps(t.args.model_json_schema()) for t in tools]
+    return sum(len(p.encode("utf-8")) for p in parts) + FRAMING_TOKENS * len(parts)
 
 
 class LLM:
@@ -215,6 +395,69 @@ class LLM:
         )  # fmt: skip
         return Result(reply.output, model, reply.usage, spent, latency, attempt,
                       reply.response_model)  # fmt: skip
+
+    def tool_turn(
+        self,
+        transcript: Transcript,
+        tools: Sequence[Tool],
+        *,
+        step: str,
+        prompt_version: str,
+        email_id: int | None = None,
+        settings: Settings | None = None,
+    ) -> TurnResult:
+        """One model turn that must end in exactly one tool call, checked here: a known
+        tool name and arguments that validate against its model. Otherwise a typed
+        error, billed and audited (llm.failed) and never retried here: ReplyCutOff,
+        UnknownTool, InvalidArguments (both carry the call), or LLMError for anything
+        else (no call or several, a refusal, a failed request)."""
+        settings = settings or self.settings
+        by_name = {t.name: t for t in tools}
+        if not tools or len(by_name) != len(tools):
+            raise ValueError("a turn needs at least one tool, each name once")
+        model = settings.model
+        bound = max_cost(model, max_input_tokens=max_turn_input_tokens(transcript, tools),
+                         max_output_tokens=settings.max_output_tokens)  # fmt: skip
+        client = self.client
+
+        def send() -> tuple[TurnReply, Tool, BaseModel]:
+            reply = client.send_turn(transcript, tools, settings)
+            call = reply.call
+            tool = by_name.get(call.name)
+            if tool is None:
+                raise _Rejected(
+                    UnknownTool(f"unknown tool {call.name!r} (tools: {sorted(by_name)})", call),
+                    reply.usage,
+                )
+            try:
+                args = tool.args.model_validate_json(call.arguments)
+            except ValidationError as exc:
+                raise _Rejected(
+                    InvalidArguments(f"invalid arguments for {call.name}: {exc}", call), reply.usage
+                ) from exc
+            return reply, tool, args
+
+        try:
+            (reply, tool, args), spent, latency, attempt = self._attempts(
+                _Call(email_id, step, model, prompt_version), bound, send,
+                usage_of=lambda r: r[0].usage,
+                output_of=lambda r: {
+                    "response_model": r[0].response_model,
+                    "cached_input_tokens": r[0].usage.cached_input_tokens,
+                    "reasoning_tokens": r[0].usage.reasoning_tokens,
+                    "tool": r[0].call.name, "call_id": r[0].call.call_id,
+                    "arguments": r[2].model_dump(mode="json"),
+                },
+            )  # fmt: skip
+        except LLMError as exc:
+            cause = exc.__cause__
+            if isinstance(cause, _Rejected):
+                raise cause.typed from exc
+            if isinstance(cause, IncompleteReply) and cause.reason == "max_output_tokens":
+                raise ReplyCutOff(str(exc)) from exc
+            raise
+        return TurnResult(reply.call, tool, args, model, reply.usage, spent, latency, attempt,
+                          reply.response_model)  # fmt: skip
 
     def embed(
         self,

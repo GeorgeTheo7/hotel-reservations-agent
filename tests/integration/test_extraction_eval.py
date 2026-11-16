@@ -18,9 +18,9 @@ from anemos.clock import FixedClock
 from anemos.email_cases import load_cases
 from anemos.extraction import ExtractionOutput
 from anemos.llm.adapter import PermanentError
-from anemos.prompts import CURRENT_EXTRACTION
 from anemos.llm.budget import Budget
 from anemos.llm.fake import Answer, ScriptedClient, Step
+from anemos.prompts import CURRENT_EXTRACTION
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixtures' classes are for mypy only
     from conftest import CommittedDb

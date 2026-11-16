@@ -4,6 +4,9 @@
   schema (the SDK's own converter), and the reply is parsed here, not by the SDK. The
   SDK's `parse` tries to parse a cut-off reply before returning it, which loses both the
   reason (incomplete: max_output_tokens) and the usage; parsing here keeps both.
+- Tool turns (D11): strict function tools, `tool_choice="required"`, no parallel calls;
+  the whole transcript is sent every turn (no `previous_response_id`), and the reply
+  must hold exactly one function call. Its arguments are checked by the adapter.
 - `store=False`: OpenAI does not keep the request or response.
 - The SDK's own retries are off (`max_retries=0`); the adapter retries once, so every
   attempt is budgeted and audited.
@@ -23,17 +26,30 @@ import openai
 import pydantic
 from openai import Omit, OpenAI, omit
 from openai.lib._pydantic import to_strict_json_schema  # the SDK's own strict converter
-from openai.types.responses import Response, ResponseTextConfigParam
+from openai.types.responses import (
+    FunctionToolParam,
+    Response,
+    ResponseFunctionToolCall,
+    ResponseInputParam,
+    ResponseTextConfigParam,
+)
 from openai.types.shared_params import Reasoning
 from pydantic import BaseModel
 
 from anemos.llm.adapter import (
     EmbedReply,
+    IncompleteReply,
     PermanentError,
     Prompt,
     Reply,
     Settings,
+    Tool,
+    ToolCall,
+    ToolOutput,
+    Transcript,
     TransientError,
+    TurnReply,
+    UserText,
 )
 from anemos.llm.pricing import Usage
 
@@ -103,6 +119,40 @@ class OpenAIClient:
             raise PermanentError(f"unreadable reply: {exc}", cost_unknown=True) from exc
         return _read(response, schema)
 
+    def send_turn(
+        self, transcript: Transcript, tools: Sequence[Tool], settings: Settings
+    ) -> TurnReply:
+        """The whole transcript every turn (no previous_response_id), tools first in the
+        request, so a repeated prefix gets the cached price."""
+        client = self._openai()
+        reasoning: Reasoning | Omit = (
+            Reasoning(effort=settings.reasoning_effort) if settings.reasoning_effort else omit
+        )
+        try:
+            response = client.responses.create(
+                model=settings.model,
+                instructions=transcript.instructions,
+                input=input_items(transcript),
+                tools=[function_tool(t) for t in tools],
+                tool_choice="required",
+                parallel_tool_calls=False,
+                max_output_tokens=settings.max_output_tokens,
+                store=False,
+                timeout=settings.timeout_s,
+                reasoning=reasoning,
+            )
+        except openai.APIConnectionError as exc:
+            raise TransientError(f"{type(exc).__name__}: {exc}") from exc
+        except openai.APIStatusError as exc:
+            if exc.status_code == 429 or exc.status_code >= 500:
+                raise TransientError(f"HTTP {exc.status_code}: {exc.message}") from exc
+            raise PermanentError(
+                f"HTTP {exc.status_code}: {exc.message}", request_refused=True
+            ) from exc
+        except (openai.APIResponseValidationError, pydantic.ValidationError, ValueError) as exc:
+            raise PermanentError(f"unreadable reply: {exc}", cost_unknown=True) from exc
+        return _read_turn(response)
+
     def embed(self, texts: Sequence[str], model: str, timeout_s: float) -> EmbedReply:
         """Embeddings endpoint, default dimensions; vectors put back in input order."""
         client = self._openai()
@@ -127,7 +177,35 @@ class OpenAIClient:
         return EmbedReply(vectors, usage, response.model)
 
 
-def _read[T: BaseModel](response: Response, schema: type[T]) -> Reply[T]:
+def function_tool(tool: Tool) -> FunctionToolParam:
+    """A tool as sent: a strict function whose parameters are the SDK's strict schema."""
+    return {
+        "type": "function",
+        "name": tool.name,
+        "description": tool.description,
+        "parameters": to_strict_json_schema(tool.args),
+        "strict": True,
+    }
+
+
+def input_items(transcript: Transcript) -> ResponseInputParam:
+    """The whole transcript as input items, in order (we keep it, not the provider)."""
+    items: ResponseInputParam = []
+    for item in transcript.items:
+        match item:
+            case UserText(text):
+                items.append({"role": "user", "content": text})
+            case ToolCall(call_id, name, arguments):
+                items.append({"type": "function_call", "call_id": call_id, "name": name,
+                              "arguments": arguments})  # fmt: skip
+            case ToolOutput(call_id, output):
+                items.append({"type": "function_call_output", "call_id": call_id,
+                              "output": output})  # fmt: skip
+    return items
+
+
+def _checked(response: Response) -> Usage:
+    """The usage, once the reply is known to be complete and not a refusal."""
     if response.usage is None:
         raise PermanentError("reply without usage", cost_unknown=True)
     usage = Usage(
@@ -136,13 +214,32 @@ def _read[T: BaseModel](response: Response, schema: type[T]) -> Reply[T]:
         output_tokens=response.usage.output_tokens,
         reasoning_tokens=response.usage.output_tokens_details.reasoning_tokens or 0,
     )
-    if response.status != "completed":
+    if response.status == "incomplete":
         reason = response.incomplete_details.reason if response.incomplete_details else None
-        raise PermanentError(f"reply {response.status}: {reason}", usage)
+        raise IncompleteReply(reason, usage)
+    if response.status != "completed":
+        raise PermanentError(f"reply {response.status}", usage)
     for item in response.output:
         for part in getattr(item, "content", None) or []:
             if getattr(part, "type", None) == "refusal":
                 raise PermanentError(f"refusal: {part.refusal}", usage)
+    return usage
+
+
+def _read_turn(response: Response) -> TurnReply:
+    """Exactly one function call; anything else (text only, several calls) is permanent.
+    Reasoning items are not kept: effort "none" makes none, and with store=False they
+    could not be sent back."""
+    usage = _checked(response)
+    calls = [item for item in response.output if isinstance(item, ResponseFunctionToolCall)]
+    if len(calls) != 1:
+        raise PermanentError(f"expected exactly one tool call, got {len(calls)}", usage)
+    [call] = calls
+    return TurnReply(ToolCall(call.call_id, call.name, call.arguments), usage, response.model)
+
+
+def _read[T: BaseModel](response: Response, schema: type[T]) -> Reply[T]:
+    usage = _checked(response)
     try:
         output = schema.model_validate_json(response.output_text)
     except pydantic.ValidationError as exc:

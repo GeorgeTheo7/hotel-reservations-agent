@@ -137,6 +137,15 @@ POLICY_SELECT_V2 = PromptSpec(
     reasoning_effort="none",
 )
 
+# The agent loop's call settings (D2), for the agent prompt (week 5, step 7). The model
+# writes only the prose around the placeholders ({{QUOTE_BLOCK}}, {{REQUEST_SUMMARY}}):
+# a long Greek reply is ~300 words, estimated (not measured) at 2-3 tokens a word, so
+# ~900 tokens, ~1,000 with JSON escaping and the other arguments; 2,000 doubles that.
+# A reply cut off at the limit is a typed error (ReplyCutOff), never a broken draft;
+# the agent eval measures the real output tokens. Reasoning "none", as for extraction.
+AGENT_MAX_OUTPUT_TOKENS = 2_000
+AGENT_REASONING_EFFORT: Effort = "none"
+
 PROMPTS = (EXTRACTION_V1, EXTRACTION_V2, EXTRACTION_V3, RETRIEVAL_BASELINE_V1,
            POLICY_SELECT_V1, POLICY_SELECT_V2)  # fmt: skip
 CURRENT_POLICY_SELECT = POLICY_SELECT_V2  # what search_policies sends (D2, D15)
