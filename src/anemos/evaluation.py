@@ -5,9 +5,15 @@ under eval/ pass in a real `LLM`, the tests a scripted one.
 Scoring compares what the model returned with the case's gold extraction, field by
 field. Dates are scored twice: `date_spec` (what the model wrote down) and `stay`
 (both specs resolved by code at the email's received_at: what matters for the reply).
-`rooms` is compared after the D5 default (not stated = one room, `rooms_or_default`):
-null and 1 give the same draft, so they count as the same answer, in the score and in
-the repeat check. (Changed after the first v2 smoke run, 2026-11-16; see D2.)
+Two numbers per field (rule set 2026-11-16, after the first extraction eval):
+- raw (`raw_score`): the model's output against the label, exactly.
+- effective (`score`): what reaches the draft. Fields are compared after the code's
+  defaults (rooms null = 1, D5; children null = 0), and the request fields (dates,
+  party, rooms, room type, arrival time) are scored only for `kind: request`: for any
+  other kind the code never uses them (no request row is stored; the router escalates
+  or sets the email aside first), so they are n/a (None) and left out of the share.
+Targets apply to effective; raw is always shown. The repeat check compares values as
+the code uses them too.
 
 A results file records the model, the call settings, the prompt version, the commit
 (and whether the working tree was dirty: then the run is not comparable), the time,
@@ -17,7 +23,7 @@ summary.
 
 import json
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -31,7 +37,7 @@ from anemos.llm.budget import BudgetExceeded
 from anemos.llm.pricing import max_cost
 from anemos.prompts import PromptSpec
 from anemos.reservations.datespec import resolve
-from anemos.reservations.model import rooms_or_default
+from anemos.reservations.model import children_or_default, rooms_or_default
 
 FIELDS = ("kind", "language", "script", "flags", "date_spec", "stay", "adults", "children",
           "child_ages", "rooms", "room_type", "arrival_time")  # fmt: skip
@@ -62,7 +68,16 @@ def load_set(name: str, eval_dir: Path, *, allow_held_out: bool = False) -> list
     return chosen
 
 
-def score(gold: ExtractionOutput, got: ExtractionOutput, received_at: datetime) -> dict[str, bool]:
+# Used by the code only for a request (store_extraction, routing): n/a for other kinds.
+REQUEST_FIELDS = frozenset({"date_spec", "stay", "adults", "children", "child_ages", "rooms",
+                            "room_type", "arrival_time"})  # fmt: skip
+
+
+def raw_score(
+    gold: ExtractionOutput, got: ExtractionOutput, received_at: datetime
+) -> dict[str, bool]:
+    """Every field, the model's output against the label exactly (`stay`: both resolved)."""
+
     def resolved(out: ExtractionOutput) -> object:
         spec = out.date_spec_value()
         return None if spec is None else resolve(spec, received_at)
@@ -77,10 +92,24 @@ def score(gold: ExtractionOutput, got: ExtractionOutput, received_at: datetime) 
         "adults": got.adults == gold.adults,
         "children": got.children == gold.children,
         "child_ages": sorted(got.child_ages) == sorted(gold.child_ages),
-        "rooms": rooms_or_default(got.rooms) == rooms_or_default(gold.rooms),
+        "rooms": got.rooms == gold.rooms,
         "room_type": got.room_type == gold.room_type,
         "arrival_time": got.arrival_time == gold.arrival_time,
     }
+
+
+def score(
+    gold: ExtractionOutput, got: ExtractionOutput, received_at: datetime
+) -> dict[str, bool | None]:
+    """Effective: as the code uses the field. None = n/a (a request field, and the label
+    is not a request). Rooms and children after the code's defaults."""
+    raw = raw_score(gold, got, received_at)
+    effective: dict[str, bool | None] = dict(raw)
+    effective["rooms"] = rooms_or_default(got.rooms) == rooms_or_default(gold.rooms)
+    effective["children"] = children_or_default(got.children) == children_or_default(gold.children)
+    if gold.kind != "request":
+        effective |= dict.fromkeys(REQUEST_FIELDS, None)
+    return effective
 
 
 @dataclass(frozen=True)
@@ -95,7 +124,9 @@ class Row:
     cost_micro_usd: int | None = None
     latency_ms: int | None = None
     attempts: int | None = None
-    fields: dict[str, bool] | None = None  # None: the call failed
+    fields: dict[str, bool | None] | None = None  # effective; None: the call failed
+    raw_fields: dict[str, bool] | None = None  # raw; None: the call failed
+    gold_kind: str | None = None  # the label's kind: which fields apply (effective)
     output: dict[str, Any] | None = None
     error: str | None = None
     stops_run: bool = False  # the API refused the request: the run stopped here
@@ -135,6 +166,8 @@ def run_cases(
                 reasoning_tokens=u.reasoning_tokens, cost_micro_usd=result.cost_micro_usd,
                 latency_ms=result.latency_ms, attempts=result.attempts,
                 fields=score(gold, result.output, case.email.received_at),
+                raw_fields=raw_score(gold, result.output, case.email.received_at),
+                gold_kind=gold.kind,
                 output=result.output.model_dump(mode="json"),
             ))  # fmt: skip
     return rows
@@ -146,7 +179,8 @@ class Summary:
     failed: int
     cost_micro_usd: int
     mean_latency_ms: int | None
-    accuracy: dict[str, float] = field(default_factory=dict)  # field -> share right
+    accuracy: dict[str, float | None] = field(default_factory=dict)  # effective share right
+    raw_accuracy: dict[str, float | None] = field(default_factory=dict)
     # case -> what differed between its repeats ([] = every repeat succeeded and
     # returned the same parsed output); in run order
     consistency: dict[str, list[str]] = field(default_factory=dict)
@@ -157,7 +191,7 @@ class Summary:
 
 
 # Fields compared after the default the code applies, as in `score`.
-_AS_USED: dict[str, Any] = {"rooms": rooms_or_default}
+_AS_USED: dict[str, Any] = {"rooms": rooms_or_default, "children": children_or_default}
 
 
 def _as_used(key: str, value: Any) -> Any:
@@ -192,11 +226,8 @@ def summarise(rows: Sequence[Row]) -> Summary:
         failed=len(rows) - len(scored),
         cost_micro_usd=sum(r.cost_micro_usd or 0 for r in rows),
         mean_latency_ms=round(sum(latencies) / len(latencies)) if latencies else None,
-        accuracy={
-            f: sum(bool(r.fields and r.fields[f]) for r in scored) / len(scored) for f in FIELDS
-        }
-        if scored
-        else {},
+        accuracy=field_accuracy(scored),
+        raw_accuracy=field_accuracy(scored, raw=True),
         consistency=consistency(rows),
     )
 
@@ -208,7 +239,7 @@ def report(rows: Sequence[Row], summary: Summary) -> str:
         if r.fields is None:
             lines.append(f"{r.case_id:32} FAILED: {r.error}")
             continue
-        wrong = ", ".join(f for f in FIELDS if not r.fields[f]) or "-"
+        wrong = ", ".join(f for f in FIELDS if r.fields[f] is False) or "-"
         numbers = (
             f"{r.input_tokens:>6} {r.output_tokens:>5} {r.reasoning_tokens:>5} "
             f"{r.cost_micro_usd:>6} {r.latency_ms:>6}"
@@ -221,13 +252,18 @@ def report(rows: Sequence[Row], summary: Summary) -> str:
                  f"{summary.cost_micro_usd} µ$ (${summary.cost_micro_usd / 1_000_000:.4f}), "
                  f"mean latency {summary.mean_latency_ms} ms")  # fmt: skip
     if summary.accuracy:
-        lines.append("accuracy: " + ", ".join(f"{f} {a:.0%}" for f, a in summary.accuracy.items()))
+        lines.append("accuracy: " + _shares(summary.accuracy))
+        lines.append("raw accuracy: " + _shares(summary.raw_accuracy))
     lines.append("repeats:")
     for case_id, differed in summary.consistency.items():
         verdict = f"differs in {', '.join(differed)}" if differed else "same"
         lines.append(f"  {case_id:32} {verdict}")
     lines.append(f"consistent cases: {summary.consistent_cases}/{len(summary.consistency)}")
     return "\n".join(lines)
+
+
+def _shares(accuracy: dict[str, float | None]) -> str:
+    return ", ".join(f"{f} {'n/a' if a is None else f'{a:.0%}'}" for f, a in accuracy.items())
 
 
 def git_state(repo: Path) -> tuple[str, bool]:
@@ -277,7 +313,9 @@ def rescore(data: dict[str, Any], cases: Sequence[EmailCase]) -> tuple[list[Row]
             expected = case.gold_output()
             assert expected is not None, case.id
             got = ExtractionOutput.model_validate(row.output)
-            row = replace(row, fields=score(expected, got, case.email.received_at))
+            row = replace(row, fields=score(expected, got, case.email.received_at),
+                          raw_fields=raw_score(expected, got, case.email.received_at),
+                          gold_kind=expected.kind)  # fmt: skip
         rows.append(row)
     return rows, summarise(rows)
 
@@ -323,11 +361,28 @@ def estimate_max_cost(cases: Sequence[EmailCase], spec: PromptSpec, model: str) 
     return total
 
 
-def field_accuracy(rows: Sequence[Row]) -> dict[str, float]:
-    """Share right per field over *every* case: a failed call is wrong on every field."""
+def applies(row: Row, f: str) -> bool:
+    """Whether field `f` is scored (effective) for this row's case."""
+    return f not in REQUEST_FIELDS or row.gold_kind in (None, "request")
+
+
+def _right(row: Row, f: str, *, raw: bool) -> bool:
+    fields: Mapping[str, bool | None] | None = row.raw_fields if raw else row.fields
+    return fields is not None and fields[f] is True
+
+
+def field_accuracy(rows: Sequence[Row], *, raw: bool = False) -> dict[str, float | None]:
+    """Share right per field. A failed call is wrong on every field it would be scored
+    on. Raw: every row counts. Effective: only the rows where the field applies; None if
+    it applies to none."""
     if not rows:
         return {}
-    return {f: sum(bool(r.fields and r.fields[f]) for r in rows) / len(rows) for f in FIELDS}
+    shares: dict[str, float | None] = {}
+    for f in FIELDS:
+        counted = rows if raw else [r for r in rows if applies(r, f)]
+        right = [_right(r, f, raw=raw) for r in counted]
+        shares[f] = sum(right) / len(right) if right else None
+    return shares
 
 
 @dataclass(frozen=True)

@@ -149,6 +149,11 @@ def rooms_or_default(rooms: int | None) -> int:
     return ROOMS_NOT_STATED if rooms is None else rooms
 
 
+def children_or_default(children: int | None) -> int:
+    """A request that mentions no children has none (`party_from_counts`)."""
+    return 0 if children is None else children
+
+
 def party_from_counts(
     adults: int | None, children: int | None, child_ages: Sequence[int]
 ) -> Party | NeedsInfo:
@@ -160,7 +165,7 @@ def party_from_counts(
     """
     if adults is None:
         return NeedsInfo("number of adults")
-    children = children or 0
+    children = children_or_default(children)
     if len(child_ages) < children:
         return NeedsInfo("children's ages")
     if len(child_ages) > children:

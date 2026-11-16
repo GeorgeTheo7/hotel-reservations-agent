@@ -95,8 +95,13 @@ def test_the_eval_scores_fields_and_routing_case_by_case(
     data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     run, summary = data["run"], data["summary"]
     assert (run["prompt_version"].startswith("extraction_v2@"), run["dirty"]) == (True, False)
-    assert summary["field_accuracy"]["adults"] == 3 / 5  # the failed call is wrong too
-    assert summary["field_accuracy"]["arrival_time"] == 3 / 5
+    # Effective: the request fields count only for the 3 requests (el-change-dates and
+    # en-invoice-vat are kind other); raw: all 5, the failed call wrong on every field.
+    assert summary["field_accuracy"]["adults"] == 2 / 3
+    assert summary["field_accuracy_raw"]["adults"] == 3 / 5
+    assert summary["field_accuracy"]["arrival_time"] == 2 / 3
+    assert summary["field_accuracy_raw"]["arrival_time"] == 3 / 5
+    assert summary["field_accuracy"]["kind"] == 4 / 5  # kind applies to every case
     routing = summary["routing"]
     assert routing["cases"] == 4 and routing["not_built_yet"] == ["el-change-dates"]
     assert routing["route_correct"] == 2  # decline, quote; late arrival and the failure wrong
@@ -107,3 +112,11 @@ def test_the_eval_scores_fields_and_routing_case_by_case(
     assert by_id["en-fully-booked-decline"]["outcome"]["route"] == "decline"
     assert by_id["en-quote-sea-view-june"]["outcome"]["matches"] is True
     assert by_id["en-invoice-vat"]["error"] and by_id["en-invoice-vat"]["fields"] is None
+
+    # Re-scoring the file reproduces the scores without a call; the original stays.
+    before = path.read_text(encoding="utf-8")
+    assert eval_module().main(["--rescore", str(path)], repo=clean_repo) == 0
+    rescored = json.loads(path.with_name(path.stem + ".rescored.json").read_text("utf-8"))
+    assert rescored["summary"]["field_accuracy"] == summary["field_accuracy"]
+    assert rescored["summary"]["routing"] == summary["routing"]
+    assert path.read_text(encoding="utf-8") == before

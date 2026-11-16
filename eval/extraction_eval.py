@@ -10,6 +10,12 @@ scored from the model's answer as audited; routing from how the email ended (sta
 draft route, reason codes, holds). Targets: SPEC Evaluation plan. Not-built-yet cases
 (week 5) are scored for fields and reported apart for routing.
 
+Every field has two numbers (anemos.evaluation): raw (the answer against the label,
+exactly) and effective (after the code's defaults, request fields only for requests);
+targets apply to effective. `--rescore FILE` scores a results file again from its
+recorded answers and outcomes: no model call, the original file untouched, the new
+scores in FILE.rescored.json.
+
 Before any call the worst-case cost is estimated (the adapter's reservation per case);
 over --max-usd (default 0.10) nothing is sent. Refuses a dirty working tree and
 held-out cases. Writes eval/results/<time>-extraction-dev-<model>.json. Never run by
@@ -20,7 +26,7 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -31,7 +37,7 @@ from psycopg.rows import TupleRow
 import anemos.db.scratch as scratch
 from anemos.clock import Clock, FixedClock, SystemClock
 from anemos.db.connection import connect
-from anemos.email_cases import EmailCase
+from anemos.email_cases import EmailCase, load_cases
 from anemos.evaluation import (
     ESCALATION_PRECISION_TARGET,
     ESCALATION_RECALL_TARGET,
@@ -43,11 +49,13 @@ from anemos.evaluation import (
     RoutingScore,
     Row,
     SetError,
+    applies,
     dev_cases,
     estimate_max_cost,
     field_accuracy,
     git_state,
     meets,
+    raw_score,
     score,
     score_routing,
 )
@@ -86,12 +94,17 @@ def main(
 ) -> int:
     parser = argparse.ArgumentParser(prog="eval/extraction_eval.py",
                                      description=__doc__.split("\n")[0])  # fmt: skip
-    parser.add_argument("--model", required=True, choices=sorted(PRICES))
+    parser.add_argument("--model", choices=sorted(PRICES))
+    parser.add_argument("--rescore", type=Path, help="score a results file again, no calls")
     parser.add_argument("--case", action="append", default=[], dest="cases",
                         help="run only this dev case (repeatable)")  # fmt: skip
     parser.add_argument("--max-usd", type=float, default=0.10)
     parser.add_argument("--results-dir", type=Path, default=EVAL / "results")
     args = parser.parse_args(argv)
+    if args.rescore is not None:
+        return rescore_file(args.rescore, eval_dir, repo)
+    if args.model is None:
+        parser.error("--model is required (or --rescore FILE)")
 
     commit, dirty = git_state(repo)
     if dirty:
@@ -117,11 +130,10 @@ def main(
               lambda: connect(conninfo), clock)  # fmt: skip
     results = [run_case(conninfo, llm, case) for case in cases]
 
-    accuracy = field_accuracy([r.row for r in results])
     routing = score_routing([r.outcome for r in results])
-    print(report(results, accuracy, routing))
+    print(report(results, routing))
     path = write(args.results_dir, started, args.model, settings, spec.version, commit,
-                 estimate, results, accuracy, routing)  # fmt: skip
+                 estimate, results, routing)  # fmt: skip
     print(f"\nwritten: {path}")
     return 0
 
@@ -173,7 +185,8 @@ def _row(conn: Conn, case: EmailCase, email_id: int, model: str) -> Row:
             " ('llm.failed', 'llm.refused_budget', 'email.escalated')",
             (email_id,),
         ).fetchone()
-        return Row(case.id, model, error=(errors or [None])[0] or "no model answer")
+        return Row(case.id, model, error=(errors or [None])[0] or "no model answer",
+                   gold_kind=case.labels.kind)  # fmt: skip
     tokens_in, tokens_out, cost, latency, output = called
     got = ExtractionOutput.model_validate(output["result"])
     gold = case.gold_output()
@@ -184,6 +197,7 @@ def _row(conn: Conn, case: EmailCase, email_id: int, model: str) -> Row:
         reasoning_tokens=output.get("reasoning_tokens"), cost_micro_usd=cost,
         latency_ms=latency, attempts=output.get("attempt"),
         fields=score(gold, got, case.email.received_at), output=output["result"],
+        raw_fields=raw_score(gold, got, case.email.received_at), gold_kind=gold.kind,
     )  # fmt: skip
 
 
@@ -212,20 +226,28 @@ def _verdict(value: float | None, target: float) -> str:
     return f"{_pct(value)} (target ≥ {target:.0%}: {'PASS' if meets(value, target) else 'FAIL'})"
 
 
-def report(results: Sequence[CaseResult], accuracy: dict[str, float], routing: RoutingScore) -> str:
+def report(results: Sequence[CaseResult], routing: RoutingScore) -> str:
     rows = [r.row for r in results]
+    effective, raw = field_accuracy(rows), field_accuracy(rows, raw=True)
     cost = sum(r.cost_micro_usd or 0 for r in rows)
-    lines = [f"cases {len(rows)}, failed calls {len(routing.failed)}, cost {cost} µ$ "
-             f"(${cost / 1e6:.4f})", "", "extraction fields:"]  # fmt: skip
+    lines = [
+        f"cases {len(rows)}, failed calls {len(routing.failed)}, cost {cost} µ$"
+        f" (${cost / 1e6:.4f})",
+        "",
+        "extraction fields      raw  effective   (targets apply to effective)",
+    ]
     for f in FIELDS:
         target = FIELD_TARGETS.get(f)
-        lines.append(
-            f"  {f:13} " + (_verdict(accuracy[f], target) if target else _pct(accuracy[f]))
-        )
+        scored = sum(applies(r, f) for r in rows)
+        line = f"  {f:16} {_pct(raw[f]):>5}  {_pct(effective.get(f)):>9}  ({scored:>2} scored)"
+        if target is not None:
+            line += f"  target ≥ {target:.0%}: {'PASS' if meets(effective[f], target) else 'FAIL'}"
+        lines.append(line)
     lines += [
         "",
         f"routing ({routing.cases} cases; {len(routing.not_built_yet)} not built yet left out):",
-        f"  route accuracy        {_verdict(routing.route_accuracy, ROUTE_ACCURACY_TARGET)}",
+        f"  route accuracy        {_verdict(routing.route_accuracy, ROUTE_ACCURACY_TARGET)}"
+        f"  ({routing.route_correct}/{routing.cases})",
         f"  escalation recall     {_verdict(routing.recall, ESCALATION_RECALL_TARGET)}"
         f"  ({routing.escalations_caught}/{routing.escalations_expected})",
         f"  escalation precision  {_verdict(routing.precision, ESCALATION_PRECISION_TARGET)}"
@@ -240,18 +262,20 @@ def report(results: Sequence[CaseResult], accuracy: dict[str, float], routing: R
             o = r.outcome
             lines.append(f"  {o.case_id:30} expected {o.expected_route} {list(o.expected_codes)},"
                          f" got {o.route} {list(o.codes)}")  # fmt: skip
-    lines += ["", "failed calls:"] + [f"  {r.row.case_id}: {r.row.error}" for r in results
-                                       if r.outcome.failed] or ["  none"]  # fmt: skip
-    lines += ["", "misses (expected -> got):"]
+    failed = [f"  {r.row.case_id}: {r.row.error}" for r in results if r.outcome.failed]
+    lines += ["", "failed calls:", *(failed or ["  none"]), "", "misses (expected -> got):"]
     missed = False
     for r in results:
         o, row = r.outcome, r.row
-        if row.fields is not None:
+        if row.fields is not None and row.raw_fields is not None:
             for f in FIELDS:
-                if not row.fields[f]:
-                    missed = True
-                    lines.append(f"  {o.case_id:30} field {f}: {r.gold.get(_output_key(f))!r} -> "
-                                 f"{(row.output or {}).get(_output_key(f))!r}")  # fmt: skip
+                if row.raw_fields[f]:
+                    continue
+                missed = True
+                tag = {True: "  [raw only: the same once used]", None: "  [raw only: n/a here]",
+                       False: ""}[row.fields[f]]  # fmt: skip
+                lines.append(f"  {o.case_id:30} field {f}: {r.gold.get(_output_key(f))!r} -> "
+                             f"{(row.output or {}).get(_output_key(f))!r}{tag}")  # fmt: skip
         if o.case_id not in NOT_BUILT_YET and not o.matches:
             missed = True
             lines.append(f"  {o.case_id:30} outcome: {o.expected_route} "
@@ -267,9 +291,27 @@ def _output_key(f: str) -> str:
     return "date_spec" if f == "stay" else f
 
 
+def summary(results: Sequence[CaseResult], routing: RoutingScore) -> dict[str, Any]:
+    rows = [r.row for r in results]
+    effective = field_accuracy(rows)
+    return {
+        "field_accuracy": effective,
+        "field_accuracy_raw": field_accuracy(rows, raw=True),
+        "field_targets": {f: {"target": t, "pass": meets(effective.get(f), t)}
+                          for f, t in FIELD_TARGETS.items()},
+        "routing": asdict(routing) | {
+            "route_accuracy": routing.route_accuracy, "recall": routing.recall,
+            "precision": routing.precision,
+            "route_accuracy_pass": meets(routing.route_accuracy, ROUTE_ACCURACY_TARGET),
+            "recall_pass": meets(routing.recall, ESCALATION_RECALL_TARGET),
+            "precision_pass": meets(routing.precision, ESCALATION_PRECISION_TARGET),
+        },
+    }  # fmt: skip
+
+
 def write(results_dir: Path, started: datetime, model: str, settings: Settings,
           prompt_version: str, commit: str, estimate: int, results: Sequence[CaseResult],
-          accuracy: dict[str, float], routing: RoutingScore) -> Path:  # fmt: skip
+          routing: RoutingScore) -> Path:  # fmt: skip
     results_dir.mkdir(parents=True, exist_ok=True)
     path = results_dir / f"{started.strftime('%Y%m%dT%H%M%SZ')}-extraction-dev-{model}.json"
     data = {
@@ -277,23 +319,52 @@ def write(results_dir: Path, started: datetime, model: str, settings: Settings,
                 "prompt_version": prompt_version, "commit": commit, "dirty": False,
                 "started_at": started.isoformat(), "estimate_micro_usd": estimate,
                 "cost_micro_usd": sum(r.row.cost_micro_usd or 0 for r in results)},
-        "summary": {
-            "field_accuracy": accuracy,
-            "field_targets": {f: {"target": t, "pass": meets(accuracy.get(f), t)}
-                              for f, t in FIELD_TARGETS.items()},
-            "routing": asdict(routing) | {
-                "route_accuracy": routing.route_accuracy, "recall": routing.recall,
-                "precision": routing.precision,
-                "route_accuracy_pass": meets(routing.route_accuracy, ROUTE_ACCURACY_TARGET),
-                "recall_pass": meets(routing.recall, ESCALATION_RECALL_TARGET),
-                "precision_pass": meets(routing.precision, ESCALATION_PRECISION_TARGET),
-            },
-        },
+        "summary": summary(results, routing),
         "cases": [asdict(r.row) | {"outcome": asdict(r.outcome)
                                    | {"matches": r.outcome.matches}} for r in results],
     }  # fmt: skip
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def rescore_file(source: Path, eval_dir: Path, repo: Path) -> int:
+    """Score a results file again with today's scorer, from its recorded answers and
+    outcomes (routing is how each email ended, so it is kept). No model call; the
+    original file is untouched."""
+    data = json.loads(source.read_text(encoding="utf-8"))
+    cases = {c.id: c for c in load_cases(eval_dir / "emails")}
+    results = []
+    for stored in data["cases"]:
+        o = stored["outcome"]
+        outcome = CaseOutcome(
+            str(o["case_id"]), str(o["expected_route"]), tuple(o["expected_codes"]),
+            int(o["expected_holds"]), str(o["route"]), tuple(o["codes"]), int(o["holds"]),
+            bool(o["failed"]),
+        )  # fmt: skip
+        case = cases[stored["case_id"]]
+        gold = case.gold_output()
+        assert gold is not None, case.id
+        row = Row(**{k: v for k, v in stored.items() if k in Row.__dataclass_fields__})
+        if row.output is not None:
+            got = ExtractionOutput.model_validate(row.output)
+            row = replace(row, fields=score(gold, got, case.email.received_at),
+                          raw_fields=raw_score(gold, got, case.email.received_at),
+                          gold_kind=gold.kind)  # fmt: skip
+        else:
+            row = replace(row, gold_kind=gold.kind)
+        results.append(CaseResult(row, outcome, gold.model_dump(mode="json")))
+    routing = score_routing([r.outcome for r in results])
+    commit, dirty = git_state(repo)
+    out = source.with_name(source.stem + ".rescored.json")
+    record = {"source": source.name, "run": data["run"],
+              "scorer": {"commit": commit, "dirty": dirty},
+              "summary": summary(results, routing),
+              "cases": [{"case_id": r.row.case_id, "fields": r.row.fields,
+                         "raw_fields": r.row.raw_fields} for r in results]}  # fmt: skip
+    out.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(report(results, routing))
+    print(f"\nwritten: {out}")
+    return 0
 
 
 if __name__ == "__main__":

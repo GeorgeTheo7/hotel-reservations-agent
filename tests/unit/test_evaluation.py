@@ -27,6 +27,7 @@ from anemos.evaluation import (
     git_state,
     load_set,
     meets,
+    raw_score,
     report,
     rescore,
     run_cases,
@@ -476,3 +477,53 @@ def test_the_eval_refuses_held_out_and_a_dirty_tree(clean_repo: Path) -> None:
 
 def test_not_built_yet_is_the_week_5_list_of_the_gold_tests() -> None:
     assert len(NOT_BUILT_YET) == 7 and {c.id for c in load_cases(EVAL / "emails")} >= NOT_BUILT_YET
+
+
+# --- raw and effective: one scoring rule (set after the first extraction eval) ------------
+
+
+def case_by_id(case_id: str) -> EmailCase:
+    return next(c for c in load_cases(EVAL / "emails") if c.id == case_id)
+
+
+def test_request_fields_are_not_applicable_for_other_kinds() -> None:
+    """A date the model reads from a complaint is never used: raw miss, effective n/a."""
+    case = case_by_id("en-invoice-vat")  # kind other; "our stay in September"
+    september = {"kind": "approximate", "part": "whole_month", "month": 9, "year": None,
+                 "nights": None}  # fmt: skip
+    got = ExtractionOutput.model_validate(gold(case).model_dump(mode="json")
+                                          | {"date_spec": september})  # fmt: skip
+    raw, effective = raw_score(gold(case), got, case.email.received_at), score(
+        gold(case), got, case.email.received_at)  # fmt: skip
+    assert (raw["stay"], raw["date_spec"]) == (False, False)
+    assert (effective["stay"], effective["date_spec"], effective["adults"]) == (None, None, None)
+    assert effective["kind"] is True
+
+
+@pytest.mark.parametrize(("field_name", "got", "raw", "effective"), [
+    ("children", None, False, True), ("children", 1, False, False),
+    ("rooms", None, False, True), ("rooms", 2, False, False),
+])  # fmt: skip
+def test_defaults_count_in_effective_not_in_raw(
+    field_name: str, got: int | None, raw: bool, effective: bool
+) -> None:
+    case = case_by_id("en-quote-sea-view-june")  # children 0, rooms 1
+    answer = gold(case).model_copy(update={field_name: got})
+    at = case.email.received_at
+    assert raw_score(gold(case), answer, at)[field_name] is raw
+    assert score(gold(case), answer, at)[field_name] is effective
+
+
+def test_effective_shares_leave_out_not_applicable_rows_raw_counts_every_row() -> None:
+    request = Row("r", "m", fields=dict.fromkeys(FIELDS, True),
+                  raw_fields=dict.fromkeys(FIELDS, True), gold_kind="request")  # fmt: skip
+    other = Row(
+        "o", "m", fields=dict.fromkeys(FIELDS, True) | {"stay": None},
+        raw_fields=dict.fromkeys(FIELDS, True) | {"stay": False}, gold_kind="other",
+    )  # fmt: skip
+    failed_other = Row("f", "m", error="boom", gold_kind="other")
+    effective = field_accuracy([request, other, failed_other])
+    raw = field_accuracy([request, other, failed_other], raw=True)
+    assert effective["stay"] == 1.0  # only the request counts
+    assert raw["stay"] == 1 / 3
+    assert effective["kind"] == 2 / 3  # the failed call is wrong where it would count

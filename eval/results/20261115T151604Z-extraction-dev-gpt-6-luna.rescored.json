@@ -1,0 +1,1085 @@
+{
+  "source": "20261115T151604Z-extraction-dev-gpt-6-luna.json",
+  "run": {
+    "set_name": "dev",
+    "model": "gpt-6-luna",
+    "settings": {
+      "model": "gpt-6-luna",
+      "max_output_tokens": 600,
+      "reasoning_effort": "none",
+      "timeout_s": 30.0
+    },
+    "prompt_version": "extraction_v2@b37c0d57",
+    "commit": "0984fd30da911579b35df3dd71f09717934cc646",
+    "dirty": false,
+    "started_at": "2026-11-15T15:16:04.613487+00:00",
+    "estimate_micro_usd": 40480,
+    "cost_micro_usd": 2729
+  },
+  "scorer": {
+    "commit": "0984fd30da911579b35df3dd71f09717934cc646",
+    "dirty": true
+  },
+  "summary": {
+    "field_accuracy": {
+      "kind": 1.0,
+      "language": 1.0,
+      "script": 1.0,
+      "flags": 0.96875,
+      "date_spec": 1.0,
+      "stay": 1.0,
+      "adults": 0.9615384615384616,
+      "children": 1.0,
+      "child_ages": 1.0,
+      "rooms": 1.0,
+      "room_type": 0.9615384615384616,
+      "arrival_time": 1.0
+    },
+    "field_accuracy_raw": {
+      "kind": 1.0,
+      "language": 1.0,
+      "script": 1.0,
+      "flags": 0.96875,
+      "date_spec": 0.90625,
+      "stay": 0.9375,
+      "adults": 0.96875,
+      "children": 0.96875,
+      "child_ages": 1.0,
+      "rooms": 0.84375,
+      "room_type": 0.96875,
+      "arrival_time": 1.0
+    },
+    "field_targets": {
+      "stay": {
+        "target": 0.95,
+        "pass": true
+      },
+      "adults": {
+        "target": 0.95,
+        "pass": true
+      },
+      "child_ages": {
+        "target": 0.95,
+        "pass": true
+      }
+    },
+    "routing": {
+      "cases": 26,
+      "route_correct": 25,
+      "escalations_expected": 9,
+      "escalations_caught": 9,
+      "escalated": 9,
+      "escalated_rightly": 9,
+      "codes_exact": 9,
+      "not_built_yet": [
+        "el-cancellation",
+        "el-change-dates",
+        "el-complaint-legal",
+        "el-group-wedding",
+        "el-pets-policy",
+        "en-discount-as-agreed"
+      ],
+      "failed": [],
+      "route_accuracy": 0.9615384615384616,
+      "recall": 1.0,
+      "precision": 1.0,
+      "route_accuracy_pass": true,
+      "recall_pass": true,
+      "precision_pass": true
+    }
+  },
+  "cases": [
+    {
+      "case_id": "de-request-german",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-approximate-late-june",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": false,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-ask-info-child-ages",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-cancellation",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": null,
+        "stay": null,
+        "adults": null,
+        "children": null,
+        "child_ages": null,
+        "rooms": null,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-change-dates",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": null,
+        "stay": null,
+        "adults": null,
+        "children": null,
+        "child_ages": null,
+        "rooms": null,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": false,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": false,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-christmas-2027",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": false,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-christmas-holiday",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-complaint-legal",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": null,
+        "stay": null,
+        "adults": null,
+        "children": null,
+        "child_ages": null,
+        "rooms": null,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": false,
+        "stay": false,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-date-passed-next-year",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-greeklish-family-ages",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-greeklish-quote-june",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-group-wedding",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-infant-cot",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-injection-greek",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "el-pets-policy",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": null,
+        "stay": null,
+        "adults": null,
+        "children": null,
+        "child_ages": null,
+        "rooms": null,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-accessible-party-three",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": false,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-accessible-wheelchair",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": false,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": false,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": false,
+        "children": false,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": false,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-discount-as-agreed",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": false,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": false,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": false,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-easter-plain",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-fully-booked-decline",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-group-nine-adults",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-injection-confirm-free",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-invoice-vat",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": null,
+        "stay": null,
+        "adults": null,
+        "children": null,
+        "child_ages": null,
+        "rooms": null,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": false,
+        "stay": false,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-late-arrival",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-mid-august-min-stay",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-next-weekend-june",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-no-calendar-2028",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-quote-plus-breakfast",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-quote-sea-view-june",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-spam-seo",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": null,
+        "stay": null,
+        "adults": null,
+        "children": null,
+        "child_ages": null,
+        "rooms": null,
+        "room_type": null,
+        "arrival_time": null
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-tetris-sea-view",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    },
+    {
+      "case_id": "en-western-easter-closed",
+      "fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      },
+      "raw_fields": {
+        "kind": true,
+        "language": true,
+        "script": true,
+        "flags": true,
+        "date_spec": true,
+        "stay": true,
+        "adults": true,
+        "children": true,
+        "child_ages": true,
+        "rooms": true,
+        "room_type": true,
+        "arrival_time": true
+      }
+    }
+  ]
+}
