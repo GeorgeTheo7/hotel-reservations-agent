@@ -31,5 +31,5 @@ labels:
     room_type: sea_view
   route: quote
   required_tools: [check_availability, quote_price, search_policies]
-  # policy_ids: the breakfast policy chunk, added in week 5 when the policies exist
+  policy_ids: [breakfast]
   holds: 1

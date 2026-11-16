@@ -20,4 +20,4 @@ labels:
   extraction: null
   route: policy
   required_tools: [search_policies]
-  # policy_ids: the transfer policy chunk, added in week 5
+  policy_ids: [transfer]

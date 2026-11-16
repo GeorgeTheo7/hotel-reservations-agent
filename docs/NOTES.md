@@ -290,3 +290,14 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Cause:** D65 was written for one extraction call before the final write; the loop adds model calls between tool calls.
 - **Fix (D71):** three phases on agent routes: commit extraction, request and routing; run the loop with nothing held, each tool call in its own short transaction; one short final transaction under the sender lock. Code-decided escalations and set-asides keep one final transaction.
 - **Trade-off:** the draft is no longer written against hotel data read in the final transaction (approval re-validates every offer, D47), and a crash mid-loop leaves the email `processing` until resume (week 10).
+
+## 2026-11-16 · No room rates in the policies; city tax and extra-bed rates may stay
+- **Decision:** `policies.md` has no room-rate chunk. Guardrail 2 lets a draft repeat any exact substring of a retrieved chunk, so "Sea View Double €130.00 per night" in a chunk would let the model quote a room price outside `{{QUOTE_BLOCK}}`; a guest asking for prices goes through `quote_price`, and "how much are your rooms?" without dates is `ask_info`.
+- **Why city tax and extra-bed rates may stay:** they are flat published rates (one amount per season or age band, the same for every room and night); a total the model adds up ("4 nights × €4.00 = €16.00") is not chunk text, so guardrail 2 catches it. A room rate depends on each night's season, so even a correctly copied rate would be a wrong price for a stay across two seasons.
+- **Evidence:** `test_no_room_rates_in_the_policies` (the only € amounts are city tax, transfer and extra beds); `test_policy_facts.py` checks every number in every chunk against the database or a code constant, in both directions.
+
+## 2026-11-16 · D39 checked one value "somewhere" in the templates, so one of two sentences could drift
+- **Symptom:** the first D39 test passed if `30%` appeared anywhere in the Greek templates; they have two deposit phrases (held and not held), so changing one to 25% could pass unnoticed.
+- **Evidence:** with `deposit_quote` in `phrases_el.json` changed to 25% and the new check deselected, `test_policies.py` passed (26 passed); with the check, it failed (`…_is_the_policy_value[el]`). File restored, `git diff` empty.
+- **Fix:** `test_every_percentage_and_hour_count_in_the_templates_is_the_policy_value`: every `N%` and every hour count in the templates of each language must equal the policy value (`DEPOSIT_PERCENT`, `HOLD_FOR`). D39 compares facts, not wording, so a reworded sentence keeping 30% passes (checked by a mutation).
+- **Mutations caught:** one EL deposit phrase 30% → 25% (1 test, the new one); city tax €4.00 → €3.50 in the chunk (2); a stray number in a chunk (1). Rewording the EN deposit sentence with 30% kept passes, as intended.
