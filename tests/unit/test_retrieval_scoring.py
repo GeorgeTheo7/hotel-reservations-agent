@@ -7,13 +7,11 @@ import pytest
 from pydantic import ValidationError
 
 from anemos.llm.openai_client import text_format
-from anemos.policies import load_policies
-from anemos.policies.search import PolicySource, Row, SearchSettings
+from anemos.policies import BaselineAnswer, PolicyId, load_policies
+from anemos.policies.ranking import Row, SearchSettings
 from anemos.retrieval_eval import RetrievalQuery
 from anemos.retrieval_scoring import (
-    BaselineAnswer,
     ModeAnswer,
-    PolicyId,
     baseline_answer,
     choose_threshold,
     compare,
@@ -174,12 +172,9 @@ def row(policy_id: str, similarity: float, fts_rank: float | None = None) -> Row
     return Row(policy_id, policy_id, "text", "0" * 64, similarity, fts_rank)
 
 
-SOURCE = PolicySource({}, "f" * 64)
-
-
 def test_the_modes_split_one_querys_rows() -> None:
     rows = [row("a", 0.5), row("b", 0.4, 0.2), row("c", 0.3, 0.1), row("d", 0.2)]
-    answers = search_answers("q", rows, SearchSettings(0.45), SOURCE)
+    answers = search_answers("q", rows, SearchSettings(0.45))
     assert answers["vector"] == ModeAnswer(("a", "b", "c"), no_match=False)
     assert answers["full_text"] == ModeAnswer(("b", "c"), no_match=False)
     assert answers["hybrid"] == ModeAnswer(("b", "c", "a"), no_match=False)  # decide's RRF
@@ -187,7 +182,7 @@ def test_the_modes_split_one_querys_rows() -> None:
 
 def test_below_the_threshold_vector_and_hybrid_answer_no_match_but_keep_their_ranking() -> None:
     rows = [row("a", 0.3), row("b", 0.2)]
-    answers = search_answers("q", rows, SearchSettings(0.45), SOURCE)
+    answers = search_answers("q", rows, SearchSettings(0.45))
     assert answers["vector"] == ModeAnswer(("a", "b"), no_match=True)
     assert answers["hybrid"] == ModeAnswer(("a", "b"), no_match=True)
     assert answers["full_text"] == NO_MATCH  # no lexeme matched

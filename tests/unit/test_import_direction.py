@@ -71,3 +71,70 @@ def test_the_check_sees_an_outside_import(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert outside_imports(module) == {"anemos.extraction", "anemos.db.seed"}
+
+
+# --- the retrieval eval's ranking code stays out of production (D15) ---------------------
+
+SRC = PACKAGE.parent  # src/anemos
+RANKING = "anemos.policies.ranking"
+# Eval-side modules: they may reach the ranking code. Everything else under src/anemos is
+# production (the tools, the run, the agent) and must not, directly or through another
+# module.
+EVAL_ONLY = frozenset({RANKING, "anemos.retrieval_scoring", "anemos.retrieval_eval"})
+
+
+def module_name(path: Path) -> str:
+    parts = path.relative_to(SRC.parent).with_suffix("").parts
+    return ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
+
+
+def anemos_imports(path: Path) -> set[str]:
+    """Every anemos module the file imports; `from anemos.x import y` also counts y when
+    y is a module (anemos.x.y)."""
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), filename=str(path))):
+        if isinstance(node, ast.Import):
+            found |= {a.name for a in node.names if a.name.split(".")[0] == "anemos"}
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and not node.level
+            and node.module
+            and node.module.split(".")[0] == "anemos"
+        ):
+            found.add(node.module)
+            found |= {f"{node.module}.{a.name}" for a in node.names}
+    return found
+
+
+def import_graph() -> dict[str, set[str]]:
+    modules = {module_name(p): p for p in SRC.rglob("*.py")}
+    return {name: {m for m in anemos_imports(path) if m in modules}
+            for name, path in modules.items()}  # fmt: skip
+
+
+def reaches(graph: dict[str, set[str]], start: str, target: str) -> bool:
+    seen, todo = set(), [start]
+    while todo:
+        name = todo.pop()
+        if name == target:
+            return True
+        if name not in seen:
+            seen.add(name)
+            todo.extend(graph.get(name, ()))
+            # importing anemos.a.b runs anemos.a's __init__ first
+            todo.extend(".".join(name.split(".")[:i]) for i in range(2, name.count(".") + 1))
+    return False
+
+
+def test_production_code_never_reaches_the_ranking_code() -> None:
+    graph = import_graph()
+    production = sorted(set(graph) - EVAL_ONLY)
+    assert "anemos.policies.search" in production and "anemos.prompts" in production
+    leaking = [name for name in production if reaches(graph, name, RANKING)]
+    assert leaking == [], f"production modules that import {RANKING}: {leaking}"
+
+
+def test_the_ranking_check_sees_an_indirect_import() -> None:
+    graph = {"anemos.a": {"anemos.b"}, "anemos.b": {RANKING}, RANKING: set()}
+    assert reaches(graph, "anemos.a", RANKING)
+    assert not reaches({"anemos.a": set()}, "anemos.a", RANKING)

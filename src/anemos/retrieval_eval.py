@@ -20,7 +20,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError, model_validator
 
 from anemos.policies import load_policies
-from anemos.policies.search import InvalidQuery, check_query
+from anemos.policies.query import InvalidQuery, check_query
 
 type Split = Literal["dev", "held_out"]
 type Source = Literal["written", "email"]

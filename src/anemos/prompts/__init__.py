@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from anemos.extraction import ExtractionOutput
 from anemos.llm.adapter import Effort
 from anemos.llm.openai_client import text_format
-from anemos.retrieval_scoring import BaselineAnswer
+from anemos.policies import BaselineAnswer, PolicySelection
 
 
 @dataclass(frozen=True)
@@ -102,5 +102,16 @@ RETRIEVAL_BASELINE_V1 = PromptSpec(
     reasoning_effort="none",
 )
 
-PROMPTS = (EXTRACTION_V1, EXTRACTION_V2, RETRIEVAL_BASELINE_V1)
+# The policy selector (D15): search_policies. The same text as retrieval_baseline_v1,
+# which scored 100% / 100% on the dev queries (a test keeps the two texts equal); its own
+# name and schema (PolicySelection), so a run's prompt_version is never "baseline".
+POLICY_SELECT_V1 = PromptSpec(
+    name="policy_select_v1",
+    schema=PolicySelection,
+    sha256_8="a2c70954",
+    max_output_tokens=100,
+    reasoning_effort="none",
+)
+
+PROMPTS = (EXTRACTION_V1, EXTRACTION_V2, RETRIEVAL_BASELINE_V1, POLICY_SELECT_V1)
 CURRENT_EXTRACTION = EXTRACTION_V2  # what runs and evaluations send (D2)

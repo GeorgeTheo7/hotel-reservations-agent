@@ -4,8 +4,8 @@ the comparison of hybrid with vector only. Pure functions: no database, no model
 The modes, for one query:
 - vector: chunks by cosine similarity; NO_MATCH below the threshold;
 - full_text: chunks matching a query lexeme, by ts_rank; NO_MATCH when none matches;
-- hybrid: what `search_policies` returns (RRF of the two lists, `decide`); NO_MATCH as
-  vector (only the vector side decides it, D15), so the two share their NO_MATCH numbers;
+- hybrid: RRF of the two lists (`anemos.policies.ranking.decide`); NO_MATCH as vector
+  (only the vector side decides it), so the two share their NO_MATCH numbers;
 - all_chunks: the baseline, a model given every chunk; NO_MATCH when it returns none.
 
 A query is right in a mode when (in scope) every expected id is in the top 3 and the
@@ -19,12 +19,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
-
-from anemos.policies.search import (
-    NoMatch,
-    PolicyHits,
-    PolicySource,
+from anemos.policies import BaselineAnswer
+from anemos.policies.ranking import (
+    BelowThreshold,
+    Ranked,
     Row,
     SearchSettings,
     decide,
@@ -36,26 +34,6 @@ from anemos.retrieval_eval import RetrievalQuery
 type Mode = Literal["vector", "full_text", "hybrid", "all_chunks"]
 MODES: tuple[Mode, ...] = ("vector", "full_text", "hybrid", "all_chunks")
 
-# The baseline may only name a real chunk: the structured output's enum (a test keeps
-# this list equal to policies.md; a new chunk means a new baseline prompt version).
-PolicyId = Literal[
-    "check-in-check-out", "late-arrival", "early-check-in-late-check-out", "luggage-storage",
-    "cancellation", "deposit", "holds-and-confirmation", "payment-methods", "city-tax",
-    "breakfast", "pets-assistance-dogs", "transfer", "wifi", "parking", "smoking",
-    "room-standard-double", "room-sea-view-double", "room-family-suite",
-    "room-accessible-double", "extra-beds", "cots-and-infants", "children", "accessibility",
-    "groups", "season-and-opening", "minimum-stay", "changes-and-cancellation-requests",
-]  # fmt: skip
-
-
-class BaselineAnswer(BaseModel):
-    """The all-chunks baseline's answer: the ids that answer the question, best first;
-    an empty list when none does."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    policy_ids: list[PolicyId]
-
 
 @dataclass(frozen=True)
 class ModeAnswer:
@@ -64,15 +42,15 @@ class ModeAnswer:
 
 
 def search_answers(
-    query: str, rows: Sequence[Row], settings: SearchSettings, source: PolicySource
+    query: str, rows: Sequence[Row], settings: SearchSettings
 ) -> dict[Mode, ModeAnswer]:
-    """The three search modes from one query's rows. Hybrid goes through `decide`, the
-    same code as `search_policies`; its ranking before the threshold through `decide`
-    with no threshold."""
+    """The three ranking modes from one query's rows. Hybrid goes through
+    `ranking.decide`; its ranking before the threshold through `decide` with no
+    threshold."""
     k = settings.top_k
-    unthresholded = decide(query, rows, SearchSettings(-2.0, k, settings.rrf_k), source)
-    assert isinstance(unthresholded, PolicyHits)  # cosine similarity is never below -1
-    below = isinstance(decide(query, rows, settings, source), NoMatch)
+    unthresholded = decide(query, rows, SearchSettings(-2.0, k, settings.rrf_k))
+    assert isinstance(unthresholded, Ranked)  # cosine similarity is never below -1
+    below = isinstance(decide(query, rows, settings), BelowThreshold)
     fts = fts_ranking(rows)
     return {
         "vector": ModeAnswer(tuple(vector_ranking(rows)[:k]), below),

@@ -49,18 +49,23 @@ from anemos.llm.adapter import (
 from anemos.llm.budget import Budget, cap_from_env
 from anemos.llm.openai_client import OpenAIClient
 from anemos.llm.pricing import EMBEDDING_MODELS, PRICES, max_cost
-from anemos.policies import load_policies
+from anemos.policies import BaselineAnswer, load_policies
 from anemos.policies.embeddings import (
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
     read_embeddings,
 )
-from anemos.policies.search import Row, SearchSettings, check_table, fetch_rows, packaged_source
+from anemos.policies.ranking import (
+    Row,
+    SearchSettings,
+    check_table,
+    fetch_rows,
+    packaged_source,
+)
 from anemos.prompts import RETRIEVAL_BASELINE_V1
 from anemos.retrieval_eval import RetrievalQuery, Split, load_queries
 from anemos.retrieval_scoring import (
     MODES,
-    BaselineAnswer,
     Mode,
     ModeAnswer,
     ThresholdChoice,
@@ -183,7 +188,7 @@ def main(
                                 prompt_version=spec.version)  # fmt: skip
         baseline_cost += answer.cost_micro_usd
         response_models.add(answer.response_model)
-        answers = search_answers(query.query, found, search, source)
+        answers = search_answers(query.query, found, search)
         answers["all_chunks"] = baseline_answer(answer.output, search.top_k)
         results.append(QueryResult(query, top, _best(found_again), answers,
                                    list(answer.output.policy_ids)))  # fmt: skip
