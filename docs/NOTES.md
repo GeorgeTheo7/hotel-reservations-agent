@@ -396,3 +396,8 @@ Run: `eval/results/20261116T160328Z-retrieval-dev-gpt-6-luna.json` (commit a8bb8
 - **Embedding drift:** the largest change in a best similarity between the two embeddings was 0.000528 this run (0.00012 and 0.000078 before): at or over the 0.0005 line, so the ranking threshold's third decimal is noise on this run. It affects only the ranking modes.
 - **Cost:** 10,990 µ$ (a new prompt, so the first calls missed the cache). The selector work on dev so far: 25,760 µ$ (about $0.026) including the lost run.
 - **Per the decision before the run:** consistency under 90%, so no `policy_select_v3`; the bar is unchanged and held-out is not run.
+
+## 2026-11-16 · Decision: `policy_select_v2` ships without the held-out retrieval run
+- **Decision (owner):** accept `policy_select_v2` as `search_policies`. Consistency failed the 90% line on dev twice (83% with v1 and with v2), always on a related extra id, with the expected ids present on every repeat; recall@3 and NO_MATCH recall were 100% on every repeat of both runs.
+- **Held-out:** no retrieval run now; it runs with the week 11 milestone held-out.
+- **Next measure:** step 9 (the agent eval) measures whether the extra ids matter in drafts.
