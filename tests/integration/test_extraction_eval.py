@@ -18,6 +18,7 @@ from anemos.clock import FixedClock
 from anemos.email_cases import load_cases
 from anemos.extraction import ExtractionOutput
 from anemos.llm.adapter import PermanentError
+from anemos.prompts import CURRENT_EXTRACTION
 from anemos.llm.budget import Budget
 from anemos.llm.fake import Answer, ScriptedClient, Step
 
@@ -94,7 +95,8 @@ def test_the_eval_scores_fields_and_routing_case_by_case(
     [path] = (tmp_path / "results").glob("*-extraction-dev-gpt-6-luna.json")
     data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     run, summary = data["run"], data["summary"]
-    assert (run["prompt_version"].startswith("extraction_v2@"), run["dirty"]) == (True, False)
+    version = run["prompt_version"]
+    assert (version.startswith(f"{CURRENT_EXTRACTION.name}@"), run["dirty"]) == (True, False)
     # Effective: the request fields count only for the 3 requests (el-change-dates and
     # en-invoice-vat are kind other); raw: all 5, the failed call wrong on every field.
     assert summary["field_accuracy"]["adults"] == 2 / 3

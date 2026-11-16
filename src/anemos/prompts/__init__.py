@@ -92,6 +92,18 @@ EXTRACTION_V2 = PromptSpec(
     reasoning_effort="none",
 )
 
+# v3 (docs/NOTES.md): (a) count the people the guest names, named children as children,
+# a bare "we" not a count; (b) injection only for text addressed to an AI, assistant or
+# "the system", never a request to the hotel. v2 left "my husband … we" at adults null
+# and flagged "as agreed on the phone we get 50% off" as an injection.
+EXTRACTION_V3 = PromptSpec(
+    name="extraction_v3",
+    schema=ExtractionOutput,
+    sha256_8="c5155ec7",
+    max_output_tokens=600,
+    reasoning_effort="none",
+)
+
 # The retrieval eval's all-chunks baseline (D15): every policy chunk and one query in,
 # up to 3 chunk ids out (an enum of the real ids). ~40 output tokens at most; reasoning
 # "none", as for extraction. Not used by a run: only eval/retrieval_eval.py sends it.
@@ -125,7 +137,7 @@ POLICY_SELECT_V2 = PromptSpec(
     reasoning_effort="none",
 )
 
-PROMPTS = (EXTRACTION_V1, EXTRACTION_V2, RETRIEVAL_BASELINE_V1, POLICY_SELECT_V1,
-           POLICY_SELECT_V2)  # fmt: skip
+PROMPTS = (EXTRACTION_V1, EXTRACTION_V2, EXTRACTION_V3, RETRIEVAL_BASELINE_V1,
+           POLICY_SELECT_V1, POLICY_SELECT_V2)  # fmt: skip
 CURRENT_POLICY_SELECT = POLICY_SELECT_V2  # what search_policies sends (D2, D15)
-CURRENT_EXTRACTION = EXTRACTION_V2  # what runs and evaluations send (D2)
+CURRENT_EXTRACTION = EXTRACTION_V3  # what runs and evaluations send (D2)
