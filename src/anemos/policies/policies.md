@@ -66,7 +66,7 @@ The hotel has no car park of its own. There is free public parking 100 m from th
 
 ## Smoking
 <!-- policy_id: smoking -->
-Smoking is not allowed indoors, including in the rooms. You are welcome to smoke in the garden.
+Smoking is not allowed indoors, including in the rooms, or on the balconies. You are welcome to smoke in the garden.
 
 ## Standard Double room
 <!-- policy_id: room-standard-double -->
@@ -82,7 +82,7 @@ Our Family Suites have a kitchenette and sleep up to 4 guests: 2 in the double b
 
 ## Accessible Double room
 <!-- policy_id: room-accessible-double -->
-Our Accessible Double room is step-free and sleeps up to 2 guests. A baby cot can be added; there is no room for an extra bed.
+Our Accessible Double room is step-free, with a step-free shower, and sleeps up to 2 guests. A baby cot can be added; there is no room for an extra bed.
 
 ## Extra beds
 <!-- policy_id: extra-beds -->

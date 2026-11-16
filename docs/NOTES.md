@@ -319,3 +319,7 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Result:** 55 cases, 40 dev / 15 held-out (73/27); NO_POLICY 0 → 3 cases, COMPLAINT 1 → 2, DISCOUNT 2 → 3; policy questions 2 → 8; chunks named by a case 3 → 12.
 - **`policy_ids` means "must be retrieved"** (in any `search_policies` top 3 of the run); extra relevant ids are not counted wrong (docs/email-format.md).
 - **Not built yet:** 9 of the 12 need the agent loop (policy answers, NO_POLICY, COMPLAINT, DISCOUNT), so the list of cases the router cannot reach grows from 7 to 16 until step 8; the 3 v3 cases already route as labelled on their gold extraction.
+
+## 2026-11-16 · Two policy gaps found by realistic queries
+- **Finding:** reviewing the mentor's retrieval queries against the chunk texts showed two questions a guest would ask that the right chunk could not answer: smoking on a balcony (the chunk said "indoors" and "the garden"; a balcony is neither) and a usable bathroom in the Accessible Double (no chunk mentioned it).
+- **Decision (owner):** fixed as policy content, not tuned for ranking: `smoking` now says "not indoors, including in the rooms, or on the balconies"; `room-accessible-double` now says "with a step-free shower". SPEC Domain data updated to match; the query labels did not change. Only the two changed chunks were embedded again (2 µ$, `embeddings.json`).

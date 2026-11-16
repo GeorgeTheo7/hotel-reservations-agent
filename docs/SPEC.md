@@ -100,7 +100,7 @@ One user, the owner, works through an overnight batch of 20–40 emails each mor
 | Standard Double | 6 | 2/2 | cot only | garden view |
 | Sea View Double | 4 | 2/3 | 1 extra bed | balcony |
 | Family Suite | 3 | 2/4 | sofa beds (persons 3–4 charged as extra beds) | kitchenette |
-| Accessible Double | 1 | 2/2 | cot only | step-free; offered without stated need only if nothing else fits (owner flag) |
+| Accessible Double | 1 | 2/2 | cot only | step-free, with a step-free shower; offered without stated need only if nothing else fits (owner flag) |
 
 Open 15 Apr–31 Oct. Seasons: Low 15 Apr–31 May & Oct · Mid 1 Jun–14 Jul & Sep · High 15 Jul–31 Aug.
 Rates € per room-night (Low/Mid/High): Std 70/95/140 · Sea 95/130/190 · Suite 140/180/260 · Accessible 70/95/140. Each night at its own season.
@@ -110,7 +110,7 @@ House facts (week 5, for the policies; one per line):
 - Payment: the deposit by bank transfer or card; the rest at the hotel by card or cash.
 - Wi-Fi: free in all rooms and public areas.
 - Parking: no hotel car park; free public parking 100 m from the hotel.
-- Smoking: not allowed indoors; allowed in the garden.
+- Smoking: not allowed indoors or on the balconies; allowed in the garden.
 - Luggage: stored free of charge on the day of arrival and of departure.
 - Early check-in / late check-out: on request, depending on the day's bookings; confirmed on the day.
 
