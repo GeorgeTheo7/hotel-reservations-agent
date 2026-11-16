@@ -284,3 +284,9 @@ Each entry: symptom, cause, evidence, fix, in at most five lines. Newest last.
 - **Measured:** full suite before (10 runs) 133–166 s, median ~139 s, 1 error; after (5 runs) 113–117 s, median ~116 s, 0 errors. Ports to :5433 held right after an integration-only run: 2,245 before, 1,732 after (-23%); after a full run ~1,720. Most of the remaining churn is from `committed_db` tests, the API (one connection per request) and runs (one short transaction per step, D65), all on their own connections by design. Five clean runs do not prove the error is gone (at the old rate of ~1 in 10, five clean runs happen about 6 times in 10); if it comes back, the next step is a connection pool for `committed_db` and the API (the API pool is already on the Later list).
 - **Mutations caught:** `db` without a rolled-back transaction, so a commit goes through (3 harness tests); the after-test check removed (`test_a_raw_commit_under_the_rolled_back_fixture_is_caught`).
 
+
+## 2026-11-16 · The agent loop cannot run inside the run's final transaction (D71)
+- **Symptom (found in planning):** `route_and_draft` runs inside the final transaction with the sender lock held (D61, D65); an agent loop of up to 8 model calls there would hold the lock for tens of seconds.
+- **Cause:** D65 was written for one extraction call before the final write; the loop adds model calls between tool calls.
+- **Fix (D71):** three phases on agent routes: commit extraction, request and routing; run the loop with nothing held, each tool call in its own short transaction; one short final transaction under the sender lock. Code-decided escalations and set-asides keep one final transaction.
+- **Trade-off:** the draft is no longer written against hotel data read in the final transaction (approval re-validates every offer, D47), and a crash mid-loop leaves the email `processing` until resume (week 10).
