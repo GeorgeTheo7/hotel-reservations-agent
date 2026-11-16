@@ -431,3 +431,10 @@ Runs on commit cb7f0e3 (clean tree), `extraction_v3@c5155ec7`, gpt-6-luna: dev `
 - **Email text escaped:** every `<` and `>` in the guest's subject and body becomes ‹ › (before: only `<email>` look-alikes), so an email cannot close `</email>` or any other block a prompt adds (the same hole as `</question>`). Applies to extraction too.
 - **The flat-schema check caught a real case:** `type ModelEscalationCode = Literal[...]` (a PEP 695 alias) is written by pydantic as a `$ref`; a plain `Literal` alias is inline.
 - **Mutations caught:** a write tool on a route (2 tests), `GROUP` added to escalate's enum (1), email text unescaped (3).
+
+## 2026-11-16 · The agent loop and `agent_v1`
+- **What counts toward 8:** every turn that produced a call: a read tool, a call the adapter rejected (`UnknownTool`, `InvalidArguments`, answered under its own `call_id` with `{"error": …}`), a refused call (an invalid query, `check_availability` on a window), and the final `write_draft` or `escalate`. 8 calls without either: `LOOP_LIMIT`, an invalid `write_draft` as the 8th call included; no 9th turn is sent.
+- **`SYSTEM_ERROR`** (D49): a reply cut off at the output limit (no `call_id` to answer, and resending the same prompt would likely be cut off again), any other failed turn, the budget refusing a turn, a bug in a tool. A tool result the rules end at (`Ends`) is escalated by code and never shown to the model (D11).
+- **The prompt's version covers the tools:** `ToolPromptSpec` hashes the text, every route's tool definitions as sent (strict functions) and the settings, so a changed tool description is a new version (`agent_v1@73d26941`). The model is told: the route, the reply language, what is missing (ask_info), then the escaped email; no prices, dates or room numbers in its own text, only `{{QUOTE_BLOCK}}`, `{{REQUEST_SUMMARY}}` and `{{OPEN_SEASON}}`; when to use each of the six codes (a discount said to be agreed is `DISCOUNT`).
+- **Mutations caught:** a 9th call allowed (2 tests), rejected calls not counted (2), a rule escalation returned to the model (1).
+

@@ -13,12 +13,14 @@ import hashlib
 import json
 from dataclasses import dataclass
 from importlib.resources import files
+from typing import Any
 
 from pydantic import BaseModel
 
+from anemos.agent.tools import TOOLS_BY_ROUTE
 from anemos.extraction import ExtractionOutput
 from anemos.llm.adapter import Effort
-from anemos.llm.openai_client import text_format
+from anemos.llm.openai_client import function_tool, text_format
 from anemos.policies import BaselineAnswer, PolicySelection
 from anemos.policies.selection_v1 import PolicySelection as PolicySelectionV1
 
@@ -50,6 +52,52 @@ class PromptSpec:
             max_output_tokens=self.max_output_tokens,
             reasoning_effort=self.reasoning_effort,
         )
+
+
+@dataclass(frozen=True)
+class ToolPromptSpec:
+    """A prompt for tool turns (the agent loop, D11): its hash covers the prompt text,
+    every route's tool definitions exactly as sent (strict functions) and the call
+    settings, so a changed tool description or argument is a new version too."""
+
+    name: str
+    sha256_8: str  # pinned: see current_hash
+    max_output_tokens: int
+    reasoning_effort: Effort | None
+
+    @property
+    def file(self) -> str:
+        return f"{self.name}.md"
+
+    @property
+    def version(self) -> str:
+        return f"{self.name}@{self.sha256_8}"
+
+    def text(self) -> str:
+        return files("anemos.prompts").joinpath(self.file).read_text(encoding="utf-8")
+
+    def current_hash(self) -> str:
+        return tool_prompt_hash(
+            self.text(),
+            {route: [function_tool(t) for t in tools] for route, tools in TOOLS_BY_ROUTE.items()},
+            max_output_tokens=self.max_output_tokens,
+            reasoning_effort=self.reasoning_effort,
+        )
+
+
+def tool_prompt_hash(
+    text: str,
+    tools: dict[str, Any],
+    *,
+    max_output_tokens: int,
+    reasoning_effort: Effort | None,
+) -> str:
+    """As `content_hash`, with the tools as sent in place of one output schema."""
+    sent = {"tools": tools, "max_output_tokens": max_output_tokens,
+            "reasoning_effort": reasoning_effort}  # fmt: skip
+    payload = json.dumps(sent, sort_keys=True, ensure_ascii=False)
+    everything = text.replace("\r\n", "\n") + "\n--- sent with ---\n" + payload
+    return hashlib.sha256(everything.encode("utf-8")).hexdigest()[:8]
 
 
 def content_hash(
@@ -146,7 +194,19 @@ POLICY_SELECT_V2 = PromptSpec(
 AGENT_MAX_OUTPUT_TOKENS = 2_000
 AGENT_REASONING_EFFORT: Effort = "none"
 
-PROMPTS = (EXTRACTION_V1, EXTRACTION_V2, EXTRACTION_V3, RETRIEVAL_BASELINE_V1,
-           POLICY_SELECT_V1, POLICY_SELECT_V2)  # fmt: skip
+# The agent loop (D11, NOTES): tools per route, placeholders only for prices and dates,
+# the six escalation codes the model may choose.
+AGENT_V1 = ToolPromptSpec(
+    name="agent_v1",
+    sha256_8="73d26941",
+    max_output_tokens=AGENT_MAX_OUTPUT_TOKENS,
+    reasoning_effort=AGENT_REASONING_EFFORT,
+)
+CURRENT_AGENT = AGENT_V1  # what the agent loop sends (D2, D11)
+
+PROMPTS: tuple[PromptSpec | ToolPromptSpec, ...] = (
+    EXTRACTION_V1, EXTRACTION_V2, EXTRACTION_V3, RETRIEVAL_BASELINE_V1, POLICY_SELECT_V1,
+    POLICY_SELECT_V2, AGENT_V1,
+)  # fmt: skip
 CURRENT_POLICY_SELECT = POLICY_SELECT_V2  # what search_policies sends (D2, D15)
 CURRENT_EXTRACTION = EXTRACTION_V3  # what runs and evaluations send (D2)
