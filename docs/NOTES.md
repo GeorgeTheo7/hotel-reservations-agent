@@ -331,3 +331,22 @@ Written and committed before any retrieval eval call, so no rule is fitted to a 
 - **"Better":** the report lists, per query, which modes got it right. Hybrid counts as better or worse than vector only only with a difference of 3 or more queries (right in one and not the other). Below that, D15 stays as built and the title weight (migration 0014) is not tried.
 - **Is the third decimal real:** the dev run embeds the queries twice and reports the largest change in a query's best similarity between the two. If it is 0.0005 or more, the threshold's third decimal is noise, and the report says so.
 - **Follow-up after step 9:** add the agent's real `search_policies` queries from the agent eval as `source: agent`, labelled the same way, and rerun once with the threshold fixed.
+
+## 2026-11-16 · Retrieval eval, dev: findings
+Run: `eval/results/20261116T143544Z-retrieval-dev-gpt-6-luna.json` (commit 64e9c5c, clean tree; 48 dev queries: 33 in scope, 15 out of scope; rules as fixed in the entry above).
+- **Results (dev):** recall@3 / before the threshold / NO_MATCH precision / NO_MATCH recall:
+
+  | Mode | recall@3 | before threshold | NO_MATCH precision | NO_MATCH recall |
+  |---|---|---|---|---|
+  | vector | 94% (31/33) | 97% | 92% | 80% (12/15) |
+  | full_text | 67% (22/33) | 67% | 100% | 20% (3/15) |
+  | hybrid | 70% (23/33) | 73% | 92% | 80% (12/15) |
+  | all_chunks | 100% (33/33) | 100% | 100% | 100% (15/15) |
+
+  By group, vector recall@3 / NO_MATCH recall: mentor 90% / 75% (10 in, 4 out), Claude-written 94% / 78% (17 in, 9 out), email-sourced 100% / 100% (6 in, 2 out). Email-sourced queries reuse the chunks' words and are easy for every mode (full text 100%).
+- **Hybrid against vector only: worse, 8 queries to 0** (the rule needs 3): q-m-how-much-upfront, q-m-teenager-in-parents-room, q-c-room-ready, q-c-after-midnight, q-c-room-straight-away, q-c-cook-for-kids, q-c-four-in-one-room, q-c-move-our-booking. **Mechanism:** the full-text list ORs the query's lexemes with no IDF, so for a paraphrased query it ranks chunks that share generic words (`holds-and-confirmation`, `groups`, `breakfast`); RRF weighs that list like the vector list, so a chunk on both lists at middling ranks beats one that is first on the vector list only (q-c-after-midnight: `late-arrival` first by vector, out of the hybrid top 3).
+- **Threshold:** the rule chose **0.394** (k = 1 of 33 in scope; s(k+1) = 0.4003, q-c-cook-for-kids; highest out-of-scope below it 0.3884, q-m-laundry; midpoint rounded). The one in-scope query at NO_MATCH is q-c-teens-own-room (0.384, `children` ranked first). Recorded as what the rule chose; not set in code.
+- **Out of scope through the threshold (3 of 15), all near-misses:** q-m-rental-car (0.564, `transfer` first), q-c-food-to-room (0.456), q-c-ferry-tickets (0.450, `transfer` first). A draft would have answered them from the wrong chunk.
+- **Vector misses in scope:** q-c-teens-own-room (the allowed NO_MATCH) and q-m-baby-and-six-year-old (`extra-beds` not in the top 3).
+- **Stability:** largest change in a best similarity between two embeddings 0.00012 (< 0.0005: the third decimal is stable).
+- **Cost:** 8,231 µ$ (worst case 35,574 µ$).
