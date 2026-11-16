@@ -1,0 +1,600 @@
+# Retrieval eval queries (D15; step 4: recall@3 and the NO_MATCH threshold).
+#
+# Each entry:
+#   id:         unique, kebab-case
+#   query:      English, as the agent would write it, at most 300 characters
+#   expected:   policy_ids that must all be in the top 3; [] = out of scope, NO_MATCH expected
+#   source:     written | email (taken from a test email's wording)
+#   case:       the email's id when source is email, else null
+#   written_by: owner | claude | mentor
+#               (mentor: written in the owner's review chat without reading policies.md)
+#   split:      dev | held_out (about 30% held out, in scope and out of scope separately)
+#   note:       optional
+#
+# Extra relevant ids in the top 3 are not counted wrong.
+
+# Written by the mentor chat without reading policies.md (ids and SPEC facts only).
+# Labels must be checked against the chunk texts before the first run (see below).
+
+- id: q-m-pay-rest-on-arrival
+  query: "Can the remaining balance be paid in cash when we arrive?"
+  expected: [payment-methods]
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+
+- id: q-m-money-back-if-plans-change
+  query: "If we have to call off our August trip three weeks before arrival, do we lose any money?"
+  expected: [cancellation]
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+  note: "the high-season rule (30 days) makes the answer yes; no shared word 'cancel'"
+
+- id: q-m-how-much-upfront
+  query: "How much do we need to pay in advance to secure the room?"
+  expected: [deposit]
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+  note: "holds-and-confirmation is a fair extra hit"
+
+- id: q-m-ferry-near-midnight
+  query: "Our ferry gets in close to midnight. Will someone be there to let us in?"
+  expected: [late-arrival]
+  source: written
+  case: null
+  written_by: mentor
+  split: held_out
+
+- id: q-m-baby-sleep
+  query: "We are travelling with our one-year-old. Do you have something for the baby to sleep in?"
+  expected: [cots-and-infants]
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+
+- id: q-m-teenager-in-parents-room
+  query: "What do you charge if our 14-year-old sleeps in the same room as us?"
+  expected: [extra-beds]
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+
+- id: q-m-wheelchair-room
+  query: "My father uses a wheelchair. Is there a room with no steps and a bathroom he can use?"
+  expected: [accessibility, room-accessible-double]
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+  note: "two ids: the need and the room"
+
+- id: q-m-morning-meal-until
+  query: "Until what time can we have our morning meal?"
+  expected: [breakfast]
+  source: written
+  case: null
+  written_by: mentor
+  split: held_out
+  note: "avoids the word breakfast"
+
+- id: q-m-cigarette-balcony
+  query: "Is it all right to have a cigarette on the balcony?"
+  expected: [smoking]
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+
+- id: q-m-family-reunion
+  query: "We are planning a family reunion and need five rooms for the same week. How does that work?"
+  expected: [groups]
+  source: written
+  case: null
+  written_by: mentor
+  split: held_out
+
+- id: q-m-one-night-mid-august
+  query: "Can we stay for just one night in mid-August?"
+  expected: [minimum-stay]
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+
+- id: q-m-open-end-of-march
+  query: "Are you open at the end of March?"
+  expected: [season-and-opening]
+  source: written
+  case: null
+  written_by: mentor
+  split: held_out
+
+- id: q-m-baby-and-six-year-old
+  query: "We have a baby and a six-year-old. What sleeping arrangements can you add to our room?"
+  expected: [cots-and-infants, extra-beds]
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+  note: "needs both chunks; children is a fair extra hit"
+
+- id: q-m-local-tax
+  query: "Is there a local tax on top of the room price, and is it already included?"
+  expected: [city-tax]
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+
+- id: q-m-keep-room-until-evening
+  query: "Our flight leaves in the evening. Can we keep the room after midday?"
+  expected: [early-check-in-late-check-out]
+  source: written
+  case: null
+  written_by: mentor
+  split: held_out
+
+# Out of scope: NO_MATCH expected
+
+- id: q-m-laundry
+  query: "Can we get our clothes washed during our stay?"
+  expected: []
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+
+- id: q-m-babysitter
+  query: "Is there someone who could look after our children for one evening?"
+  expected: []
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+  note: "near-miss: children"
+
+- id: q-m-evening-meal
+  query: "Do you serve an evening meal at the hotel?"
+  expected: []
+  source: written
+  case: null
+  written_by: mentor
+  split: held_out
+  note: "near-miss: breakfast"
+
+- id: q-m-rental-car
+  query: "Can you arrange a rental car for us at the port?"
+  expected: []
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+  note: "near-miss: transfer"
+
+- id: q-m-massage
+  query: "Do you offer massages?"
+  expected: []
+  source: written
+  case: null
+  written_by: mentor
+  split: dev
+
+# Written by Claude (has read policies.md: paraphrased on purpose)
+
+- id: q-c-room-ready
+  query: "What time can we get into our room on the day we arrive?"
+  expected: [check-in-check-out]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "early-check-in-late-check-out is a fair extra"
+
+- id: q-c-after-midnight
+  query: "We land at 23:30 and won't reach you before half past midnight. Is that a problem?"
+  expected: [late-arrival]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+
+- id: q-c-room-straight-away
+  query: "Our boat arrives at 8 in the morning. Could we have the room straight away?"
+  expected: [early-check-in-late-check-out]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "check-in-check-out is a fair extra"
+
+- id: q-c-suitcases-last-day
+  query: "After we leave the room on the last day, can we keep our suitcases with you until our evening ferry?"
+  expected: [luggage-storage]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+
+- id: q-c-keep-room-while-deciding
+  query: "Can you keep a room for us for a couple of days while we decide?"
+  expected: [holds-and-confirmation]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+
+- id: q-c-airport-pickup
+  query: "Can someone pick us up from the airport, and what does it cost for four people?"
+  expected: [transfer]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+
+- id: q-c-garden-room
+  query: "Which of your rooms looks onto the garden, and how many people can stay in it?"
+  expected: [room-standard-double]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+
+- id: q-c-three-sea-view
+  query: "Can three of us share a room with a view of the sea?"
+  expected: [room-sea-view-double]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "extra-beds is a fair extra"
+
+- id: q-c-cook-for-kids
+  query: "Do you have a room where we can prepare simple meals for the kids?"
+  expected: [room-family-suite]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "the kitchenette; near breakfast by 'meals'"
+
+- id: q-c-four-in-one-room
+  query: "We are two adults with two kids. Is there one room big enough for all four of us?"
+  expected: [room-family-suite]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+
+- id: q-c-young-children
+  query: "Are young children welcome at your hotel, and what do you need to know about them?"
+  expected: [children]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+
+- id: q-c-teens-own-room
+  query: "Can our two teenagers, 15 and 17, have their own room next to ours?"
+  expected: [children]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "under 18 stay with an adult"
+
+- id: q-c-wedding-guests
+  query: "We are bringing twenty friends to a wedding on the island and need rooms for all of them."
+  expected: [groups]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "contrast with q-c-wedding-reception (out of scope)"
+
+- id: q-c-open-late-october
+  query: "Will you still be open in the last week of October?"
+  expected: [season-and-opening]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+
+- id: q-c-move-our-booking
+  query: "We already have a reservation with you. Can we move it to a week later?"
+  expected: [changes-and-cancellation-requests]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+
+- id: q-c-how-to-pay-deposit
+  query: "How do we pay the deposit, and how much is it?"
+  expected: [deposit, payment-methods]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "two ids"
+
+- id: q-c-two-nights-end-july
+  query: "Is two nights enough for a stay at the end of July?"
+  expected: [minimum-stay]
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "season-and-opening is a fair extra"
+
+- id: q-c-card-at-the-end
+  query: "Do you take credit cards when we settle the bill at the end?"
+  expected: [payment-methods]
+  source: written
+  case: null
+  written_by: claude
+  split: held_out
+
+- id: q-c-online-in-room
+  query: "Will we be able to get online from our room?"
+  expected: [wifi]
+  source: written
+  case: null
+  written_by: claude
+  split: held_out
+
+- id: q-c-guide-dog
+  query: "I am blind and travel with my guide dog. Can she stay with me?"
+  expected: [pets-assistance-dogs]
+  source: written
+  case: null
+  written_by: claude
+  split: held_out
+
+- id: q-c-tourist-tax-may
+  query: "How much tourist tax do we pay per night for a stay in May?"
+  expected: [city-tax]
+  source: written
+  case: null
+  written_by: claude
+  split: held_out
+
+- id: q-c-shortest-stay-12-august
+  query: "We arrive on 12 August. What is the shortest stay we can book?"
+  expected: [minimum-stay]
+  source: written
+  case: null
+  written_by: claude
+  split: held_out
+
+# Written by Claude, out of scope: NO_MATCH expected (near-misses noted)
+
+- id: q-c-ev-charging
+  query: "Is there somewhere to charge an electric car?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "near-miss: parking"
+
+- id: q-c-ferry-tickets
+  query: "Can you book our ferry tickets from Piraeus for us?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "near-miss: transfer (port)"
+
+- id: q-c-bicycles
+  query: "Do you rent out bicycles?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "near-miss: transfer"
+
+- id: q-c-gift-voucher
+  query: "Can I buy a gift voucher for a stay as a present?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "near-miss: payment-methods"
+
+- id: q-c-hairdryer
+  query: "Is there a hairdryer in the bathroom?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "near-miss: room chunks (shower)"
+
+- id: q-c-food-to-room
+  query: "Can we order food to our room in the evening?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "room service: left out on purpose"
+
+- id: q-c-sauna
+  query: "Is there a sauna or a hot tub?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "spa: left out on purpose"
+
+- id: q-c-lunch
+  query: "Can we get lunch at the hotel?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "near-miss: breakfast"
+
+- id: q-c-wedding-reception
+  query: "Could we hold our wedding reception in your garden?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: dev
+  note: "near-miss: groups, smoking (garden)"
+
+- id: q-c-change-dollars
+  query: "Can we change dollars into euros at reception?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: held_out
+  note: "near-miss: payment-methods"
+
+- id: q-c-beach-umbrellas
+  query: "Do you lend beach umbrellas and towels?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: held_out
+
+- id: q-c-boat-trip
+  query: "Can you arrange a boat trip around the island?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: held_out
+  note: "near-miss: transfer"
+
+- id: q-c-room-safe
+  query: "Is there a safe in the room for our passports?"
+  expected: []
+  source: written
+  case: null
+  written_by: claude
+  split: held_out
+  note: "near-miss: room chunks"
+
+# From the test emails' wording (as the agent would write the query); split = the email's
+
+- id: q-e-pets
+  query: "Are pets allowed at the hotel? We have a small dog."
+  expected: [pets-assistance-dogs]
+  source: email
+  case: el-pets-policy
+  written_by: claude
+  split: dev
+
+- id: q-e-breakfast
+  query: "Is breakfast included, and until what time is it served?"
+  expected: [breakfast]
+  source: email
+  case: en-quote-plus-breakfast
+  written_by: claude
+  split: dev
+
+- id: q-e-cancellation
+  query: "What is your cancellation policy for a stay in August?"
+  expected: [cancellation]
+  source: email
+  case: en-policy-cancellation-deposit
+  written_by: claude
+  split: dev
+
+- id: q-e-deposit
+  query: "How much deposit do you take?"
+  expected: [deposit]
+  source: email
+  case: en-policy-cancellation-deposit
+  written_by: claude
+  split: dev
+
+- id: q-e-parking
+  query: "We are coming by car. Do you have parking at the hotel?"
+  expected: [parking]
+  source: email
+  case: el-greeklish-parking-wifi
+  written_by: claude
+  split: dev
+
+- id: q-e-wifi
+  query: "Is the Wi-Fi free?"
+  expected: [wifi]
+  source: email
+  case: el-greeklish-parking-wifi
+  written_by: claude
+  split: dev
+
+- id: q-e-transfer
+  query: "Is there a transfer from the port to the hotel, and how much is it for 3 people with luggage?"
+  expected: [transfer]
+  source: email
+  case: el-greeklish-transfer-policy
+  written_by: claude
+  split: held_out
+
+- id: q-e-check-in-time
+  query: "We arrive on the 9:00 ferry. What time is check-in?"
+  expected: [check-in-check-out]
+  source: email
+  case: el-policy-checkin-luggage
+  written_by: claude
+  split: held_out
+
+- id: q-e-luggage
+  query: "Can we leave our luggage at the hotel until check-in?"
+  expected: [luggage-storage]
+  source: email
+  case: el-policy-checkin-luggage
+  written_by: claude
+  split: held_out
+
+- id: q-e-extra-bed
+  query: "Can our 8-year-old daughter have an extra bed in a standard double room, and how much is it?"
+  expected: [extra-beds, room-standard-double]
+  source: email
+  case: el-policy-extra-bed-child
+  written_by: claude
+  split: held_out
+  note: "two ids"
+
+- id: q-e-pool-gym
+  query: "Does the hotel have a swimming pool or a gym?"
+  expected: []
+  source: email
+  case: en-nomatch-pool-gym
+  written_by: claude
+  split: dev
+
+- id: q-e-dinner
+  query: "Do you serve dinner at the hotel?"
+  expected: []
+  source: email
+  case: en-quote-plus-dinner
+  written_by: claude
+  split: dev
+  note: "near-miss: breakfast"
+
+- id: q-e-scooter
+  query: "Do you rent scooters, or can you book one for us for a week?"
+  expected: []
+  source: email
+  case: el-nomatch-scooter-hire
+  written_by: claude
+  split: held_out
+  note: "near-miss: transfer"
