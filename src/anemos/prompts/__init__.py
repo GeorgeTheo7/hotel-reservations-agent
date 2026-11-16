@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from anemos.extraction import ExtractionOutput
 from anemos.llm.adapter import Effort
 from anemos.llm.openai_client import text_format
+from anemos.retrieval_scoring import BaselineAnswer
 
 
 @dataclass(frozen=True)
@@ -90,5 +91,16 @@ EXTRACTION_V2 = PromptSpec(
     reasoning_effort="none",
 )
 
-PROMPTS = (EXTRACTION_V1, EXTRACTION_V2)
+# The retrieval eval's all-chunks baseline (D15): every policy chunk and one query in,
+# up to 3 chunk ids out (an enum of the real ids). ~40 output tokens at most; reasoning
+# "none", as for extraction. Not used by a run: only eval/retrieval_eval.py sends it.
+RETRIEVAL_BASELINE_V1 = PromptSpec(
+    name="retrieval_baseline_v1",
+    schema=BaselineAnswer,
+    sha256_8="9f50617c",
+    max_output_tokens=100,
+    reasoning_effort="none",
+)
+
+PROMPTS = (EXTRACTION_V1, EXTRACTION_V2, RETRIEVAL_BASELINE_V1)
 CURRENT_EXTRACTION = EXTRACTION_V2  # what runs and evaluations send (D2)
