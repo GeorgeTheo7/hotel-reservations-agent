@@ -15,7 +15,7 @@ from functools import cache
 from importlib.resources import files
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 POLICY_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 _ID_LINE = re.compile(r"<!--\s*policy_id:\s*(\S+)\s*-->")
@@ -86,13 +86,18 @@ PolicyId = Literal[
 ]  # fmt: skip
 
 
+MAX_SELECTED = 3  # D15: the selector names at most 3 chunks
+
+
 class PolicySelection(BaseModel):
-    """The selector's answer (policy_select_v1): the ids of the chunks that answer the
-    question, most useful first; an empty list when none does."""
+    """The selector's answer (policy_select_v2): only the ids of the chunks needed to
+    answer the question, most relevant first, at most 3; an empty list when none does."""
 
     model_config = ConfigDict(extra="forbid")
 
-    policy_ids: list[PolicyId]
+    # maxItems in the strict schema: the model cannot return a 4th id, and a reply that
+    # did would not parse (a failed call, never a silent cut). v1's schema had no limit.
+    policy_ids: list[PolicyId] = Field(max_length=MAX_SELECTED)
 
 
 # The retrieval eval's all-chunks baseline answer (retrieval_baseline_v1): the same shape

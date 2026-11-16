@@ -7,12 +7,13 @@ One call, in this order:
    `InvalidQuery`, an invalid call that counts toward the loop's 8 (D11); its message
    tells the model how to fix the query. No model call.
 2. One structured call through the LLM adapter (budget, one retry, an audit row per
-   attempt with the run's email id): prompt `policy_select_v1`, every packaged chunk
-   and then the query, so the instructions and the chunks are a cached prefix. The
-   answer is up to 3 ids from an enum of the real ids (`PolicySelection`).
-   A failed call, a reply cut off at the output limit included, raises `LLMError`:
-   never `NoMatch`. The loop escalates it `SYSTEM_ERROR` (D49).
-3. The first 3 distinct ids are the hits; an empty list is `NoMatch` → `NO_POLICY`.
+   attempt with the run's email id): the current prompt (`policy_select_v2`), every
+   packaged chunk and then the query, so the instructions and the chunks are a cached
+   prefix. The answer is at most 3 ids (maxItems in the schema) from an enum of the
+   real ids (`PolicySelection`). A failed call, a reply cut off at the output limit or
+   one that does not fit the schema included, raises `LLMError`: never `NoMatch`, and
+   never a silent cut of a 4th id. The loop escalates it `SYSTEM_ERROR` (D49).
+3. The distinct ids are the hits; an empty list is `NoMatch` → `NO_POLICY`.
 
 The chunks come from the packaged policies.md: no database and no transaction. The
 record keeps each hit's text and the hash of policies.md, so guardrails 2 and 6 check a
@@ -31,11 +32,10 @@ from anemos.llm.adapter import LLM, Prompt, Settings
 from anemos.policies import PolicyChunk, PolicySelection, load_policies
 from anemos.policies.embeddings import policies_sha256, text_sha256
 from anemos.policies.query import InvalidQuery, check_query
-from anemos.prompts import POLICY_SELECT_V1
+from anemos.prompts import CURRENT_POLICY_SELECT
 
 STEP = "search_policies"
 SELECTOR_MODEL = "gpt-6-luna"  # D2, D15
-TOP_K = 3
 
 
 def policies_block(chunks: Sequence[PolicyChunk]) -> str:
@@ -52,7 +52,7 @@ def _packaged_block() -> str:
 def selector_prompt(query: str) -> Prompt:
     """Instructions, then every chunk, then the query last: the cached prefix."""
     return Prompt(
-        instructions=POLICY_SELECT_V1.text(),
+        instructions=CURRENT_POLICY_SELECT.text(),
         input=f"{_packaged_block()}<question>\n{query}\n</question>",
     )
 
@@ -116,7 +116,7 @@ def select(llm: LLM, query: str, *, email_id: int | None) -> PolicyHits | NoMatc
     checked = check_query(query)
     if isinstance(checked, InvalidQuery):
         return checked
-    spec = POLICY_SELECT_V1
+    spec = CURRENT_POLICY_SELECT
     settings = Settings(SELECTOR_MODEL, spec.max_output_tokens, spec.reasoning_effort)
     result = llm.structured(selector_prompt(checked), PolicySelection, step=STEP,
                             prompt_version=spec.version, email_id=email_id,
@@ -125,7 +125,7 @@ def select(llm: LLM, query: str, *, email_id: int | None) -> PolicyHits | NoMatc
     selection = Selection(checked, returned, policies_sha256(), result.model,
                           result.response_model, spec.version)  # fmt: skip
     chunks = {c.policy_id: c for c in load_policies()}
-    ids = list(dict.fromkeys(returned))[:TOP_K]  # repeated ids count once
+    ids = list(dict.fromkeys(returned))  # repeated ids count once; at most 3 by the schema
     if not ids:
         return NoMatch(selection)
     hits = tuple(Hit(i, chunks[i].title, chunks[i].text, text_sha256(chunks[i])) for i in ids)

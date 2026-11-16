@@ -20,6 +20,7 @@ from anemos.extraction import ExtractionOutput
 from anemos.llm.adapter import Effort
 from anemos.llm.openai_client import text_format
 from anemos.policies import BaselineAnswer, PolicySelection
+from anemos.policies.selection_v1 import PolicySelection as PolicySelectionV1
 
 
 @dataclass(frozen=True)
@@ -102,16 +103,29 @@ RETRIEVAL_BASELINE_V1 = PromptSpec(
     reasoning_effort="none",
 )
 
-# The policy selector (D15): search_policies. The same text as retrieval_baseline_v1,
+# The policy selector (D15): search_policies. v1: the same text as retrieval_baseline_v1,
 # which scored 100% / 100% on the dev queries (a test keeps the two texts equal); its own
 # name and schema (PolicySelection), so a run's prompt_version is never "baseline".
 POLICY_SELECT_V1 = PromptSpec(
     name="policy_select_v1",
-    schema=PolicySelection,
+    schema=PolicySelectionV1,
     sha256_8="a2c70954",
     max_output_tokens=100,
     reasoning_effort="none",
 )
 
-PROMPTS = (EXTRACTION_V1, EXTRACTION_V2, RETRIEVAL_BASELINE_V1, POLICY_SELECT_V1)
+# v2 (docs/NOTES.md): only the ids needed to answer, never more than 3, and maxItems 3 in
+# the schema. v1 returned up to 7 ids on the dev wiring check, and the code silently kept
+# the first 3.
+POLICY_SELECT_V2 = PromptSpec(
+    name="policy_select_v2",
+    schema=PolicySelection,
+    sha256_8="a8eea53b",
+    max_output_tokens=100,
+    reasoning_effort="none",
+)
+
+PROMPTS = (EXTRACTION_V1, EXTRACTION_V2, RETRIEVAL_BASELINE_V1, POLICY_SELECT_V1,
+           POLICY_SELECT_V2)  # fmt: skip
+CURRENT_POLICY_SELECT = POLICY_SELECT_V2  # what search_policies sends (D2, D15)
 CURRENT_EXTRACTION = EXTRACTION_V2  # what runs and evaluations send (D2)

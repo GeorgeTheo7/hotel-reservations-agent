@@ -15,13 +15,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 from anemos.clock import FixedClock
-from anemos.llm.adapter import Prompt, Settings
+from anemos.llm.adapter import PermanentError, Prompt, Settings
 from anemos.llm.budget import Budget
 from anemos.llm.fake import Answer, HashingEmbedClient, ScriptedClient, Step
 from anemos.policies import load_policies
 from anemos.policies.embeddings import EMBEDDING_DIMENSIONS, policies_sha256
 from anemos.policies.search import selector_prompt
-from anemos.prompts import POLICY_SELECT_V1
+from anemos.prompts import CURRENT_POLICY_SELECT
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's class is for mypy only
     from conftest import CommittedDb
@@ -78,7 +78,7 @@ def test_a_dev_run_records_everything_the_result_needs(
     assert run_["policies_sha256"] == policies_sha256()
     assert run_["embedding_model"] == "text-embedding-3-small"
     assert (run_["selector_model"], run_["selector_prompt_version"]) == (
-        "gpt-6-luna", POLICY_SELECT_V1.version)  # fmt: skip
+        "gpt-6-luna", CURRENT_POLICY_SELECT.version)  # fmt: skip
     assert run_["selector_settings"] == {"max_output_tokens": 100, "reasoning_effort": "none"}
     assert run_["selector_response_models"] == ["gpt-6-luna"] and run_["repeat"] == 1
     assert run_["threshold_choice"]["threshold"] == run_["search_settings"]["threshold"]
@@ -94,8 +94,9 @@ def test_a_dev_run_records_everything_the_result_needs(
     assert module.third_decimal(0.0005) == "the threshold's third decimal is noise"
     assert summary["hybrid_vs_vector"]["verdict"] in {"better", "worse", "same"}
     row = next(r for r in data["queries"] if r["id"] == "q-e-breakfast")
-    assert row["selector"] == [{"top": ["breakfast"], "no_match": False, "right": True,
-                                "returned": ["breakfast"]}]  # fmt: skip
+    assert row["selector"] == [{"top": ["breakfast"], "no_match": False, "failed": False,
+                                "right": True, "returned": ["breakfast"],
+                                "error": None}]  # fmt: skip
 
 
 def test_the_selector_is_the_production_call(
@@ -197,3 +198,33 @@ def test_the_result_is_written_before_the_report_is_printed(
     with pytest.raises(UnicodeEncodeError):
         run(module, committed_db, tmp_path, "--split", "dev")
     assert len(list(tmp_path.glob("*-retrieval-dev-*.json"))) == 1
+
+
+def test_a_failed_selector_call_is_recorded_and_the_run_goes_on(
+    module: ModuleType, committed_db: CommittedDb, tmp_path: Path
+) -> None:
+    """A call that fails (here a permanent error on q-e-wifi's 2nd repeat) is a wrong
+    answer with its error recorded; the other calls and the result file are kept."""
+    calls: dict[str, int] = {}
+
+    def fails_once(prompt: Prompt) -> Answer | PermanentError:
+        question = prompt.input.rsplit("<question>", 1)[1]
+        calls[question] = calls.get(question, 0) + 1
+        if "Wi-Fi free" in question and calls[question] == 2:
+            return PermanentError("unparsable reply: 4 ids")
+        if "Wi-Fi free" in question:
+            return Answer({"policy_ids": ["wifi", "parking", "transfer"]})
+        return breakfast_or_nothing(prompt)
+
+    code, client, _ = run(module, committed_db, tmp_path, "--split", "dev", "--repeat", "2",
+                          "--max-usd", "1", step=fails_once)  # fmt: skip
+    data = json.loads(next(tmp_path.glob("*-retrieval-dev-*.json")).read_text(encoding="utf-8"))
+    assert code == 0 and len(client.sent) == 2 * 48
+    row = next(r for r in data["queries"] if r["id"] == "q-e-wifi")
+    assert row["selector"][1]["failed"] is True and row["selector"][1]["right"] is False
+    assert row["selector"][1]["returned"] is None
+    assert "unparsable reply" in row["selector"][1]["error"]
+    assert row["selector_consistent"] is False
+    summary = data["summary"]
+    assert summary["selector_failed_calls"] == 1
+    assert summary["selector_largest_returned"] == 3

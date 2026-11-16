@@ -44,6 +44,7 @@ from anemos.evaluation import git_state
 from anemos.llm.adapter import (
     LLM,
     EmbedClient,
+    LLMError,
     ModelClient,
     Settings,
     max_embed_input_tokens,
@@ -67,9 +68,10 @@ from anemos.policies.ranking import (
     packaged_source,
 )
 from anemos.policies.search import SELECTOR_MODEL, NoMatch, PolicyHits, select, selector_prompt
-from anemos.prompts import POLICY_SELECT_V1
+from anemos.prompts import CURRENT_POLICY_SELECT
 from anemos.retrieval_eval import RetrievalQuery, Split, load_queries
 from anemos.retrieval_scoring import (
+    FAILED,
     RANKING_MODES,
     Mode,
     ModeAnswer,
@@ -99,7 +101,8 @@ class QueryResult:
     best_similarity_again: float  # from the second embedding of the same query
     answers: dict[Mode, ModeAnswer]  # the ranking modes
     selector: list[ModeAnswer]  # one per repeat
-    selector_returned: list[list[str]]  # the ids as the model returned them, per repeat
+    selector_returned: list[list[str] | None]  # the ids as returned, per repeat (None: failed)
+    selector_errors: list[str | None]  # the LLMError of a failed call, per repeat
 
 
 def estimate(queries: Sequence[RetrievalQuery], repeat: int) -> int:
@@ -110,7 +113,7 @@ def estimate(queries: Sequence[RetrievalQuery], repeat: int) -> int:
     calls = sum(
         max_cost(SELECTOR_MODEL,
                  max_input_tokens=max_input_tokens(selector_prompt(q.query), PolicySelection),
-                 max_output_tokens=POLICY_SELECT_V1.max_output_tokens)
+                 max_output_tokens=CURRENT_POLICY_SELECT.max_output_tokens)
         for q in queries
     )  # fmt: skip
     return 2 * embed + repeat * calls
@@ -163,7 +166,7 @@ def main(
     spent_before = budget.spent()
     openai = OpenAIClient()  # no network until a call; replaced by fakes in tests
     # The selector passes its own settings (D2); these defaults are never used for it.
-    llm = LLM(client or openai, Settings(SELECTOR_MODEL, POLICY_SELECT_V1.max_output_tokens),
+    llm = LLM(client or openai, Settings(SELECTOR_MODEL, CURRENT_POLICY_SELECT.max_output_tokens),
               budget, None, clock, embed_client=embed_client or openai)  # fmt: skip
     source = packaged_source()
     texts = [q.query for q in queries]
@@ -186,23 +189,31 @@ def main(
     results: list[QueryResult] = []
     for query, found, found_again, top in zip(queries, rows, rows_again, best, strict=True):
         repeats: list[ModeAnswer] = []
-        returned: list[list[str]] = []
+        returned: list[list[str] | None] = []
+        errors: list[str | None] = []
         for _ in range(args.repeat):
-            result = selector_call(llm, query)
+            try:
+                result = selector_call(llm, query)
+            except LLMError as exc:  # recorded as a wrong answer; the run goes on
+                repeats.append(FAILED)
+                returned.append(None)
+                errors.append(str(exc))
+                continue
             repeats.append(selector_answer(result))
             returned.append(list(result.selection.returned))
+            errors.append(None)
             response_models.add(result.selection.response_model)
         results.append(QueryResult(query, top, _best(found_again),
                                    search_answers(query.query, found, search), repeats,
-                                   returned))  # fmt: skip
+                                   returned, errors))  # fmt: skip
 
     run = {
         "split": split, "commit": commit, "dirty": dirty, "started_at": started.isoformat(),
         "embedding_model": EMBEDDING_MODEL, "embedding_response_model": first.response_model,
         "selector_model": SELECTOR_MODEL, "selector_response_models": sorted(response_models),
-        "selector_prompt_version": POLICY_SELECT_V1.version,
-        "selector_settings": {"max_output_tokens": POLICY_SELECT_V1.max_output_tokens,
-                              "reasoning_effort": POLICY_SELECT_V1.reasoning_effort},
+        "selector_prompt_version": CURRENT_POLICY_SELECT.version,
+        "selector_settings": {"max_output_tokens": CURRENT_POLICY_SELECT.max_output_tokens,
+                              "reasoning_effort": CURRENT_POLICY_SELECT.reasoning_effort},
         "repeat": args.repeat, "search_settings": asdict(search),
         "threshold_choice": None if choice is None else asdict(choice),
         "policies_sha256": source.policies_sha256, "embeddings_generated": _generated(),
@@ -282,11 +293,14 @@ def summarise(results: Sequence[QueryResult]) -> dict[str, Any]:
     threshold_misses = [r.query.id for r in results
                         if not r.query.in_scope and not r.answers["vector"].no_match]  # fmt: skip
     share = consistency_share([r.selector for r in results])
+    counts = [len(ids) for r in results for ids in r.selector_returned if ids is not None]
     bars = selector_bars(_selector_scores(results), share)
     return {
         "modes": _scores(results),
         "selector_consistency": share,
         "selector_inconsistent": [r.query.id for r in results if not consistent(r.selector)],
+        "selector_failed_calls": sum(e is not None for r in results for e in r.selector_errors),
+        "selector_largest_returned": max(counts, default=None),
         "selector_bar": [asdict(b) | {"passed": b.passed} for b in bars],
         "selector_bar_passed": all(b.passed for b in bars),
         "groups": {name: _scores(members) for name, members in sorted(groups.items())},
@@ -304,8 +318,10 @@ def _row(r: QueryResult) -> dict[str, Any]:
         "written_by": r.query.written_by, "source": r.query.source,
         "best_similarity": r.best_similarity, "best_similarity_again": r.best_similarity_again,
         "modes": {m: asdict(a) | {"right": correct(r.query, a)} for m, a in r.answers.items()},
-        "selector": [asdict(a) | {"right": correct(r.query, a), "returned": returned}
-                     for a, returned in zip(r.selector, r.selector_returned, strict=True)],
+        "selector": [asdict(a) | {"right": correct(r.query, a), "returned": returned,
+                                  "error": error}
+                     for a, returned, error in zip(r.selector, r.selector_returned,
+                                                   r.selector_errors, strict=True)],
         "selector_consistent": consistent(r.selector),
     }  # fmt: skip
 
@@ -339,7 +355,10 @@ def report(data: dict[str, Any]) -> str:
     lines += [_mode_line(mode, modes[mode]) for mode in RANKING_MODES]
     lines += [_mode_line(f"selector #{n}", s) for n, s in enumerate(modes["selector"], start=1)]
     lines += ["", f"selector consistency: {_pct(summary['selector_consistency'])}"
-              f" (inconsistent: {summary['selector_inconsistent']})", "selector bar:"]  # fmt: skip
+              f" (inconsistent: {summary['selector_inconsistent']})",
+              f"selector failed calls: {summary['selector_failed_calls']};"
+              f" largest number of ids returned: {summary['selector_largest_returned']}",
+              "selector bar:"]  # fmt: skip
     lines += [f"  {'PASS' if b['passed'] else 'FAIL'}  {b['line']}: {_pct(b['value'])}"
               f" (target ≥ {b['target']:.0%})" for b in summary["selector_bar"]]  # fmt: skip
     comparison = summary["hybrid_vs_vector"]

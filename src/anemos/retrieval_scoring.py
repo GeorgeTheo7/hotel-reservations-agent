@@ -44,6 +44,10 @@ RANKING_MODES: tuple[Mode, ...] = ("vector", "full_text", "hybrid")
 class ModeAnswer:
     top: tuple[str, ...]  # up to top_k ids, best first, as ranked before any NO_MATCH
     no_match: bool
+    failed: bool = False  # the selector call failed (LLMError): wrong, whatever the query
+
+
+FAILED = ModeAnswer((), no_match=False, failed=True)
 
 
 def search_answers(
@@ -74,10 +78,12 @@ def selector_answer(result: PolicyHits | NoMatch) -> ModeAnswer:
 def consistent(repeats: Sequence[ModeAnswer]) -> bool:
     """The same set of ids (order ignored) and the same NO_MATCH on every repeat: order
     inside the top 3 does not change what the agent can cite (docs/NOTES.md)."""
-    return len({(frozenset(a.top), a.no_match) for a in repeats}) <= 1
+    return len({(frozenset(a.top), a.no_match, a.failed) for a in repeats}) <= 1
 
 
 def correct(query: RetrievalQuery, answer: ModeAnswer) -> bool:
+    if answer.failed:
+        return False
     if not query.in_scope:
         return answer.no_match
     return not answer.no_match and set(query.expected) <= set(answer.top)

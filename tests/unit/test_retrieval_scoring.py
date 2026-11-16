@@ -13,6 +13,7 @@ from anemos.policies.ranking import Row, SearchSettings
 from anemos.policies.search import Hit, NoMatch, PolicyHits, Selection
 from anemos.retrieval_eval import RetrievalQuery
 from anemos.retrieval_scoring import (
+    FAILED,
     ModeAnswer,
     ModeScore,
     choose_threshold,
@@ -94,6 +95,14 @@ def test_consistent_means_the_same_set_and_the_same_no_match(
     repeats: list[ModeAnswer], same: bool
 ) -> None:
     assert consistent(repeats) is same
+
+
+def test_a_failed_call_is_wrong_and_differs_from_every_answer() -> None:
+    assert correct(query("q", "wifi"), FAILED) is False
+    assert correct(query("q"), FAILED) is False  # not a NO_MATCH either
+    assert consistent([FAILED, FAILED]) is True
+    assert consistent([FAILED, NO_MATCH]) is False
+    assert consistent([FAILED, ModeAnswer((), no_match=False)]) is False
 
 
 def test_the_consistency_share_counts_queries() -> None:

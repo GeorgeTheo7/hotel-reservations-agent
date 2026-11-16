@@ -27,7 +27,12 @@ from anemos.policies.search import (
     search_policies,
     selector_prompt,
 )
-from anemos.prompts import POLICY_SELECT_V1, RETRIEVAL_BASELINE_V1
+from anemos.prompts import (
+    CURRENT_POLICY_SELECT,
+    POLICY_SELECT_V1,
+    POLICY_SELECT_V2,
+    RETRIEVAL_BASELINE_V1,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -144,7 +149,7 @@ def test_ids_become_hits_with_the_packaged_text(tmp_path: Path) -> None:
     assert result.record() == {
         "query": "Can we bring our dog?", "returned": ["pets-assistance-dogs", "transfer"],
         "policies_sha256": policies_sha256(), "model": SELECTOR_MODEL,
-        "response_model": SELECTOR_MODEL, "prompt_version": POLICY_SELECT_V1.version,
+        "response_model": SELECTOR_MODEL, "prompt_version": POLICY_SELECT_V2.version,
         "hits": [
             {"policy_id": pets.policy_id, "title": pets.title, "text": pets.text,
              "text_sha256": text_sha256(pets)},
@@ -161,13 +166,32 @@ def test_an_empty_list_is_no_match(tmp_path: Path) -> None:
     assert result.record()["no_match"] is True and result.record()["returned"] == []
 
 
-def test_repeated_ids_count_once_and_only_three_are_kept(tmp_path: Path) -> None:
-    returned = ("wifi", "wifi", "parking", "transfer", "breakfast")
+def test_repeated_ids_count_once(tmp_path: Path) -> None:
+    returned = ("wifi", "wifi", "parking")
     llm, _ = make(scripted(ids(*returned)), tmp_path)
     result = search_policies(llm, "Wi-Fi and parking?", email_id=None)
     assert isinstance(result, PolicyHits)
-    assert [h.policy_id for h in result.hits] == ["wifi", "parking", "transfer"]
+    assert [h.policy_id for h in result.hits] == ["wifi", "parking"]
     assert result.record()["returned"] == list(returned)  # as the model returned them
+
+
+def test_the_schema_allows_at_most_three_ids() -> None:
+    """maxItems 3 in the schema sent (strict mode keeps it), and a 4th id does not parse:
+    the model cannot return it, and a reply that did is a failed call, not a cut."""
+    schema: Any = text_format(PolicySelection)["format"]["schema"]  # type: ignore[typeddict-item]
+    assert schema["properties"]["policy_ids"]["maxItems"] == 3
+    PolicySelection.model_validate({"policy_ids": ["wifi", "parking", "transfer"]})
+    with pytest.raises(ValidationError):
+        PolicySelection.model_validate({"policy_ids": ["wifi", "parking", "transfer", "city-tax"]})
+
+
+def test_a_reply_with_four_ids_raises_never_a_silent_cut(tmp_path: Path) -> None:
+    """Through the real OpenAI client: if the API ever let a 4th id through, the reply
+    does not fit the schema, so the call fails (SYSTEM_ERROR) instead of losing an id."""
+    four = '{"policy_ids": ["wifi", "parking", "transfer", "city-tax"]}'
+    llm, _ = make(openai_replying(reply(four)), tmp_path)
+    with pytest.raises(LLMError, match="unparsable reply"):
+        search_policies(llm, "Wi-Fi?", email_id=None)
 
 
 # --- what is sent ---------------------------------------------------------------------
@@ -180,7 +204,8 @@ def test_the_call_uses_the_selector_settings_not_the_adapters(tmp_path: Path) ->
     sent = client.sent[0]
     assert sent.settings == Settings(SELECTOR_MODEL, 100, "none")
     assert sent.schema is PolicySelection
-    assert sent.prompt.instructions == POLICY_SELECT_V1.text()
+    assert sent.prompt.instructions == POLICY_SELECT_V2.text()
+    assert CURRENT_POLICY_SELECT is POLICY_SELECT_V2
 
 
 def test_every_chunk_comes_before_the_query() -> None:
@@ -203,6 +228,16 @@ def test_the_prompt_text_is_the_baselines() -> None:
     """The dev evidence for the selector (100% / 100%) was measured with
     retrieval_baseline_v1: production sends the same instructions."""
     assert POLICY_SELECT_V1.text() == RETRIEVAL_BASELINE_V1.text()
+
+
+def test_v2_changes_only_what_to_return() -> None:
+    """v2 differs from v1 only in the paragraph on what to return (docs/NOTES.md)."""
+    paragraph = "\n\n"
+    v1 = POLICY_SELECT_V1.text().split(paragraph)
+    v2 = POLICY_SELECT_V2.text().split(paragraph)
+    assert len(v1) == len(v2)
+    changed = [n for n, (a, b) in enumerate(zip(v1, v2, strict=True)) if a != b]
+    assert changed == [2] and v2[2].startswith("Return `policy_ids`: only the ids")
 
 
 def test_the_selector_can_only_name_a_real_chunk() -> None:
@@ -229,7 +264,7 @@ def test_the_call_is_audited_with_the_runs_email(tmp_path: Path) -> None:
     llm, budget = make(scripted(ids("wifi")), tmp_path, audit)
     search_policies(llm, "Wi-Fi?", email_id=42)
     assert [(r["event"], r["email_id"], r["step"], r["prompt_version"]) for r in audit.rows] == [
-        ("llm.called", 42, "search_policies", POLICY_SELECT_V1.version)]  # fmt: skip
+        ("llm.called", 42, "search_policies", POLICY_SELECT_V2.version)]  # fmt: skip
     assert budget.spent() > 0
 
 
@@ -239,25 +274,31 @@ def test_a_failed_call_raises_never_no_match(tmp_path: Path) -> None:
         search_policies(llm, "Wi-Fi?", email_id=None)
 
 
-def test_a_reply_cut_off_at_the_output_limit_raises_never_no_match(tmp_path: Path) -> None:
-    """Through the real OpenAI client: an incomplete reply (max_output_tokens) is a
-    permanent error, so the run escalates SYSTEM_ERROR, not NO_POLICY."""
-    cut_off = {
-        "id": "resp_1", "object": "response", "created_at": 1, "status": "incomplete",
-        "incomplete_details": {"reason": "max_output_tokens"}, "model": SELECTOR_MODEL,
-        "parallel_tool_calls": False, "tool_choice": "auto", "tools": [],
-        "output": [{"type": "message", "id": "msg_1", "status": "incomplete",
-                    "role": "assistant", "content": [{"type": "output_text",
-                    "text": '{"policy_ids": ["wi', "annotations": []}]}],
+def reply(text: str, *, status: str = "completed", **extra: Any) -> dict[str, Any]:
+    return {
+        "id": "resp_1", "object": "response", "created_at": 1, "status": status,
+        "model": SELECTOR_MODEL, "parallel_tool_calls": False, "tool_choice": "auto",
+        "tools": [],
+        "output": [{"type": "message", "id": "msg_1", "status": status, "role": "assistant",
+                    "content": [{"type": "output_text", "text": text, "annotations": []}]}],
         "usage": {"input_tokens": 2000, "input_tokens_details": {"cached_tokens": 0},
                   "output_tokens": 100, "output_tokens_details": {"reasoning_tokens": 0},
                   "total_tokens": 2100},
-    }  # fmt: skip
-    http = httpx2.Client(
-        transport=httpx2.MockTransport(lambda r: httpx2.Response(200, json=cut_off))
-    )
-    client = OpenAIClient(api_key="test-key", base_url="http://openai.invalid/v1", http_client=http)
-    llm, budget = make(client, tmp_path)
+    } | extra  # fmt: skip
+
+
+def openai_replying(body: dict[str, Any]) -> OpenAIClient:
+    transport = httpx2.MockTransport(lambda request: httpx2.Response(200, json=body))
+    return OpenAIClient(api_key="test-key", base_url="http://openai.invalid/v1",
+                        http_client=httpx2.Client(transport=transport))  # fmt: skip
+
+
+def test_a_reply_cut_off_at_the_output_limit_raises_never_no_match(tmp_path: Path) -> None:
+    """Through the real OpenAI client: an incomplete reply (max_output_tokens) is a
+    permanent error, so the run escalates SYSTEM_ERROR, not NO_POLICY."""
+    cut_off = reply('{"policy_ids": ["wi', status="incomplete",
+                    incomplete_details={"reason": "max_output_tokens"})  # fmt: skip
+    llm, budget = make(openai_replying(cut_off), tmp_path)
     with pytest.raises(LLMError, match="incomplete: max_output_tokens"):
         search_policies(llm, "Wi-Fi?", email_id=None)
     assert budget.spent() > 0  # the cut-off reply is billed
