@@ -1,23 +1,27 @@
 """The retrieval eval (D15): recall@3 and NO_MATCH for vector only, full text only,
-hybrid, and the all-chunks-in-prompt baseline, on one split of eval/retrieval/queries.yaml.
+hybrid, and the production selector (`search_policies`), on one split of
+eval/retrieval/queries.yaml.
 
-    uv run --env-file .env python eval/retrieval_eval.py --split dev
-    uv run --env-file .env python eval/retrieval_eval.py --split held_out --threshold 0.xyz
+    uv run --env-file .env python eval/retrieval_eval.py --split dev --repeat 3
+    uv run --env-file .env python eval/retrieval_eval.py --split held_out --repeat 3 ...
+        (held_out also takes the dev threshold: --threshold 0.394)
 
 Against a scratch database (`<dev db>_retrieval_test`: migrated and seeded, so the
 packaged policy chunks are loaded), never the dev database. The queries are embedded in
 one call, twice: the second embedding only measures how much a query's best similarity
-moves between two calls. The three search modes come from one `fetch_rows` per query
-(the same SQL and the same ranking code as `search_policies`); the baseline is one
-`retrieval_baseline_v1` call per query.
+moves between two calls. The three ranking modes come from one `fetch_rows` per query
+(anemos.policies.ranking). The selector is `search_policies` exactly as production
+calls it (anemos.policies.search.select, prompt policy_select_v1), --repeat times per
+query: each repeat is a new call, scored on its own, and the result file records the
+consistency share and pass or fail per line of the selector's bar (docs/NOTES.md).
 
 dev: the threshold is chosen by the rule in docs/NOTES.md (anemos.retrieval_scoring.
 choose_threshold). held_out: the threshold chosen on dev must be given; held-out queries
-never choose it.
+never choose it. The threshold is for the ranking modes only; the selector has none.
 
 Before any call the worst-case cost is estimated; over --max-usd (default 0.10) nothing
 is sent. Refuses a dirty working tree unless --allow-dirty (then recorded). Writes
-eval/results/<time>-retrieval-<split>-<baseline model>.json with the model, settings,
+eval/results/<time>-retrieval-<split>-<selector model>.json with the models, settings,
 commit, dirty flag, time, policies_sha256 and every query's answers. Never run by
 pytest or CI: tests call main() with fakes.
 """
@@ -41,20 +45,20 @@ from anemos.llm.adapter import (
     LLM,
     EmbedClient,
     ModelClient,
-    Prompt,
     Settings,
     max_embed_input_tokens,
     max_input_tokens,
 )
 from anemos.llm.budget import Budget, cap_from_env
 from anemos.llm.openai_client import OpenAIClient
-from anemos.llm.pricing import EMBEDDING_MODELS, PRICES, max_cost
-from anemos.policies import BaselineAnswer, load_policies
+from anemos.llm.pricing import max_cost
+from anemos.policies import PolicySelection
 from anemos.policies.embeddings import (
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
     read_embeddings,
 )
+from anemos.policies.query import InvalidQuery
 from anemos.policies.ranking import (
     Row,
     SearchSettings,
@@ -62,26 +66,30 @@ from anemos.policies.ranking import (
     fetch_rows,
     packaged_source,
 )
-from anemos.prompts import RETRIEVAL_BASELINE_V1
+from anemos.policies.search import SELECTOR_MODEL, NoMatch, PolicyHits, select, selector_prompt
+from anemos.prompts import POLICY_SELECT_V1
 from anemos.retrieval_eval import RetrievalQuery, Split, load_queries
 from anemos.retrieval_scoring import (
-    MODES,
+    RANKING_MODES,
     Mode,
     ModeAnswer,
+    ModeScore,
     ThresholdChoice,
-    baseline_answer,
     choose_threshold,
     compare,
+    consistency_share,
+    consistent,
     correct,
     largest_change,
     score_mode,
     search_answers,
+    selector_answer,
+    selector_bars,
 )
 
 REPO = Path(__file__).resolve().parents[1]
 EVAL = REPO / "eval"
 STEP = "eval-retrieval"
-BASELINE_MODEL = "gpt-6-luna"  # D2: the agent's model
 
 
 @dataclass(frozen=True)
@@ -89,32 +97,23 @@ class QueryResult:
     query: RetrievalQuery
     best_similarity: float
     best_similarity_again: float  # from the second embedding of the same query
-    answers: dict[Mode, ModeAnswer]
-    baseline_returned: list[str]  # the baseline's ids as returned, before the top 3
+    answers: dict[Mode, ModeAnswer]  # the ranking modes
+    selector: list[ModeAnswer]  # one per repeat
+    selector_returned: list[list[str]]  # the ids as the model returned them, per repeat
 
 
-def policies_input(question: str) -> str:
-    """The baseline's input: every chunk with its id and title, then the question."""
-    sections = "\n\n".join(f"[{c.policy_id}] {c.title}\n{c.text}" for c in load_policies())
-    return f"<policies>\n{sections}\n</policies>\n\n<question>\n{question}\n</question>"
-
-
-def baseline_prompt(question: str) -> Prompt:
-    return Prompt(instructions=RETRIEVAL_BASELINE_V1.text(), input=policies_input(question))
-
-
-def estimate(queries: Sequence[RetrievalQuery], model: str) -> int:
-    """Worst case in µ$: two embedding calls and one baseline call per query."""
+def estimate(queries: Sequence[RetrievalQuery], repeat: int) -> int:
+    """Worst case in µ$: two embedding calls and `repeat` selector calls per query."""
     texts = [q.query for q in queries]
     embed = max_cost(EMBEDDING_MODEL, max_input_tokens=max_embed_input_tokens(texts),
                      max_output_tokens=0)  # fmt: skip
-    spec = RETRIEVAL_BASELINE_V1
     calls = sum(
-        max_cost(model, max_input_tokens=max_input_tokens(baseline_prompt(q.query), spec.schema),
-                 max_output_tokens=spec.max_output_tokens)
+        max_cost(SELECTOR_MODEL,
+                 max_input_tokens=max_input_tokens(selector_prompt(q.query), PolicySelection),
+                 max_output_tokens=POLICY_SELECT_V1.max_output_tokens)
         for q in queries
     )  # fmt: skip
-    return 2 * embed + calls
+    return 2 * embed + repeat * calls
 
 
 def main(
@@ -133,8 +132,7 @@ def main(
                                      description=__doc__.split("\n")[0])  # fmt: skip
     parser.add_argument("--split", choices=["dev", "held_out"], required=True)
     parser.add_argument("--threshold", type=float, help="held_out only: the dev threshold")
-    parser.add_argument("--model", default=BASELINE_MODEL,
-                        choices=sorted(set(PRICES) - EMBEDDING_MODELS))  # fmt: skip
+    parser.add_argument("--repeat", type=int, default=1, help="selector calls per query")
     parser.add_argument("--max-usd", type=float, default=0.10)
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--results-dir", type=Path, default=EVAL / "results")
@@ -142,6 +140,8 @@ def main(
     split: Split = args.split
     if (split == "held_out") != (args.threshold is not None):
         parser.error("--threshold is given exactly for --split held_out (dev chooses it)")
+    if args.repeat < 1:
+        parser.error("--repeat must be at least 1")
 
     commit, dirty = git(repo)
     if dirty and not args.allow_dirty:
@@ -150,19 +150,21 @@ def main(
     case_splits = {c.id: c.split for c in load_cases(eval_dir / "emails")}
     queries_file = eval_dir / "retrieval" / "queries.yaml"
     queries = [q for q in load_queries(queries_file, case_splits=case_splits) if q.split == split]
-    worst = estimate(queries, args.model)
-    print(f"{len(queries)} {split} queries, worst-case cost {worst} µ$ (${worst / 1e6:.4f})")
+    worst = estimate(queries, args.repeat)
+    print(f"{len(queries)} {split} queries x{args.repeat}, worst-case cost {worst} µ$"
+          f" (${worst / 1e6:.4f})")  # fmt: skip
     if worst > args.max_usd * 1_000_000:
         print(f"over --max-usd {args.max_usd}: nothing sent", file=sys.stderr)
         return 3
 
     clock = clock or SystemClock()
     started = clock.now()
-    spec = RETRIEVAL_BASELINE_V1
-    settings = Settings(args.model, spec.max_output_tokens, spec.reasoning_effort)
+    budget = budget or Budget(clock, cap_from_env())
+    spent_before = budget.spent()
     openai = OpenAIClient()  # no network until a call; replaced by fakes in tests
-    llm = LLM(client or openai, settings, budget or Budget(clock, cap_from_env()), None, clock,
-              embed_client=embed_client or openai)  # fmt: skip
+    # The selector passes its own settings (D2); these defaults are never used for it.
+    llm = LLM(client or openai, Settings(SELECTOR_MODEL, POLICY_SELECT_V1.max_output_tokens),
+              budget, None, clock, embed_client=embed_client or openai)  # fmt: skip
     source = packaged_source()
     texts = [q.query for q in queries]
     version = f"queries@{sha256(queries_file)[:8]}"
@@ -180,35 +182,47 @@ def main(
     best = [max(r.similarity for r in found) for found in rows]
     threshold, choice = choose(queries, best, args.threshold)
     search = SearchSettings(threshold)
-    baseline_cost = 0
     response_models: set[str] = set()
     results: list[QueryResult] = []
     for query, found, found_again, top in zip(queries, rows, rows_again, best, strict=True):
-        answer = llm.structured(baseline_prompt(query.query), BaselineAnswer, step=STEP,
-                                prompt_version=spec.version)  # fmt: skip
-        baseline_cost += answer.cost_micro_usd
-        response_models.add(answer.response_model)
-        answers = search_answers(query.query, found, search)
-        answers["all_chunks"] = baseline_answer(answer.output, search.top_k)
-        results.append(QueryResult(query, top, _best(found_again), answers,
-                                   list(answer.output.policy_ids)))  # fmt: skip
+        repeats: list[ModeAnswer] = []
+        returned: list[list[str]] = []
+        for _ in range(args.repeat):
+            result = selector_call(llm, query)
+            repeats.append(selector_answer(result))
+            returned.append(list(result.selection.returned))
+            response_models.add(result.selection.response_model)
+        results.append(QueryResult(query, top, _best(found_again),
+                                   search_answers(query.query, found, search), repeats,
+                                   returned))  # fmt: skip
 
-    cost = first.cost_micro_usd + again.cost_micro_usd + baseline_cost
     run = {
         "split": split, "commit": commit, "dirty": dirty, "started_at": started.isoformat(),
         "embedding_model": EMBEDDING_MODEL, "embedding_response_model": first.response_model,
-        "baseline_model": args.model, "baseline_response_models": sorted(response_models),
-        "baseline_settings": asdict(settings), "baseline_prompt_version": spec.version,
-        "search_settings": asdict(search), "threshold_choice": None if choice is None
-        else asdict(choice), "policies_sha256": source.policies_sha256,
-        "embeddings_generated": _generated(), "queries_sha256": sha256(queries_file),
-        "estimate_micro_usd": worst, "cost_micro_usd": cost,
+        "selector_model": SELECTOR_MODEL, "selector_response_models": sorted(response_models),
+        "selector_prompt_version": POLICY_SELECT_V1.version,
+        "selector_settings": {"max_output_tokens": POLICY_SELECT_V1.max_output_tokens,
+                              "reasoning_effort": POLICY_SELECT_V1.reasoning_effort},
+        "repeat": args.repeat, "search_settings": asdict(search),
+        "threshold_choice": None if choice is None else asdict(choice),
+        "policies_sha256": source.policies_sha256, "embeddings_generated": _generated(),
+        "queries_sha256": sha256(queries_file), "estimate_micro_usd": worst,
+        "cost_micro_usd": budget.spent() - spent_before,
     }  # fmt: skip
     data = {"run": run, "summary": summarise(results), "queries": [_row(r) for r in results]}
     print(report(data))
-    path = write(args.results_dir, started, split, args.model, data)
+    path = write(args.results_dir, started, split, SELECTOR_MODEL, data)
     print(f"\nwritten: {path}")
     return 0
+
+
+def selector_call(llm: LLM, query: RetrievalQuery) -> PolicyHits | NoMatch:
+    """One production `search_policies` call. The loader refuses any query the tool
+    would refuse, so an InvalidQuery here is a bug."""
+    result = select(llm, query.query, email_id=None)
+    if isinstance(result, InvalidQuery):
+        raise AssertionError(f"{query.id}: the tool refused a loaded query: {result.message}")
+    return result
 
 
 def choose(
@@ -235,14 +249,24 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _score(score: ModeScore) -> dict[str, Any]:
+    return asdict(score) | {
+        "recall_at_3": score.recall_at_3, "ranked_recall_at_3": score.ranked_recall_at_3,
+        "no_match_precision": score.no_match_precision, "no_match_recall": score.no_match_recall,
+    }  # fmt: skip
+
+
+def _selector_scores(results: Sequence[QueryResult]) -> list[ModeScore]:
+    repeats = len(results[0].selector) if results else 0
+    return [score_mode([(r.query, r.selector[n]) for r in results]) for n in range(repeats)]
+
+
 def _scores(results: Sequence[QueryResult]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for mode in MODES:
-        s = score_mode([(r.query, r.answers[mode]) for r in results])
-        out[mode] = asdict(s) | {
-            "recall_at_3": s.recall_at_3, "ranked_recall_at_3": s.ranked_recall_at_3,
-            "no_match_precision": s.no_match_precision, "no_match_recall": s.no_match_recall,
-        }  # fmt: skip
+    out: dict[str, Any] = {
+        mode: _score(score_mode([(r.query, r.answers[mode]) for r in results]))
+        for mode in RANKING_MODES
+    }
+    out["selector"] = [_score(s) for s in _selector_scores(results)]  # one per repeat
     return out
 
 
@@ -255,8 +279,14 @@ def summarise(results: Sequence[QueryResult]) -> dict[str, Any]:
     vector = [(r.query, r.answers["vector"]) for r in results]
     threshold_misses = [r.query.id for r in results
                         if not r.query.in_scope and not r.answers["vector"].no_match]  # fmt: skip
+    share = consistency_share([r.selector for r in results])
+    bars = selector_bars(_selector_scores(results), share)
     return {
         "modes": _scores(results),
+        "selector_consistency": share,
+        "selector_inconsistent": [r.query.id for r in results if not consistent(r.selector)],
+        "selector_bar": [asdict(b) | {"passed": b.passed} for b in bars],
+        "selector_bar_passed": all(b.passed for b in bars),
         "groups": {name: _scores(members) for name, members in sorted(groups.items())},
         "hybrid_vs_vector": asdict(compare(hybrid, vector)),
         "out_of_scope_through_threshold": threshold_misses,
@@ -271,8 +301,10 @@ def _row(r: QueryResult) -> dict[str, Any]:
         "id": r.query.id, "query": r.query.query, "expected": r.query.expected,
         "written_by": r.query.written_by, "source": r.query.source,
         "best_similarity": r.best_similarity, "best_similarity_again": r.best_similarity_again,
-        "baseline_returned": r.baseline_returned,
         "modes": {m: asdict(a) | {"right": correct(r.query, a)} for m, a in r.answers.items()},
+        "selector": [asdict(a) | {"right": correct(r.query, a), "returned": returned}
+                     for a, returned in zip(r.selector, r.selector_returned, strict=True)],
+        "selector_consistent": consistent(r.selector),
     }  # fmt: skip
 
 
@@ -289,17 +321,25 @@ def third_decimal(change: float) -> str:
     return "the threshold's third decimal is stable"
 
 
+def _mode_line(name: str, s: dict[str, Any]) -> str:
+    return (f"  {name:11} {_pct(s['recall_at_3']):>8}  {_pct(s['ranked_recall_at_3']):>18}"
+            f"  {_pct(s['no_match_precision']):>18}  {_pct(s['no_match_recall']):>15}")  # fmt: skip
+
+
 def report(data: dict[str, Any]) -> str:
     run, summary = data["run"], data["summary"]
-    lines = [f"split {run['split']}, threshold {run['search_settings']['threshold']},"
+    modes = summary["modes"]
+    lines = [f"split {run['split']}, selector x{run['repeat']}, threshold"
+             f" {run['search_settings']['threshold']} (ranking modes only),"
              f" cost {run['cost_micro_usd']} µ$", "",
              "mode         recall@3  (before threshold)  NO_MATCH precision"
              "  NO_MATCH recall"]  # fmt: skip
-    for mode, s in summary["modes"].items():
-        lines.append(f"  {mode:11} {_pct(s['recall_at_3']):>8}"
-                     f"  {_pct(s['ranked_recall_at_3']):>18}"
-                     f"  {_pct(s['no_match_precision']):>18}"
-                     f"  {_pct(s['no_match_recall']):>15}")  # fmt: skip
+    lines += [_mode_line(mode, modes[mode]) for mode in RANKING_MODES]
+    lines += [_mode_line(f"selector #{n}", s) for n, s in enumerate(modes["selector"], start=1)]
+    lines += ["", f"selector consistency: {_pct(summary['selector_consistency'])}"
+              f" (inconsistent: {summary['selector_inconsistent']})", "selector bar:"]  # fmt: skip
+    lines += [f"  {'PASS' if b['passed'] else 'FAIL'}  {b['line']}: {_pct(b['value'])}"
+              f" (target ≥ {b['target']:.0%})" for b in summary["selector_bar"]]  # fmt: skip
     comparison = summary["hybrid_vs_vector"]
     lines += ["", f"hybrid vs vector only: {comparison['verdict']}"
               f" (hybrid only: {list(comparison['only_first'])};"
@@ -308,10 +348,12 @@ def report(data: dict[str, Any]) -> str:
               f"largest change in best similarity between two embeddings:"
               f" {summary['largest_best_similarity_change']:.6f}"
               f" ({third_decimal(summary['largest_best_similarity_change'])})",
-              "", "per query (modes right):"]  # fmt: skip
+              "", "per query (modes right; selector right per repeat, y/n):"]  # fmt: skip
     for row in data["queries"]:
         right = [m for m, a in row["modes"].items() if a["right"]]
-        lines.append(f"  {row['id']:34} best {row['best_similarity']:.3f}  right: {right}")
+        selector = "".join("y" if a["right"] else "n" for a in row["selector"])
+        lines.append(f"  {row['id']:34} best {row['best_similarity']:.3f}  right: {right}"
+                     f"  selector {selector}")  # fmt: skip
     return "\n".join(lines)
 
 
@@ -319,7 +361,7 @@ def write(results_dir: Path, started: datetime, split: str, model: str,
           data: dict[str, Any]) -> Path:  # fmt: skip
     results_dir.mkdir(parents=True, exist_ok=True)
     path = results_dir / f"{started.strftime('%Y%m%dT%H%M%SZ')}-retrieval-{split}-{model}.json"
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_bytes((json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     return path
 
 

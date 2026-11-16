@@ -1,5 +1,6 @@
-"""Retrieval eval scoring (anemos.retrieval_scoring): what counts as right, the four
-modes' numbers, the threshold rule, "better", and the baseline's id enum."""
+"""Retrieval eval scoring (anemos.retrieval_scoring): what counts as right, the modes'
+numbers, the threshold rule, "better", the baseline's id enum, and the selector's
+repeats (consistency and the pass bar)."""
 
 from typing import Any, get_args
 
@@ -9,16 +10,21 @@ from pydantic import ValidationError
 from anemos.llm.openai_client import text_format
 from anemos.policies import BaselineAnswer, PolicyId, load_policies
 from anemos.policies.ranking import Row, SearchSettings
+from anemos.policies.search import Hit, NoMatch, PolicyHits, Selection
 from anemos.retrieval_eval import RetrievalQuery
 from anemos.retrieval_scoring import (
     ModeAnswer,
-    baseline_answer,
+    ModeScore,
     choose_threshold,
     compare,
+    consistency_share,
+    consistent,
     correct,
     largest_change,
     score_mode,
     search_answers,
+    selector_answer,
+    selector_bars,
 )
 
 pytestmark = pytest.mark.unit
@@ -56,12 +62,62 @@ def test_a_made_up_id_is_refused() -> None:
         BaselineAnswer.model_validate({"policy_ids": ["swimming-pool"]})
 
 
-def test_the_baseline_answer_keeps_the_first_three_distinct_ids() -> None:
-    answer = BaselineAnswer.model_validate(
-        {"policy_ids": ["wifi", "wifi", "parking", "transfer", "breakfast"]}
-    )
-    assert baseline_answer(answer, 3) == ModeAnswer(("wifi", "parking", "transfer"), False)
-    assert baseline_answer(BaselineAnswer(policy_ids=[]), 3) == NO_MATCH
+SELECTION = Selection("q", (), "f" * 64, "gpt-6-luna", "gpt-6-luna", "policy_select_v1@x")
+
+
+def hit(policy_id: str) -> Hit:
+    return Hit(policy_id, policy_id, "text", "0" * 64)
+
+
+def test_the_selector_answer_is_its_hits_or_no_match() -> None:
+    hits = PolicyHits(SELECTION, (hit("wifi"), hit("parking")))
+    assert selector_answer(hits) == ModeAnswer(("wifi", "parking"), no_match=False)
+    assert selector_answer(NoMatch(SELECTION)) == NO_MATCH
+
+
+# --- the selector's repeats ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("repeats", "same"),
+    [
+        ([hits("wifi", "parking"), hits("parking", "wifi")], True),  # order ignored
+        ([hits("wifi"), hits("wifi"), hits("wifi")], True),
+        ([NO_MATCH, NO_MATCH], True),
+        ([hits("wifi"), hits("wifi", "parking")], False),  # another set
+        ([hits("wifi"), NO_MATCH], False),
+        ([ModeAnswer((), no_match=False), NO_MATCH], False),  # same (empty) set, not NO_MATCH
+    ],
+    ids=["order", "same", "no-match", "other-set", "hit-vs-none", "no-match-flag"],
+)
+def test_consistent_means_the_same_set_and_the_same_no_match(
+    repeats: list[ModeAnswer], same: bool
+) -> None:
+    assert consistent(repeats) is same
+
+
+def test_the_consistency_share_counts_queries() -> None:
+    per_query = [[hits("a"), hits("a")], [hits("a"), hits("b")], [NO_MATCH, NO_MATCH],
+                 [hits("b", "a"), hits("a", "b")]]  # fmt: skip
+    assert consistency_share(per_query) == 3 / 4
+    assert consistency_share([]) is None
+
+
+def score(hits_: int, in_scope: int, caught: int, out_of_scope: int) -> ModeScore:
+    return ModeScore(in_scope, hits_, hits_, out_of_scope, caught, caught)
+
+
+def test_the_bar_has_a_line_per_repeat_and_one_for_consistency() -> None:
+    """Held-out size: 13/14 = 93% passes 90%, 12/14 = 86% fails; 5/6 = 83% passes 80%,
+    4/6 = 67% fails; 18/20 = 90% passes."""
+    bars = selector_bars([score(13, 14, 5, 6), score(12, 14, 5, 6), score(13, 14, 4, 6)], 0.9)
+    assert [(b.line, b.passed) for b in bars] == [
+        ("recall@3, repeat 1", True), ("NO_MATCH recall, repeat 1", True),
+        ("recall@3, repeat 2", False), ("NO_MATCH recall, repeat 2", True),
+        ("recall@3, repeat 3", True), ("NO_MATCH recall, repeat 3", False),
+        ("same answer on every repeat", True),
+    ]  # fmt: skip
+    assert not selector_bars([score(14, 14, 6, 6)], 0.85)[-1].passed
 
 
 # --- what counts as right -------------------------------------------------------------

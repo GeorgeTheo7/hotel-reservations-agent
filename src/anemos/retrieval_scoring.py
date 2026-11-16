@@ -1,12 +1,17 @@
-"""Scoring for the retrieval eval (D15): four modes, the NO_MATCH threshold rule, and
-the comparison of hybrid with vector only. Pure functions: no database, no model.
+"""Scoring for the retrieval eval (D15): four modes, the NO_MATCH threshold rule, the
+comparison of hybrid with vector only, and the selector's repeats and pass bar. Pure
+functions: no database, no model.
 
 The modes, for one query:
 - vector: chunks by cosine similarity; NO_MATCH below the threshold;
 - full_text: chunks matching a query lexeme, by ts_rank; NO_MATCH when none matches;
 - hybrid: RRF of the two lists (`anemos.policies.ranking.decide`); NO_MATCH as vector
   (only the vector side decides it), so the two share their NO_MATCH numbers;
-- all_chunks: the baseline, a model given every chunk; NO_MATCH when it returns none.
+- selector: `search_policies` as it runs in production (a model given every chunk,
+  D15); NO_MATCH when it returns no id. Called N times per query (--repeat): each repeat
+  is scored on its own, and a query is consistent when every repeat returned the same
+  set of ids (order ignored) and the same NO_MATCH. (Result files before the selector
+  call this mode `all_chunks`: the retrieval_baseline_v1 prompt, the same text.)
 
 A query is right in a mode when (in scope) every expected id is in the top 3 and the
 mode did not answer NO_MATCH, or (out of scope) the mode answered NO_MATCH. Extra
@@ -19,7 +24,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from anemos.policies import BaselineAnswer
 from anemos.policies.ranking import (
     BelowThreshold,
     Ranked,
@@ -29,10 +33,11 @@ from anemos.policies.ranking import (
     fts_ranking,
     vector_ranking,
 )
+from anemos.policies.search import NoMatch, PolicyHits
 from anemos.retrieval_eval import RetrievalQuery
 
-type Mode = Literal["vector", "full_text", "hybrid", "all_chunks"]
-MODES: tuple[Mode, ...] = ("vector", "full_text", "hybrid", "all_chunks")
+type Mode = Literal["vector", "full_text", "hybrid", "selector"]
+RANKING_MODES: tuple[Mode, ...] = ("vector", "full_text", "hybrid")
 
 
 @dataclass(frozen=True)
@@ -59,9 +64,17 @@ def search_answers(
     }
 
 
-def baseline_answer(answer: BaselineAnswer, top_k: int) -> ModeAnswer:
-    ids = tuple(dict.fromkeys(answer.policy_ids))  # repeated ids count once
-    return ModeAnswer(ids[:top_k], not ids)
+def selector_answer(result: PolicyHits | NoMatch) -> ModeAnswer:
+    """The selector's hits (already distinct, at most 3); NoMatch when it returned none."""
+    if isinstance(result, NoMatch):
+        return ModeAnswer((), no_match=True)
+    return ModeAnswer(tuple(h.policy_id for h in result.hits), no_match=False)
+
+
+def consistent(repeats: Sequence[ModeAnswer]) -> bool:
+    """The same set of ids (order ignored) and the same NO_MATCH on every repeat: order
+    inside the top 3 does not change what the agent can cite (docs/NOTES.md)."""
+    return len({(frozenset(a.top), a.no_match) for a in repeats}) <= 1
 
 
 def correct(query: RetrievalQuery, answer: ModeAnswer) -> bool:
@@ -186,3 +199,39 @@ def largest_change(first: Sequence[float], second: Sequence[float]) -> float:
     """The largest change in a query's best similarity between two embeddings of the
     same queries: below 0.0005, a threshold's third decimal means something."""
     return max(abs(a - b) for a, b in zip(first, second, strict=True))
+
+
+# --- the selector's pass bar (docs/NOTES.md, written before the held-out run) ------------
+
+RECALL_BAR = 0.90  # recall@3, on every repeat
+NO_MATCH_RECALL_BAR = 0.80  # on every repeat
+CONSISTENCY_BAR = 0.90  # share of queries with the same answer on every repeat
+
+
+@dataclass(frozen=True)
+class BarLine:
+    line: str
+    value: float | None
+    target: float
+
+    @property
+    def passed(self) -> bool:
+        return self.value is not None and self.value >= self.target
+
+
+def consistency_share(repeats_per_query: Sequence[Sequence[ModeAnswer]]) -> float | None:
+    if not repeats_per_query:
+        return None
+    return sum(consistent(r) for r in repeats_per_query) / len(repeats_per_query)
+
+
+def selector_bars(repeat_scores: Sequence[ModeScore], consistency: float | None) -> list[BarLine]:
+    """One line per repeat for recall@3 and NO_MATCH recall, and one for consistency:
+    the bar passes only when every line does."""
+    lines: list[BarLine] = []
+    for n, score in enumerate(repeat_scores, start=1):
+        lines.append(BarLine(f"recall@3, repeat {n}", score.recall_at_3, RECALL_BAR))
+        lines.append(BarLine(f"NO_MATCH recall, repeat {n}", score.no_match_recall,
+                             NO_MATCH_RECALL_BAR))  # fmt: skip
+    lines.append(BarLine("same answer on every repeat", consistency, CONSISTENCY_BAR))
+    return lines
