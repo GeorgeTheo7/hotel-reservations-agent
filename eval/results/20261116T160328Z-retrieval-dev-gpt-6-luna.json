@@ -1,0 +1,4298 @@
+{
+  "run": {
+    "split": "dev",
+    "commit": "a8bb83796fd7ecaf34ee4eb2be6e9e2fa68cd934",
+    "dirty": false,
+    "started_at": "2026-11-16T16:03:28.788717+00:00",
+    "embedding_model": "text-embedding-3-small",
+    "embedding_response_model": "text-embedding-3-small",
+    "selector_model": "gpt-6-luna",
+    "selector_response_models": [
+      "gpt-6-luna"
+    ],
+    "selector_prompt_version": "policy_select_v2@a8eea53b",
+    "selector_settings": {
+      "max_output_tokens": 100,
+      "reasoning_effort": "none"
+    },
+    "repeat": 3,
+    "search_settings": {
+      "threshold": 0.394,
+      "top_k": 3,
+      "rrf_k": 60
+    },
+    "threshold_choice": {
+      "threshold": 0.394,
+      "allowed_misses": 1,
+      "upper": 0.4003729519466058,
+      "lower": 0.3884363580599819,
+      "rounded": true
+    },
+    "policies_sha256": "436b2684af5d3348f5879a66dedc96b09306b3e25a65a646883023a3cf5e258d",
+    "embeddings_generated": {
+      "commit": "c6bb6694cef34e9bea4953153a8745162a91a1d2",
+      "dirty": true,
+      "at": "2026-11-16T14:02:13.192688+00:00",
+      "response_model": "text-embedding-3-small",
+      "embedded": 2,
+      "cost_micro_usd": 2
+    },
+    "queries_sha256": "65eeaa0b1ddfc2041c6988bd01df84cfdda1d86c294b106c569fc30529a8c85b",
+    "estimate_micro_usd": 108954,
+    "cost_micro_usd": 10990
+  },
+  "summary": {
+    "modes": {
+      "vector": {
+        "in_scope": 33,
+        "hits": 31,
+        "ranked_hits": 32,
+        "out_of_scope": 15,
+        "caught": 12,
+        "no_match_answers": 13,
+        "recall_at_3": 0.9393939393939394,
+        "ranked_recall_at_3": 0.9696969696969697,
+        "no_match_precision": 0.9230769230769231,
+        "no_match_recall": 0.8
+      },
+      "full_text": {
+        "in_scope": 33,
+        "hits": 22,
+        "ranked_hits": 22,
+        "out_of_scope": 15,
+        "caught": 3,
+        "no_match_answers": 3,
+        "recall_at_3": 0.6666666666666666,
+        "ranked_recall_at_3": 0.6666666666666666,
+        "no_match_precision": 1.0,
+        "no_match_recall": 0.2
+      },
+      "hybrid": {
+        "in_scope": 33,
+        "hits": 23,
+        "ranked_hits": 24,
+        "out_of_scope": 15,
+        "caught": 12,
+        "no_match_answers": 13,
+        "recall_at_3": 0.696969696969697,
+        "ranked_recall_at_3": 0.7272727272727273,
+        "no_match_precision": 0.9230769230769231,
+        "no_match_recall": 0.8
+      },
+      "selector": [
+        {
+          "in_scope": 33,
+          "hits": 33,
+          "ranked_hits": 33,
+          "out_of_scope": 15,
+          "caught": 15,
+          "no_match_answers": 15,
+          "recall_at_3": 1.0,
+          "ranked_recall_at_3": 1.0,
+          "no_match_precision": 1.0,
+          "no_match_recall": 1.0
+        },
+        {
+          "in_scope": 33,
+          "hits": 33,
+          "ranked_hits": 33,
+          "out_of_scope": 15,
+          "caught": 15,
+          "no_match_answers": 15,
+          "recall_at_3": 1.0,
+          "ranked_recall_at_3": 1.0,
+          "no_match_precision": 1.0,
+          "no_match_recall": 1.0
+        },
+        {
+          "in_scope": 33,
+          "hits": 33,
+          "ranked_hits": 33,
+          "out_of_scope": 15,
+          "caught": 15,
+          "no_match_answers": 15,
+          "recall_at_3": 1.0,
+          "ranked_recall_at_3": 1.0,
+          "no_match_precision": 1.0,
+          "no_match_recall": 1.0
+        }
+      ]
+    },
+    "selector_consistency": 0.8333333333333334,
+    "selector_inconsistent": [
+      "q-m-money-back-if-plans-change",
+      "q-m-baby-sleep",
+      "q-m-one-night-mid-august",
+      "q-m-baby-and-six-year-old",
+      "q-c-room-straight-away",
+      "q-c-young-children",
+      "q-c-teens-own-room",
+      "q-c-two-nights-end-july"
+    ],
+    "selector_failed_calls": 0,
+    "selector_largest_returned": 3,
+    "selector_bar": [
+      {
+        "line": "recall@3, repeat 1",
+        "value": 1.0,
+        "target": 0.9,
+        "passed": true
+      },
+      {
+        "line": "NO_MATCH recall, repeat 1",
+        "value": 1.0,
+        "target": 0.8,
+        "passed": true
+      },
+      {
+        "line": "recall@3, repeat 2",
+        "value": 1.0,
+        "target": 0.9,
+        "passed": true
+      },
+      {
+        "line": "NO_MATCH recall, repeat 2",
+        "value": 1.0,
+        "target": 0.8,
+        "passed": true
+      },
+      {
+        "line": "recall@3, repeat 3",
+        "value": 1.0,
+        "target": 0.9,
+        "passed": true
+      },
+      {
+        "line": "NO_MATCH recall, repeat 3",
+        "value": 1.0,
+        "target": 0.8,
+        "passed": true
+      },
+      {
+        "line": "same answer on every repeat",
+        "value": 0.8333333333333334,
+        "target": 0.9,
+        "passed": false
+      }
+    ],
+    "selector_bar_passed": false,
+    "groups": {
+      "source=email": {
+        "vector": {
+          "in_scope": 6,
+          "hits": 6,
+          "ranked_hits": 6,
+          "out_of_scope": 2,
+          "caught": 2,
+          "no_match_answers": 2,
+          "recall_at_3": 1.0,
+          "ranked_recall_at_3": 1.0,
+          "no_match_precision": 1.0,
+          "no_match_recall": 1.0
+        },
+        "full_text": {
+          "in_scope": 6,
+          "hits": 6,
+          "ranked_hits": 6,
+          "out_of_scope": 2,
+          "caught": 0,
+          "no_match_answers": 0,
+          "recall_at_3": 1.0,
+          "ranked_recall_at_3": 1.0,
+          "no_match_precision": null,
+          "no_match_recall": 0.0
+        },
+        "hybrid": {
+          "in_scope": 6,
+          "hits": 6,
+          "ranked_hits": 6,
+          "out_of_scope": 2,
+          "caught": 2,
+          "no_match_answers": 2,
+          "recall_at_3": 1.0,
+          "ranked_recall_at_3": 1.0,
+          "no_match_precision": 1.0,
+          "no_match_recall": 1.0
+        },
+        "selector": [
+          {
+            "in_scope": 6,
+            "hits": 6,
+            "ranked_hits": 6,
+            "out_of_scope": 2,
+            "caught": 2,
+            "no_match_answers": 2,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          },
+          {
+            "in_scope": 6,
+            "hits": 6,
+            "ranked_hits": 6,
+            "out_of_scope": 2,
+            "caught": 2,
+            "no_match_answers": 2,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          },
+          {
+            "in_scope": 6,
+            "hits": 6,
+            "ranked_hits": 6,
+            "out_of_scope": 2,
+            "caught": 2,
+            "no_match_answers": 2,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          }
+        ]
+      },
+      "source=written": {
+        "vector": {
+          "in_scope": 27,
+          "hits": 25,
+          "ranked_hits": 26,
+          "out_of_scope": 13,
+          "caught": 10,
+          "no_match_answers": 11,
+          "recall_at_3": 0.9259259259259259,
+          "ranked_recall_at_3": 0.9629629629629629,
+          "no_match_precision": 0.9090909090909091,
+          "no_match_recall": 0.7692307692307693
+        },
+        "full_text": {
+          "in_scope": 27,
+          "hits": 16,
+          "ranked_hits": 16,
+          "out_of_scope": 13,
+          "caught": 3,
+          "no_match_answers": 3,
+          "recall_at_3": 0.5925925925925926,
+          "ranked_recall_at_3": 0.5925925925925926,
+          "no_match_precision": 1.0,
+          "no_match_recall": 0.23076923076923078
+        },
+        "hybrid": {
+          "in_scope": 27,
+          "hits": 17,
+          "ranked_hits": 18,
+          "out_of_scope": 13,
+          "caught": 10,
+          "no_match_answers": 11,
+          "recall_at_3": 0.6296296296296297,
+          "ranked_recall_at_3": 0.6666666666666666,
+          "no_match_precision": 0.9090909090909091,
+          "no_match_recall": 0.7692307692307693
+        },
+        "selector": [
+          {
+            "in_scope": 27,
+            "hits": 27,
+            "ranked_hits": 27,
+            "out_of_scope": 13,
+            "caught": 13,
+            "no_match_answers": 13,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          },
+          {
+            "in_scope": 27,
+            "hits": 27,
+            "ranked_hits": 27,
+            "out_of_scope": 13,
+            "caught": 13,
+            "no_match_answers": 13,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          },
+          {
+            "in_scope": 27,
+            "hits": 27,
+            "ranked_hits": 27,
+            "out_of_scope": 13,
+            "caught": 13,
+            "no_match_answers": 13,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          }
+        ]
+      },
+      "written_by=claude": {
+        "vector": {
+          "in_scope": 23,
+          "hits": 22,
+          "ranked_hits": 23,
+          "out_of_scope": 11,
+          "caught": 9,
+          "no_match_answers": 10,
+          "recall_at_3": 0.9565217391304348,
+          "ranked_recall_at_3": 1.0,
+          "no_match_precision": 0.9,
+          "no_match_recall": 0.8181818181818182
+        },
+        "full_text": {
+          "in_scope": 23,
+          "hits": 15,
+          "ranked_hits": 15,
+          "out_of_scope": 11,
+          "caught": 3,
+          "no_match_answers": 3,
+          "recall_at_3": 0.6521739130434783,
+          "ranked_recall_at_3": 0.6521739130434783,
+          "no_match_precision": 1.0,
+          "no_match_recall": 0.2727272727272727
+        },
+        "hybrid": {
+          "in_scope": 23,
+          "hits": 16,
+          "ranked_hits": 17,
+          "out_of_scope": 11,
+          "caught": 9,
+          "no_match_answers": 10,
+          "recall_at_3": 0.6956521739130435,
+          "ranked_recall_at_3": 0.7391304347826086,
+          "no_match_precision": 0.9,
+          "no_match_recall": 0.8181818181818182
+        },
+        "selector": [
+          {
+            "in_scope": 23,
+            "hits": 23,
+            "ranked_hits": 23,
+            "out_of_scope": 11,
+            "caught": 11,
+            "no_match_answers": 11,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          },
+          {
+            "in_scope": 23,
+            "hits": 23,
+            "ranked_hits": 23,
+            "out_of_scope": 11,
+            "caught": 11,
+            "no_match_answers": 11,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          },
+          {
+            "in_scope": 23,
+            "hits": 23,
+            "ranked_hits": 23,
+            "out_of_scope": 11,
+            "caught": 11,
+            "no_match_answers": 11,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          }
+        ]
+      },
+      "written_by=mentor": {
+        "vector": {
+          "in_scope": 10,
+          "hits": 9,
+          "ranked_hits": 9,
+          "out_of_scope": 4,
+          "caught": 3,
+          "no_match_answers": 3,
+          "recall_at_3": 0.9,
+          "ranked_recall_at_3": 0.9,
+          "no_match_precision": 1.0,
+          "no_match_recall": 0.75
+        },
+        "full_text": {
+          "in_scope": 10,
+          "hits": 7,
+          "ranked_hits": 7,
+          "out_of_scope": 4,
+          "caught": 0,
+          "no_match_answers": 0,
+          "recall_at_3": 0.7,
+          "ranked_recall_at_3": 0.7,
+          "no_match_precision": null,
+          "no_match_recall": 0.0
+        },
+        "hybrid": {
+          "in_scope": 10,
+          "hits": 7,
+          "ranked_hits": 7,
+          "out_of_scope": 4,
+          "caught": 3,
+          "no_match_answers": 3,
+          "recall_at_3": 0.7,
+          "ranked_recall_at_3": 0.7,
+          "no_match_precision": 1.0,
+          "no_match_recall": 0.75
+        },
+        "selector": [
+          {
+            "in_scope": 10,
+            "hits": 10,
+            "ranked_hits": 10,
+            "out_of_scope": 4,
+            "caught": 4,
+            "no_match_answers": 4,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          },
+          {
+            "in_scope": 10,
+            "hits": 10,
+            "ranked_hits": 10,
+            "out_of_scope": 4,
+            "caught": 4,
+            "no_match_answers": 4,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          },
+          {
+            "in_scope": 10,
+            "hits": 10,
+            "ranked_hits": 10,
+            "out_of_scope": 4,
+            "caught": 4,
+            "no_match_answers": 4,
+            "recall_at_3": 1.0,
+            "ranked_recall_at_3": 1.0,
+            "no_match_precision": 1.0,
+            "no_match_recall": 1.0
+          }
+        ]
+      }
+    },
+    "hybrid_vs_vector": {
+      "only_first": [],
+      "only_second": [
+        "q-m-how-much-upfront",
+        "q-m-teenager-in-parents-room",
+        "q-c-room-ready",
+        "q-c-after-midnight",
+        "q-c-room-straight-away",
+        "q-c-cook-for-kids",
+        "q-c-four-in-one-room",
+        "q-c-move-our-booking"
+      ],
+      "verdict": "worse"
+    },
+    "out_of_scope_through_threshold": [
+      "q-m-rental-car",
+      "q-c-ferry-tickets",
+      "q-c-food-to-room"
+    ],
+    "largest_best_similarity_change": 0.0005279817629426642
+  },
+  "queries": [
+    {
+      "id": "q-m-pay-rest-on-arrival",
+      "query": "Can the remaining balance be paid in cash when we arrive?",
+      "expected": [
+        "payment-methods"
+      ],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.5500240581879918,
+      "best_similarity_again": 0.5500235327559614,
+      "modes": {
+        "vector": {
+          "top": [
+            "payment-methods",
+            "deposit",
+            "early-check-in-late-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "payment-methods",
+            "city-tax",
+            "cancellation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "payment-methods",
+            "late-arrival",
+            "cancellation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "payment-methods"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "payment-methods"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "payment-methods"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-m-money-back-if-plans-change",
+      "query": "If we have to call off our August trip three weeks before arrival, do we lose any money?",
+      "expected": [
+        "cancellation"
+      ],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.4261890767425911,
+      "best_similarity_again": 0.42626250715982705,
+      "modes": {
+        "vector": {
+          "top": [
+            "cancellation",
+            "deposit",
+            "minimum-stay"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "minimum-stay",
+            "cancellation",
+            "late-arrival"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "cancellation",
+            "minimum-stay",
+            "luggage-storage"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "cancellation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cancellation"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "cancellation",
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cancellation",
+            "season-and-opening"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "cancellation",
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cancellation",
+            "season-and-opening"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": false
+    },
+    {
+      "id": "q-m-how-much-upfront",
+      "query": "How much do we need to pay in advance to secure the room?",
+      "expected": [
+        "deposit"
+      ],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.5492921648059895,
+      "best_similarity_again": 0.5493076105379164,
+      "modes": {
+        "vector": {
+          "top": [
+            "deposit",
+            "holds-and-confirmation",
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "accessibility",
+            "groups",
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "holds-and-confirmation",
+            "groups",
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "deposit",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "deposit",
+            "holds-and-confirmation"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "deposit",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "deposit",
+            "holds-and-confirmation"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "deposit",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "deposit",
+            "holds-and-confirmation"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-m-baby-sleep",
+      "query": "We are travelling with our one-year-old. Do you have something for the baby to sleep in?",
+      "expected": [
+        "cots-and-infants"
+      ],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.49986397804319394,
+      "best_similarity_again": 0.4998149047312883,
+      "modes": {
+        "vector": {
+          "top": [
+            "cots-and-infants",
+            "room-standard-double",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "cots-and-infants",
+            "room-standard-double",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "cots-and-infants",
+            "room-standard-double",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "cots-and-infants"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cots-and-infants"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "cots-and-infants",
+            "room-standard-double",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cots-and-infants",
+            "room-standard-double",
+            "room-accessible-double"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "cots-and-infants",
+            "room-standard-double",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cots-and-infants",
+            "room-standard-double",
+            "room-accessible-double"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": false
+    },
+    {
+      "id": "q-m-teenager-in-parents-room",
+      "query": "What do you charge if our 14-year-old sleeps in the same room as us?",
+      "expected": [
+        "extra-beds"
+      ],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.44305641153686737,
+      "best_similarity_again": 0.443089805403703,
+      "modes": {
+        "vector": {
+          "top": [
+            "children",
+            "cots-and-infants",
+            "extra-beds"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "cots-and-infants",
+            "room-standard-double",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "cots-and-infants",
+            "children",
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "extra-beds",
+            "room-sea-view-double",
+            "room-family-suite"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "extra-beds",
+            "room-sea-view-double",
+            "room-family-suite"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "extra-beds",
+            "room-sea-view-double",
+            "room-family-suite"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "extra-beds",
+            "room-sea-view-double",
+            "room-family-suite"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "extra-beds",
+            "room-sea-view-double",
+            "room-family-suite"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "extra-beds",
+            "room-sea-view-double",
+            "room-family-suite"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-m-wheelchair-room",
+      "query": "My father uses a wheelchair. Is there a room with no steps and a bathroom he can use?",
+      "expected": [
+        "accessibility",
+        "room-accessible-double"
+      ],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.5250671199077485,
+      "best_similarity_again": 0.5250549945053993,
+      "modes": {
+        "vector": {
+          "top": [
+            "accessibility",
+            "room-accessible-double",
+            "pets-assistance-dogs"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "room-accessible-double",
+            "accessibility",
+            "extra-beds"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "accessibility",
+            "room-accessible-double",
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "room-accessible-double",
+            "accessibility"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-accessible-double",
+            "accessibility"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "room-accessible-double",
+            "accessibility"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-accessible-double",
+            "accessibility"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "room-accessible-double",
+            "accessibility"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-accessible-double",
+            "accessibility"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-m-cigarette-balcony",
+      "query": "Is it all right to have a cigarette on the balcony?",
+      "expected": [
+        "smoking"
+      ],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.574914854332153,
+      "best_similarity_again": 0.5749593825653,
+      "modes": {
+        "vector": {
+          "top": [
+            "smoking",
+            "cots-and-infants",
+            "wifi"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "smoking",
+            "room-sea-view-double",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "smoking",
+            "room-sea-view-double",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "smoking"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "smoking"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "smoking"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "smoking"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "smoking"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "smoking"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-m-one-night-mid-august",
+      "query": "Can we stay for just one night in mid-August?",
+      "expected": [
+        "minimum-stay"
+      ],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.5803413555889507,
+      "best_similarity_again": 0.5803202874483443,
+      "modes": {
+        "vector": {
+          "top": [
+            "minimum-stay",
+            "early-check-in-late-check-out",
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "minimum-stay",
+            "city-tax",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "minimum-stay",
+            "city-tax",
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "minimum-stay"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "minimum-stay"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "minimum-stay"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "minimum-stay"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "minimum-stay",
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "minimum-stay",
+            "season-and-opening"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": false
+    },
+    {
+      "id": "q-m-baby-and-six-year-old",
+      "query": "We have a baby and a six-year-old. What sleeping arrangements can you add to our room?",
+      "expected": [
+        "cots-and-infants",
+        "extra-beds"
+      ],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.4835540502409357,
+      "best_similarity_again": 0.483026068477993,
+      "modes": {
+        "vector": {
+          "top": [
+            "room-standard-double",
+            "cots-and-infants",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "full_text": {
+          "top": [
+            "room-standard-double",
+            "room-accessible-double",
+            "cots-and-infants"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "room-standard-double",
+            "cots-and-infants",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "cots-and-infants",
+            "extra-beds",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cots-and-infants",
+            "extra-beds",
+            "children"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "cots-and-infants",
+            "extra-beds",
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cots-and-infants",
+            "extra-beds",
+            "room-standard-double"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "cots-and-infants",
+            "extra-beds",
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cots-and-infants",
+            "extra-beds",
+            "room-standard-double"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": false
+    },
+    {
+      "id": "q-m-local-tax",
+      "query": "Is there a local tax on top of the room price, and is it already included?",
+      "expected": [
+        "city-tax"
+      ],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.6248814798328977,
+      "best_similarity_again": 0.6249031442937163,
+      "modes": {
+        "vector": {
+          "top": [
+            "city-tax",
+            "deposit",
+            "extra-beds"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "city-tax",
+            "smoking",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "city-tax",
+            "deposit",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "city-tax"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "city-tax"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "city-tax"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "city-tax"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "city-tax"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "city-tax"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-m-laundry",
+      "query": "Can we get our clothes washed during our stay?",
+      "expected": [],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.3884363580599819,
+      "best_similarity_again": 0.3884583549657624,
+      "modes": {
+        "vector": {
+          "top": [
+            "luggage-storage",
+            "early-check-in-late-check-out",
+            "check-in-check-out"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "minimum-stay",
+            "payment-methods",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "payment-methods",
+            "cancellation",
+            "children"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-m-babysitter",
+      "query": "Is there someone who could look after our children for one evening?",
+      "expected": [],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.3767937152992271,
+      "best_similarity_again": 0.37674601268747065,
+      "modes": {
+        "vector": {
+          "top": [
+            "children",
+            "early-check-in-late-check-out",
+            "groups"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "children",
+            "accessibility",
+            "cots-and-infants"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "children",
+            "cots-and-infants",
+            "room-standard-double"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-m-rental-car",
+      "query": "Can you arrange a rental car for us at the port?",
+      "expected": [],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.5636505292822159,
+      "best_similarity_again": 0.5636698604495121,
+      "modes": {
+        "vector": {
+          "top": [
+            "transfer",
+            "late-arrival",
+            "luggage-storage"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "full_text": {
+          "top": [
+            "transfer",
+            "accessibility",
+            "late-arrival"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "transfer",
+            "late-arrival",
+            "accessibility"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-m-massage",
+      "query": "Do you offer massages?",
+      "expected": [],
+      "written_by": "mentor",
+      "source": "written",
+      "best_similarity": 0.3035726748266654,
+      "best_similarity_again": 0.3035694313193251,
+      "modes": {
+        "vector": {
+          "top": [
+            "groups",
+            "changes-and-cancellation-requests",
+            "accessibility"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "holds-and-confirmation",
+            "groups",
+            "changes-and-cancellation-requests"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-room-ready",
+      "query": "What time can we get into our room on the day we arrive?",
+      "expected": [
+        "check-in-check-out"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.5777032891175926,
+      "best_similarity_again": 0.5777421479215364,
+      "modes": {
+        "vector": {
+          "top": [
+            "late-arrival",
+            "early-check-in-late-check-out",
+            "check-in-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "holds-and-confirmation",
+            "luggage-storage",
+            "cancellation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "holds-and-confirmation",
+            "luggage-storage",
+            "early-check-in-late-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "check-in-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "check-in-check-out"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "check-in-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "check-in-check-out"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "check-in-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "check-in-check-out"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-after-midnight",
+      "query": "We land at 23:30 and won't reach you before half past midnight. Is that a problem?",
+      "expected": [
+        "late-arrival"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.5188634785480151,
+      "best_similarity_again": 0.5188328388039462,
+      "modes": {
+        "vector": {
+          "top": [
+            "late-arrival",
+            "check-in-check-out",
+            "early-check-in-late-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "breakfast",
+            "deposit",
+            "cancellation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "deposit",
+            "breakfast",
+            "cancellation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "late-arrival"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "late-arrival"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "late-arrival"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "late-arrival"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "late-arrival"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "late-arrival"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-room-straight-away",
+      "query": "Our boat arrives at 8 in the morning. Could we have the room straight away?",
+      "expected": [
+        "early-check-in-late-check-out"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.48723341561113864,
+      "best_similarity_again": 0.4871990863939263,
+      "modes": {
+        "vector": {
+          "top": [
+            "late-arrival",
+            "early-check-in-late-check-out",
+            "check-in-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "holds-and-confirmation",
+            "city-tax",
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "holds-and-confirmation",
+            "late-arrival",
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "early-check-in-late-check-out",
+            "check-in-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "early-check-in-late-check-out",
+            "check-in-check-out"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "early-check-in-late-check-out",
+            "check-in-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "early-check-in-late-check-out",
+            "check-in-check-out"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "early-check-in-late-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "early-check-in-late-check-out"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": false
+    },
+    {
+      "id": "q-c-suitcases-last-day",
+      "query": "After we leave the room on the last day, can we keep our suitcases with you until our evening ferry?",
+      "expected": [
+        "luggage-storage"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.5590035366612895,
+      "best_similarity_again": 0.5589534627957192,
+      "modes": {
+        "vector": {
+          "top": [
+            "luggage-storage",
+            "check-in-check-out",
+            "early-check-in-late-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "luggage-storage",
+            "check-in-check-out",
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "luggage-storage",
+            "check-in-check-out",
+            "early-check-in-late-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "luggage-storage"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "luggage-storage"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "luggage-storage"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "luggage-storage"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "luggage-storage"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "luggage-storage"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-keep-room-while-deciding",
+      "query": "Can you keep a room for us for a couple of days while we decide?",
+      "expected": [
+        "holds-and-confirmation"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.5035692604602462,
+      "best_similarity_again": 0.5035555708441817,
+      "modes": {
+        "vector": {
+          "top": [
+            "holds-and-confirmation",
+            "early-check-in-late-check-out",
+            "accessibility"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "children",
+            "accessibility",
+            "cancellation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "children",
+            "accessibility",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "holds-and-confirmation"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "holds-and-confirmation"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "holds-and-confirmation"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-airport-pickup",
+      "query": "Can someone pick us up from the airport, and what does it cost for four people?",
+      "expected": [
+        "transfer"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.5132758542202378,
+      "best_similarity_again": 0.5132469088052298,
+      "modes": {
+        "vector": {
+          "top": [
+            "transfer",
+            "room-family-suite",
+            "luggage-storage"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "transfer",
+            "accessibility",
+            "changes-and-cancellation-requests"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "transfer",
+            "children",
+            "accessibility"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "transfer"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "transfer"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "transfer"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "transfer"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "transfer"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "transfer"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-garden-room",
+      "query": "Which of your rooms looks onto the garden, and how many people can stay in it?",
+      "expected": [
+        "room-standard-double"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.5736151955186534,
+      "best_similarity_again": 0.5736117477199707,
+      "modes": {
+        "vector": {
+          "top": [
+            "room-standard-double",
+            "room-family-suite",
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "room-standard-double",
+            "smoking",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "room-standard-double",
+            "groups",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-standard-double"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-standard-double"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-standard-double"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-three-sea-view",
+      "query": "Can three of us share a room with a view of the sea?",
+      "expected": [
+        "room-sea-view-double"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.5901604663959585,
+      "best_similarity_again": 0.590073993864807,
+      "modes": {
+        "vector": {
+          "top": [
+            "room-sea-view-double",
+            "extra-beds",
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "room-sea-view-double",
+            "extra-beds",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "room-sea-view-double",
+            "extra-beds",
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "room-sea-view-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-sea-view-double"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "room-sea-view-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-sea-view-double"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "room-sea-view-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-sea-view-double"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-cook-for-kids",
+      "query": "Do you have a room where we can prepare simple meals for the kids?",
+      "expected": [
+        "room-family-suite"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.4003729519466058,
+      "best_similarity_again": 0.40034819622973283,
+      "modes": {
+        "vector": {
+          "top": [
+            "children",
+            "room-family-suite",
+            "cots-and-infants"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "groups",
+            "room-standard-double",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "room-standard-double",
+            "groups",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "room-family-suite"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-family-suite"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "room-family-suite"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-family-suite"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "room-family-suite"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-family-suite"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-four-in-one-room",
+      "query": "We are two adults with two kids. Is there one room big enough for all four of us?",
+      "expected": [
+        "room-family-suite"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.5078754292231757,
+      "best_similarity_again": 0.5078696284271838,
+      "modes": {
+        "vector": {
+          "top": [
+            "room-family-suite",
+            "children",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "children",
+            "accessibility",
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "children",
+            "accessibility",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "room-family-suite"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-family-suite"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "room-family-suite"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-family-suite"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "room-family-suite"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "room-family-suite"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-young-children",
+      "query": "Are young children welcome at your hotel, and what do you need to know about them?",
+      "expected": [
+        "children"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.6054986684038786,
+      "best_similarity_again": 0.605521602989979,
+      "modes": {
+        "vector": {
+          "top": [
+            "children",
+            "cots-and-infants",
+            "pets-assistance-dogs"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "pets-assistance-dogs",
+            "children",
+            "parking"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "children",
+            "pets-assistance-dogs",
+            "cots-and-infants"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "children",
+            "cots-and-infants"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "children",
+            "cots-and-infants"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "children"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "children"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": false
+    },
+    {
+      "id": "q-c-teens-own-room",
+      "query": "Can our two teenagers, 15 and 17, have their own room next to ours?",
+      "expected": [
+        "children"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.3844199810607536,
+      "best_similarity_again": 0.384425940029235,
+      "modes": {
+        "vector": {
+          "top": [
+            "children",
+            "room-accessible-double",
+            "accessibility"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": false
+        },
+        "full_text": {
+          "top": [
+            "groups",
+            "room-standard-double",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "room-accessible-double",
+            "room-standard-double",
+            "children"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "children",
+            "room-standard-double",
+            "room-sea-view-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "children",
+            "room-standard-double",
+            "room-sea-view-double"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "children"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "children",
+            "room-standard-double",
+            "room-sea-view-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "children",
+            "room-standard-double",
+            "room-sea-view-double"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": false
+    },
+    {
+      "id": "q-c-wedding-guests",
+      "query": "We are bringing twenty friends to a wedding on the island and need rooms for all of them.",
+      "expected": [
+        "groups"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.4045307463086474,
+      "best_similarity_again": 0.4045468497644641,
+      "modes": {
+        "vector": {
+          "top": [
+            "room-family-suite",
+            "transfer",
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "accessibility",
+            "groups",
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "groups",
+            "accessibility",
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "groups"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "groups"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "groups"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-open-late-october",
+      "query": "Will you still be open in the last week of October?",
+      "expected": [
+        "season-and-opening"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.415781398032961,
+      "best_similarity_again": 0.4157871120108457,
+      "modes": {
+        "vector": {
+          "top": [
+            "season-and-opening",
+            "late-arrival",
+            "early-check-in-late-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "season-and-opening",
+            "late-arrival"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "season-and-opening",
+            "late-arrival",
+            "early-check-in-late-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "season-and-opening"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "season-and-opening"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "season-and-opening"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-move-our-booking",
+      "query": "We already have a reservation with you. Can we move it to a week later?",
+      "expected": [
+        "changes-and-cancellation-requests"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.46592945466933744,
+      "best_similarity_again": 0.4659059215831539,
+      "modes": {
+        "vector": {
+          "top": [
+            "early-check-in-late-check-out",
+            "holds-and-confirmation",
+            "changes-and-cancellation-requests"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "late-arrival"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "late-arrival",
+            "early-check-in-late-check-out",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "changes-and-cancellation-requests"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "changes-and-cancellation-requests"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "changes-and-cancellation-requests"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "changes-and-cancellation-requests"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "changes-and-cancellation-requests"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "changes-and-cancellation-requests"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-how-to-pay-deposit",
+      "query": "How do we pay the deposit, and how much is it?",
+      "expected": [
+        "deposit",
+        "payment-methods"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.5931518475105411,
+      "best_similarity_again": 0.5931092286189241,
+      "modes": {
+        "vector": {
+          "top": [
+            "payment-methods",
+            "deposit",
+            "city-tax"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "payment-methods",
+            "deposit",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "payment-methods",
+            "deposit",
+            "city-tax"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "deposit",
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "deposit",
+            "payment-methods"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "deposit",
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "deposit",
+            "payment-methods"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "deposit",
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "deposit",
+            "payment-methods"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-two-nights-end-july",
+      "query": "Is two nights enough for a stay at the end of July?",
+      "expected": [
+        "minimum-stay"
+      ],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.5035918728463218,
+      "best_similarity_again": 0.5036000901860641,
+      "modes": {
+        "vector": {
+          "top": [
+            "minimum-stay",
+            "early-check-in-late-check-out",
+            "city-tax"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "minimum-stay",
+            "cancellation",
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "minimum-stay",
+            "city-tax",
+            "cancellation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "minimum-stay",
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "minimum-stay",
+            "season-and-opening"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "minimum-stay"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "minimum-stay"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "minimum-stay"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "minimum-stay"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": false
+    },
+    {
+      "id": "q-c-ev-charging",
+      "query": "Is there somewhere to charge an electric car?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.27552490020283527,
+      "best_similarity_again": 0.2754965835340657,
+      "modes": {
+        "vector": {
+          "top": [
+            "parking",
+            "transfer",
+            "wifi"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "parking",
+            "luggage-storage",
+            "cancellation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "parking",
+            "luggage-storage",
+            "transfer"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-ferry-tickets",
+      "query": "Can you book our ferry tickets from Piraeus for us?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.4500721953522264,
+      "best_similarity_again": 0.45007012120194245,
+      "modes": {
+        "vector": {
+          "top": [
+            "transfer",
+            "early-check-in-late-check-out",
+            "changes-and-cancellation-requests"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "full_text": {
+          "top": [
+            "changes-and-cancellation-requests",
+            "groups",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "changes-and-cancellation-requests",
+            "early-check-in-late-check-out",
+            "groups"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-bicycles",
+      "query": "Do you rent out bicycles?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.29145209586911347,
+      "best_similarity_again": 0.2914127123413949,
+      "modes": {
+        "vector": {
+          "top": [
+            "changes-and-cancellation-requests",
+            "groups",
+            "luggage-storage"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "changes-and-cancellation-requests",
+            "groups",
+            "luggage-storage"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-gift-voucher",
+      "query": "Can I buy a gift voucher for a stay as a present?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.3716373982077952,
+      "best_similarity_again": 0.371664385142219,
+      "modes": {
+        "vector": {
+          "top": [
+            "payment-methods",
+            "early-check-in-late-check-out",
+            "holds-and-confirmation"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "minimum-stay",
+            "payment-methods",
+            "children"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "payment-methods",
+            "cancellation",
+            "children"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-hairdryer",
+      "query": "Is there a hairdryer in the bathroom?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.2735576980488066,
+      "best_similarity_again": 0.2736349993660925,
+      "modes": {
+        "vector": {
+          "top": [
+            "room-accessible-double",
+            "smoking",
+            "wifi"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "room-accessible-double",
+            "smoking",
+            "wifi"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-food-to-room",
+      "query": "Can we order food to our room in the evening?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.4563594297621989,
+      "best_similarity_again": 0.4563683025256132,
+      "modes": {
+        "vector": {
+          "top": [
+            "early-check-in-late-check-out",
+            "late-arrival",
+            "accessibility"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "full_text": {
+          "top": [
+            "groups",
+            "room-standard-double",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "holds-and-confirmation",
+            "room-standard-double",
+            "accessibility"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-sauna",
+      "query": "Is there a sauna or a hot tub?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.2595067863103657,
+      "best_similarity_again": 0.25949886347697926,
+      "modes": {
+        "vector": {
+          "top": [
+            "smoking",
+            "room-accessible-double",
+            "extra-beds"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "smoking",
+            "room-accessible-double",
+            "extra-beds"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-lunch",
+      "query": "Can we get lunch at the hotel?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.3680545735851094,
+      "best_similarity_again": 0.36809620990886094,
+      "modes": {
+        "vector": {
+          "top": [
+            "breakfast",
+            "pets-assistance-dogs",
+            "early-check-in-late-check-out"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "parking",
+            "pets-assistance-dogs",
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "pets-assistance-dogs",
+            "parking",
+            "transfer"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-c-wedding-reception",
+      "query": "Could we hold our wedding reception in your garden?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "written",
+      "best_similarity": 0.32614478409364667,
+      "best_similarity_again": 0.32608229206080475,
+      "modes": {
+        "vector": {
+          "top": [
+            "room-standard-double",
+            "smoking",
+            "accessibility"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "smoking",
+            "holds-and-confirmation",
+            "room-standard-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "smoking",
+            "room-standard-double",
+            "holds-and-confirmation"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-e-pets",
+      "query": "Are pets allowed at the hotel? We have a small dog.",
+      "expected": [
+        "pets-assistance-dogs"
+      ],
+      "written_by": "claude",
+      "source": "email",
+      "best_similarity": 0.7099931137239287,
+      "best_similarity_again": 0.7099817543124275,
+      "modes": {
+        "vector": {
+          "top": [
+            "pets-assistance-dogs",
+            "parking",
+            "early-check-in-late-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "pets-assistance-dogs",
+            "parking",
+            "smoking"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "pets-assistance-dogs",
+            "parking",
+            "smoking"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "pets-assistance-dogs"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "pets-assistance-dogs"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "pets-assistance-dogs"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "pets-assistance-dogs"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "pets-assistance-dogs"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "pets-assistance-dogs"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-e-breakfast",
+      "query": "Is breakfast included, and until what time is it served?",
+      "expected": [
+        "breakfast"
+      ],
+      "written_by": "claude",
+      "source": "email",
+      "best_similarity": 0.6992785938400512,
+      "best_similarity_again": 0.6992256919170794,
+      "modes": {
+        "vector": {
+          "top": [
+            "breakfast",
+            "check-in-check-out",
+            "early-check-in-late-check-out"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "breakfast",
+            "smoking",
+            "city-tax"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "breakfast",
+            "city-tax",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "breakfast"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "breakfast"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "breakfast"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "breakfast"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "breakfast"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "breakfast"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-e-cancellation",
+      "query": "What is your cancellation policy for a stay in August?",
+      "expected": [
+        "cancellation"
+      ],
+      "written_by": "claude",
+      "source": "email",
+      "best_similarity": 0.5589596006761065,
+      "best_similarity_again": 0.5588742722484837,
+      "modes": {
+        "vector": {
+          "top": [
+            "cancellation",
+            "minimum-stay",
+            "deposit"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "minimum-stay",
+            "cancellation",
+            "changes-and-cancellation-requests"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "cancellation",
+            "minimum-stay",
+            "changes-and-cancellation-requests"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "cancellation",
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cancellation",
+            "season-and-opening"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "cancellation",
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cancellation",
+            "season-and-opening"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "cancellation",
+            "season-and-opening"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "cancellation",
+            "season-and-opening"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-e-deposit",
+      "query": "How much deposit do you take?",
+      "expected": [
+        "deposit"
+      ],
+      "written_by": "claude",
+      "source": "email",
+      "best_similarity": 0.5176451167273198,
+      "best_similarity_again": 0.5176066223202198,
+      "modes": {
+        "vector": {
+          "top": [
+            "deposit",
+            "payment-methods",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "deposit",
+            "payment-methods",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "deposit",
+            "payment-methods",
+            "holds-and-confirmation"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "deposit"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "deposit"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "deposit"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "deposit"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "deposit"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "deposit"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-e-parking",
+      "query": "We are coming by car. Do you have parking at the hotel?",
+      "expected": [
+        "parking"
+      ],
+      "written_by": "claude",
+      "source": "email",
+      "best_similarity": 0.5590243904954658,
+      "best_similarity_again": 0.558972909447635,
+      "modes": {
+        "vector": {
+          "top": [
+            "parking",
+            "pets-assistance-dogs",
+            "accessibility"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "parking",
+            "transfer",
+            "pets-assistance-dogs"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "parking",
+            "pets-assistance-dogs",
+            "transfer"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "parking"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "parking"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "parking"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "parking"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "parking"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "parking"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-e-wifi",
+      "query": "Is the Wi-Fi free?",
+      "expected": [
+        "wifi"
+      ],
+      "written_by": "claude",
+      "source": "email",
+      "best_similarity": 0.6394935935313467,
+      "best_similarity_again": 0.6394608241848285,
+      "modes": {
+        "vector": {
+          "top": [
+            "wifi",
+            "cancellation",
+            "city-tax"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "wifi",
+            "parking",
+            "room-accessible-double"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        },
+        "hybrid": {
+          "top": [
+            "wifi",
+            "cancellation",
+            "parking"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [
+            "wifi"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "wifi"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "wifi"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "wifi"
+          ],
+          "error": null
+        },
+        {
+          "top": [
+            "wifi"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": true,
+          "returned": [
+            "wifi"
+          ],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-e-pool-gym",
+      "query": "Does the hotel have a swimming pool or a gym?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "email",
+      "best_similarity": 0.3550216796064538,
+      "best_similarity_again": 0.3549822012831261,
+      "modes": {
+        "vector": {
+          "top": [
+            "payment-methods",
+            "parking",
+            "pets-assistance-dogs"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "parking",
+            "pets-assistance-dogs",
+            "payment-methods"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "parking",
+            "payment-methods",
+            "pets-assistance-dogs"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    },
+    {
+      "id": "q-e-dinner",
+      "query": "Do you serve dinner at the hotel?",
+      "expected": [],
+      "written_by": "claude",
+      "source": "email",
+      "best_similarity": 0.36505547766187463,
+      "best_similarity_again": 0.3650730995384466,
+      "modes": {
+        "vector": {
+          "top": [
+            "breakfast",
+            "pets-assistance-dogs",
+            "groups"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        },
+        "full_text": {
+          "top": [
+            "parking",
+            "pets-assistance-dogs",
+            "breakfast"
+          ],
+          "no_match": false,
+          "failed": false,
+          "right": false
+        },
+        "hybrid": {
+          "top": [
+            "breakfast",
+            "pets-assistance-dogs",
+            "payment-methods"
+          ],
+          "no_match": true,
+          "failed": false,
+          "right": true
+        }
+      },
+      "selector": [
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        },
+        {
+          "top": [],
+          "no_match": true,
+          "failed": false,
+          "right": true,
+          "returned": [],
+          "error": null
+        }
+      ],
+      "selector_consistent": true
+    }
+  ]
+}
