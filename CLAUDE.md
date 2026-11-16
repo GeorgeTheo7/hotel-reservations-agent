@@ -10,7 +10,7 @@ Design decisions live in `docs/SPEC.md`. If the spec and the code disagree, stop
 - Don't add a dependency without asking and giving the reason.
 - Don't change the spec silently: suggest the change, I decide.
 - Commit messages are short: a title, plus a body only when there is a finding worth recording. When proposing a commit, show the full message, including the Co-Authored-By line.
-- While working, run only the tests for the files you changed; run the full suite once, right before proposing a commit.
+- While working, run only the tests for the files you changed; run the full suite, ruff, format check and mypy once, right before proposing a commit.
 - Mutation checks: 2–3 per step on what matters most, each run against its target test file only.
 - Repeat race tests (--count) only when concurrency code changed.
 - Reports: short by default (what changed, test result, mutations caught, decisions needed). Give details only for findings or surprises.

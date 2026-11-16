@@ -134,6 +134,19 @@ def test_production_code_never_reaches_the_ranking_code() -> None:
     assert leaking == [], f"production modules that import {RANKING}: {leaking}"
 
 
+WRITE_SIDE = ("anemos.approval", "anemos.sender")  # holds and the outbox (D12)
+
+
+def test_the_agent_never_reaches_the_write_side() -> None:
+    """D12, structurally: no module of the agent package can import the code that holds
+    rooms or sends replies, directly or through another module."""
+    graph = import_graph()
+    agent = sorted(name for name in graph if name.startswith("anemos.agent"))
+    assert "anemos.agent.runner" in agent and "anemos.agent.tools" in agent
+    leaking = [(a, w) for a in agent for w in WRITE_SIDE if reaches(graph, a, w)]
+    assert leaking == []
+
+
 def test_the_ranking_check_sees_an_indirect_import() -> None:
     graph = {"anemos.a": {"anemos.b"}, "anemos.b": {RANKING}, RANKING: set()}
     assert reaches(graph, "anemos.a", RANKING)

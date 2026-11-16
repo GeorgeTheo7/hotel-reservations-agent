@@ -16,7 +16,6 @@
 """
 
 import logging
-import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -45,9 +44,9 @@ type Conn = psycopg.Connection[TupleRow]
 log = logging.getLogger("anemos.extraction")
 
 EMAIL_OPEN, EMAIL_CLOSE = "<email>", "</email>"
-# Anything in the guest's text that looks like one of our markers (any case, spacing
-# or attributes) is neutralised, so the email cannot close its own block early.
-_MARKER = re.compile(r"<\s*/?\s*email\b[^>]*>", re.IGNORECASE)
+# Every < and > in the guest's text becomes a single guillemet, so the email cannot
+# write a marker of ours (</email>, or a block a prompt adds later, whatever its case,
+# spacing or attributes) and close its own block early.
 LEFT, RIGHT = chr(0x2039), chr(0x203A)  # single guillemets: readable, never a marker
 
 
@@ -72,11 +71,11 @@ type Finish = Callable[[Conn, Clock, Claimed, ExtractionOutput], None]
 
 
 def _neutral(text: str) -> str:
-    return _MARKER.sub(lambda m: m.group(0).replace("<", LEFT).replace(">", RIGHT), text)
+    return text.replace("<", LEFT).replace(">", RIGHT)
 
 
 def delimited_email(subject: str, body: str) -> str:
-    """The guest's text, untouched except for marker look-alikes, inside the markers."""
+    """The guest's text, untouched except for < and > (escaped), inside the markers."""
     return f"{EMAIL_OPEN}\nSubject: {_neutral(subject)}\n\n{_neutral(body)}\n{EMAIL_CLOSE}"
 
 

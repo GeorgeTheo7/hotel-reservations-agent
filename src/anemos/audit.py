@@ -46,6 +46,7 @@ class AuditEvent(StrEnum):
     LLM_FAILED = "llm.failed"
     LLM_REFUSED_BUDGET = "llm.refused_budget"
     RUN_DISCARDED = "run.discarded"
+    AGENT_TOOL_CALLED = "agent.tool_called"
 
 
 # Written only by the API, after it rolled back a refused or unconfirmed action
@@ -69,11 +70,13 @@ LLM_EVENTS = frozenset(
 
 # Written only by a run (extraction and routing, anemos.run): a run whose email changed
 # while the model was working (D65), the router's decision for every email (D70), and
-# set-aside spam. The cross-rules scenario runs no model, so it never writes them;
-# tests/integration/test_extraction_run.py and test_run.py cover them.
+# set-aside spam, and each agent tool call (D11). The cross-rules scenario runs no
+# model, so it never writes them; tests/integration/test_extraction_run.py, test_run.py
+# and test_agent_runner.py cover them.
 RUN_EVENTS = frozenset(
-    {AuditEvent.RUN_DISCARDED, AuditEvent.EMAIL_ROUTED, AuditEvent.EMAIL_SET_ASIDE}
-)
+    {AuditEvent.RUN_DISCARDED, AuditEvent.EMAIL_ROUTED, AuditEvent.EMAIL_SET_ASIDE,
+     AuditEvent.AGENT_TOOL_CALLED}
+)  # fmt: skip
 
 
 def write_audit(
