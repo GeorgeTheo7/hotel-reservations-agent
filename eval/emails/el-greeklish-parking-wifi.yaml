@@ -1,0 +1,23 @@
+schema_version: 2
+id: el-greeklish-parking-wifi
+split: dev
+tags: [greeklish, policy_question]
+
+email:
+  from: "Giorgos Fictional <giorgos@example.test>"
+  subject: "parking kai wifi"
+  received_at: "2027-03-02T20:05:00+00:00"
+  body: |
+    Kalispera,
+    erxomaste me to aftokinito. Exete parking sto ksenodoxeio?
+    Kai to wifi einai dorean?
+    Eyxaristo
+
+labels:
+  language: el
+  script: latin
+  kind: question
+  extraction: null
+  route: policy
+  required_tools: [search_policies]
+  policy_ids: [parking, wifi]

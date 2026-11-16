@@ -1,0 +1,35 @@
+schema_version: 2
+id: en-count-wife-and-mother
+split: dev
+tags: [v3_rule_a, count_people]
+
+email:
+  from: "Daniel Fictional <daniel@example.test>"
+  subject: "Room for three in July"
+  received_at: "2027-02-15T19:40:00+00:00"
+  body: |
+    Hello,
+
+    My wife and I would like to bring my mother along this summer.
+    Could we have a sea view room from 5 to 9 July 2027, if possible?
+
+    Kind regards,
+    Daniel
+
+# v3 rule (a): no number is written, but three people are named: 3 adults.
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 5, month: 7, year: 2027}
+      check_out: {day: 9, month: 7, year: 2027}
+    adults: 3
+    children: 0
+    rooms: 1
+    room_type: sea_view
+  route: quote
+  required_tools: [check_availability, quote_price]
+  holds: 1

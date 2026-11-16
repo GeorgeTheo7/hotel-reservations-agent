@@ -327,6 +327,9 @@ def rescore(data: dict[str, Any], cases: Sequence[EmailCase]) -> tuple[list[Row]
 NOT_BUILT_YET = frozenset({
     "en-discount-as-agreed", "el-group-wedding", "el-complaint-legal", "el-cancellation",
     "el-change-dates", "el-pets-policy", "el-greeklish-transfer-policy",
+    "en-policy-cancellation-deposit", "el-policy-checkin-luggage", "el-greeklish-parking-wifi",
+    "el-policy-extra-bed-child", "en-nomatch-pool-gym", "el-nomatch-scooter-hire",
+    "en-quote-plus-dinner", "en-complaint-air-conditioning", "el-discount-long-stay",
 })  # fmt: skip
 
 # SPEC Evaluation plan targets. Dates are scored as `stay` (resolved by code).

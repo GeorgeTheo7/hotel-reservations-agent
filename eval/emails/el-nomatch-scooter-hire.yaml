@@ -1,0 +1,23 @@
+schema_version: 2
+id: el-nomatch-scooter-hire
+split: held_out
+tags: [policy_question, no_match, near_miss]
+
+email:
+  from: "Manolis Fictional <manolis@example.test>"
+  subject: "Σκούτερ"
+  received_at: "2027-03-10T18:00:00+00:00"
+  body: |
+    Γεια σας,
+    Νοικιάζετε σκούτερ, ή μπορείτε να μας κλείσετε ένα για μία εβδομάδα;
+    Μανώλης
+
+# A near-miss of the transfer chunk: hiring a scooter is not a transfer (D73).
+labels:
+  language: el
+  script: greek
+  kind: question
+  extraction: null
+  route: escalate
+  reason_codes: [NO_POLICY]
+  required_tools: [search_policies]

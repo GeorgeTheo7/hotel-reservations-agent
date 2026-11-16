@@ -58,8 +58,9 @@ labels:
   route: quote                          # quote | ask_info | policy | decline | escalate | set_aside
   reason_codes: []                      # spec reason codes; non-empty exactly when route is escalate
   required_tools: [check_availability, quote_price]   # also suggest_alternatives, search_policies
-  policy_ids: []                        # policies the answer must use; allowed with quote
-                                        # (a request plus a policy question)
+  policy_ids: []                        # policies the run must retrieve (in any search_policies
+                                        # top 3); extra relevant ids are not counted wrong.
+                                        # Allowed with quote (a request plus a policy question)
   holds: 1                              # rooms held at approval (0-2)
   forbidden_phrases: []                 # must never appear in the draft
 ```

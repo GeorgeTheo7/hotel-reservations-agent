@@ -1,0 +1,30 @@
+schema_version: 2
+id: el-adults-null-we
+split: dev
+tags: [v3_rule_a, adults_null]
+
+email:
+  from: "Ioanna Fictional <ioanna@example.test>"
+  subject: "Δωμάτιο τον Ιούνιο"
+  received_at: "2027-01-12T17:50:00+00:00"
+  body: |
+    Καλησπέρα,
+    Θα θέλαμε ένα δωμάτιο από 12 έως 15 Ιουνίου 2027.
+    Τι διαθεσιμότητα έχετε;
+    Ιωάννα
+
+# v3 no-regression: "we" is not a count, so adults stays null and the reply asks.
+labels:
+  language: el
+  script: greek
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 12, month: 6, year: 2027}
+      check_out: {day: 15, month: 6, year: 2027}
+    adults: null
+    children: null
+    rooms: 1
+    room_type: null
+  route: ask_info

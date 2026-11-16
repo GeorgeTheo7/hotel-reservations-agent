@@ -56,6 +56,15 @@ WEEK_5: dict[str, Outcome] = {
     "el-change-dates": ("escalate", (MODEL,), 0),
     "el-pets-policy": ("escalate", (MODEL,), 0),
     "el-greeklish-transfer-policy": ("escalate", (MODEL,), 0),
+    "en-policy-cancellation-deposit": ("escalate", (MODEL,), 0),
+    "el-policy-checkin-luggage": ("escalate", (MODEL,), 0),
+    "el-greeklish-parking-wifi": ("escalate", (MODEL,), 0),
+    "el-policy-extra-bed-child": ("escalate", (MODEL,), 0),
+    "en-nomatch-pool-gym": ("escalate", (MODEL,), 0),
+    "el-nomatch-scooter-hire": ("escalate", (MODEL,), 0),
+    "en-quote-plus-dinner": ("quote", (), 1),
+    "en-complaint-air-conditioning": ("escalate", (MODEL,), 0),
+    "el-discount-long-stay": ("quote", (), 1),
 }
 EXACT = sorted(set(CASES) - set(WEEK_5))
 
@@ -141,7 +150,7 @@ def routed(committed_db: CommittedDb, email_id: int) -> dict[str, Any]:
 
 
 def test_every_case_is_counted_once() -> None:
-    assert len(CASES) == 43 and set(WEEK_5) <= set(CASES) and len(EXACT) == 36
+    assert len(CASES) == 55 and set(WEEK_5) <= set(CASES) and len(EXACT) == 39
     assert set(WEEK_5) == NOT_BUILT_YET  # one list, in anemos.evaluation
 
 

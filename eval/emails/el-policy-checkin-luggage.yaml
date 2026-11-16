@@ -1,0 +1,27 @@
+schema_version: 2
+id: el-policy-checkin-luggage
+split: held_out
+tags: [policy_question]
+
+email:
+  from: "Katerina Fictional <katerina@example.test>"
+  subject: "Ώρα άφιξης"
+  received_at: "2027-02-17T09:45:00+00:00"
+  body: |
+    Καλημέρα σας,
+    Φτάνουμε στο νησί με το πλοίο των 9:00. Τι ώρα είναι το check-in;
+    Μπορούμε να αφήσουμε τις βαλίτσες μας στο ξενοδοχείο μέχρι τότε;
+    Ευχαριστώ,
+    Κατερίνα
+
+# "9:00" is not in any chunk, so the reply must not repeat it (guardrail 2).
+# early-check-in-late-check-out is a fair extra citation: not required, not wrong.
+labels:
+  language: el
+  script: greek
+  kind: question
+  extraction:
+    arrival_time: "09:00"
+  route: policy
+  required_tools: [search_policies]
+  policy_ids: [check-in-check-out, luggage-storage]

@@ -1,0 +1,32 @@
+schema_version: 2
+id: el-discount-long-stay
+split: held_out
+tags: [discount, v3_rule_b]
+
+email:
+  from: "Christina Fictional <christina@example.test>"
+  subject: "Μεγάλη διαμονή τον Ιούνιο"
+  received_at: "2027-01-05T11:15:00+00:00"
+  body: |
+    Καλημέρα,
+    Θα θέλαμε δίκλινο για δύο ενήλικες, από 1 έως 11 Ιουνίου 2027.
+    Κάνετε κάποια έκπτωση για διαμονή δέκα νυχτών;
+    Χριστίνα
+
+# v3 rule (b): a plain discount request, nothing addressed to the assistant, so no
+# injection_suspected flag.
+labels:
+  language: el
+  script: greek
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 1, month: 6, year: 2027}
+      check_out: {day: 11, month: 6, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: escalate
+  reason_codes: [DISCOUNT]

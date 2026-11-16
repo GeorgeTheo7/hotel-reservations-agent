@@ -40,6 +40,15 @@ WEEK_5: dict[str, Outcome] = {
     "el-change-dates": ("escalate", (MODEL,)),  # gold CHANGE
     "el-pets-policy": ("escalate", (MODEL,)),  # gold route policy
     "el-greeklish-transfer-policy": ("escalate", (MODEL,)),  # gold route policy
+    "en-policy-cancellation-deposit": ("escalate", (MODEL,)),  # gold route policy
+    "el-policy-checkin-luggage": ("escalate", (MODEL,)),  # gold route policy
+    "el-greeklish-parking-wifi": ("escalate", (MODEL,)),  # gold route policy
+    "el-policy-extra-bed-child": ("escalate", (MODEL,)),  # gold route policy
+    "en-nomatch-pool-gym": ("escalate", (MODEL,)),  # gold NO_POLICY (D73)
+    "el-nomatch-scooter-hire": ("escalate", (MODEL,)),  # gold NO_POLICY (D73)
+    "en-quote-plus-dinner": ("quote", ()),  # gold NO_POLICY on the quote route (D73)
+    "en-complaint-air-conditioning": ("escalate", (MODEL,)),  # gold COMPLAINT
+    "el-discount-long-stay": ("quote", ()),  # gold DISCOUNT
 }
 
 # Decided by the tools, not by routing (D70: availability is not routing).
@@ -78,12 +87,12 @@ def gold(case: EmailCase) -> Outcome:
 
 
 def test_every_case_is_counted_once() -> None:
-    assert len(CASES) == 43
+    assert len(CASES) == 55
     assert set(WEEK_5) == NOT_BUILT_YET  # one list, in anemos.evaluation
     listed = set(WEEK_5) | set(BY_TOOLS)
     assert listed <= set(CASES), f"listed but no such case: {listed - set(CASES)}"
     assert not set(WEEK_5) & set(BY_TOOLS)
-    assert len(EXACT) == 35
+    assert len(EXACT) == 38
 
 
 @pytest.mark.parametrize("case_id", EXACT)

@@ -1,0 +1,25 @@
+schema_version: 2
+id: en-nomatch-pool-gym
+split: dev
+tags: [policy_question, no_match]
+
+email:
+  from: "Rachel Fictional <rachel@example.test>"
+  subject: "Facilities"
+  received_at: "2027-02-04T12:10:00+00:00"
+  body: |
+    Hi there,
+    Does the hotel have a swimming pool or a gym?
+    Thanks,
+    Rachel
+
+# No policy covers a pool or a gym (SPEC: left out on purpose): NO_MATCH, never an
+# answer from general knowledge (D73).
+labels:
+  language: en
+  script: latin
+  kind: question
+  extraction: null
+  route: escalate
+  reason_codes: [NO_POLICY]
+  required_tools: [search_policies]

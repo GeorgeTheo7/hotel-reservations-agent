@@ -1,0 +1,25 @@
+schema_version: 2
+id: el-policy-extra-bed-child
+split: held_out
+tags: [policy_question, extra_bed]
+
+email:
+  from: "Vasso Fictional <vasso@example.test>"
+  subject: "Επιπλέον κρεβάτι"
+  received_at: "2027-01-22T16:30:00+00:00"
+  body: |
+    Καλησπέρα,
+    Μπορεί η κόρη μας, 8 ετών, να έχει επιπλέον κρεβάτι σε δίκλινο standard;
+    Πόσο κοστίζει;
+    Βάσω
+
+# Expected answer: no extra bed in a Standard Double; a cot only for children
+# under 2. Amounts may appear only as written in a retrieved chunk (guardrail 2).
+labels:
+  language: el
+  script: greek
+  kind: question
+  extraction: null
+  route: policy
+  required_tools: [search_policies]
+  policy_ids: [extra-beds, room-standard-double]

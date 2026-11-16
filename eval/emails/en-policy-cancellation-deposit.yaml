@@ -1,0 +1,28 @@
+schema_version: 2
+id: en-policy-cancellation-deposit
+split: dev
+tags: [policy_question, cancellation_policy]
+
+email:
+  from: "Martin Fictional <martin@example.test>"
+  subject: "Before we book"
+  received_at: "2027-01-14T19:20:00+00:00"
+  body: |
+    Hello,
+
+    We are thinking of coming in August. Before we book: what is your
+    cancellation policy, and how much deposit do you take?
+
+    Best regards,
+    Martin
+
+# Asking about the cancellation policy is a policy question, not a CANCELLATION
+# request: there is no booking to cancel.
+labels:
+  language: en
+  script: latin
+  kind: question
+  extraction: null
+  route: policy
+  required_tools: [search_policies]
+  policy_ids: [cancellation, deposit]

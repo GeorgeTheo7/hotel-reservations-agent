@@ -1,0 +1,27 @@
+schema_version: 2
+id: en-complaint-air-conditioning
+split: dev
+tags: [complaint]
+
+email:
+  from: "Fiona Fictional <fiona@example.test>"
+  subject: "Our stay last week"
+  received_at: "2027-09-14T08:30:00+00:00"   # in season: "last week" was an open week
+  body: |
+    Dear Sir or Madam,
+
+    We stayed with you last week. The air conditioning in our room did not
+    work for three nights, and although we asked at reception every day,
+    nobody fixed it. We are very disappointed.
+
+    Fiona
+
+# An "other" email with no legal threat: code does not escalate it, so the agent
+# (escalate only, D11) must choose COMPLAINT, not MODEL.
+labels:
+  language: en
+  script: latin
+  kind: other
+  extraction: null
+  route: escalate
+  reason_codes: [COMPLAINT]

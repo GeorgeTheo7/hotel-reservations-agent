@@ -1,0 +1,36 @@
+schema_version: 2
+id: en-quote-plus-dinner
+split: dev
+tags: [policy_question, quote_with_policy, no_match, near_miss]
+
+email:
+  from: "Owen Fictional <owen@example.test>"
+  subject: "June stay"
+  received_at: "2027-01-20T21:00:00+00:00"
+  body: |
+    Hello,
+
+    Could you quote a standard double for two adults, 14 to 17 June 2027?
+    Also, do you serve dinner at the hotel?
+
+    Thanks,
+    Owen
+
+# D73: NO_MATCH escalates on the quote route too; a reply that quotes and leaves
+# the dinner question out is not allowed. A near-miss of the breakfast chunk.
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 14, month: 6, year: 2027}
+      check_out: {day: 17, month: 6, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: standard
+  route: escalate
+  reason_codes: [NO_POLICY]
+  required_tools: [search_policies]
