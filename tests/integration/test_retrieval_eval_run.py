@@ -182,3 +182,18 @@ def test_a_held_out_run_uses_the_given_threshold(
     assert code == 0 and len(client.sent) == 20
     assert data["run"]["search_settings"]["threshold"] == 0.25
     assert data["run"]["threshold_choice"] is None
+
+
+def test_the_result_is_written_before_the_report_is_printed(
+    module: ModuleType, committed_db: CommittedDb, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The calls are paid for before the report: a report that cannot be printed (a
+    console code page without a character) must not lose the result file."""
+
+    def unprintable(data: object) -> str:
+        raise UnicodeEncodeError("cp1253", "≥", 0, 1, "character maps to <undefined>")
+
+    monkeypatch.setattr(module, "report", unprintable)
+    with pytest.raises(UnicodeEncodeError):
+        run(module, committed_db, tmp_path, "--split", "dev")
+    assert len(list(tmp_path.glob("*-retrieval-dev-*.json"))) == 1

@@ -131,9 +131,11 @@ def main(
     results = [run_case(conninfo, llm, case) for case in cases]
 
     routing = score_routing([r.outcome for r in results])
-    print(report(results, routing))
+    # Written before anything is printed: the calls are paid for, and a console that
+    # cannot show a character must not lose the result (docs/NOTES.md).
     path = write(args.results_dir, started, args.model, settings, spec.version, commit,
                  estimate, results, routing)  # fmt: skip
+    print(report(results, routing))
     print(f"\nwritten: {path}")
     return 0
 
@@ -368,4 +370,6 @@ def rescore_file(source: Path, eval_dir: Path, repo: Path) -> int:
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):  # e.g. a Windows console on code page 1253
+        sys.stdout.reconfigure(errors="replace")
     sys.exit(main())

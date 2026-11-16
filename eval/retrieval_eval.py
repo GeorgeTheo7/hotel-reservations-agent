@@ -210,8 +210,10 @@ def main(
         "cost_micro_usd": budget.spent() - spent_before,
     }  # fmt: skip
     data = {"run": run, "summary": summarise(results), "queries": [_row(r) for r in results]}
-    print(report(data))
+    # Written before anything is printed: the calls are paid for, and a console that
+    # cannot show a character must not lose the result (docs/NOTES.md).
     path = write(args.results_dir, started, split, SELECTOR_MODEL, data)
+    print(report(data))
     print(f"\nwritten: {path}")
     return 0
 
@@ -366,4 +368,6 @@ def write(results_dir: Path, started: datetime, split: str, model: str,
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):  # e.g. a Windows console on code page 1253
+        sys.stdout.reconfigure(errors="replace")
     sys.exit(main())

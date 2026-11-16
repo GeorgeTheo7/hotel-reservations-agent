@@ -67,10 +67,15 @@ def main(
     info = RunInfo(set_name=args.set_name, model=args.model, settings=asdict(settings),
                    prompt_version=spec.version, commit=commit, dirty=dirty,
                    started_at=started, repeat=args.repeat)  # fmt: skip
+    # Written before anything is printed: the calls are paid for, and a console that
+    # cannot show a character must not lose the result (docs/NOTES.md).
+    path = write_results(args.results_dir, info, rows, summary)
     print(report(rows, summary))
-    print(f"\nwritten: {write_results(args.results_dir, info, rows, summary)}")
+    print(f"\nwritten: {path}")
     return 0
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):  # e.g. a Windows console on code page 1253
+        sys.stdout.reconfigure(errors="replace")
     sys.exit(main())

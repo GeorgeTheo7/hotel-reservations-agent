@@ -259,6 +259,28 @@ def test_the_smoke_command_prints_and_records_every_call(
     assert "consistent cases: 5/5" in printed
 
 
+def test_the_smoke_result_is_written_before_the_report_is_printed(
+    clean_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A report that cannot be printed (a console code page without a character) must
+    not lose the paid-for result file."""
+    module = smoke_module()
+
+    def unprintable(*args: object) -> str:
+        raise UnicodeEncodeError("cp1253", "x", 0, 1, "character maps to <undefined>")
+
+    monkeypatch.setattr(module, "report", unprintable)
+    cases = smoke()
+    clock = FixedClock(NOW)
+    with pytest.raises(UnicodeEncodeError):
+        module.main(
+            ["--model", "gpt-6-luna", "--results-dir", str(tmp_path / "results")],
+            client=ScriptedClient.of([answers_by_email(cases)] * 5), clock=clock,
+            budget=Budget(clock, 10**6, tmp_path / "spend.jsonl"), repo=clean_repo,
+        )  # fmt: skip
+    assert len(list((tmp_path / "results").glob("*.json"))) == 1
+
+
 def test_the_smoke_command_refuses_a_dirty_tree_unless_allowed(
     clean_repo: Path, tmp_path: Path
 ) -> None:

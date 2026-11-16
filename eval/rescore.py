@@ -10,6 +10,7 @@ printed like a run's report.
 
 import argparse
 import json
+import sys
 from dataclasses import asdict
 from pathlib import Path
 
@@ -43,4 +44,6 @@ def main(argv: list[str] | None = None, *, repo: Path = REPO) -> int:
 
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):  # e.g. a Windows console on code page 1253
+        sys.stdout.reconfigure(errors="replace")
     raise SystemExit(main())

@@ -120,3 +120,26 @@ def test_the_eval_scores_fields_and_routing_case_by_case(
     assert rescored["summary"]["field_accuracy"] == summary["field_accuracy"]
     assert rescored["summary"]["routing"] == summary["routing"]
     assert path.read_text(encoding="utf-8") == before
+
+
+def test_the_result_is_written_before_the_report_is_printed(
+    committed_db: CommittedDb, clean_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The calls are paid for before the report: a report that cannot be printed (a
+    console code page without a character) must not lose the result file."""
+    module = eval_module()
+
+    def unprintable(*args: object) -> str:
+        raise UnicodeEncodeError("cp1253", "x", 0, 1, "character maps to <undefined>")
+
+    monkeypatch.setattr(module, "report", unprintable)
+    clock = FixedClock(NOW)
+    with pytest.raises(UnicodeEncodeError):
+        module.main(
+            ["--model", "gpt-6-luna", "--results-dir", str(tmp_path / "results"),
+             "--case", "en-quote-sea-view-june"],
+            client=ScriptedClient.of([Answer(gold("en-quote-sea-view-june"))]), clock=clock,
+            budget=Budget(clock, 10**6, tmp_path / "spend.jsonl"), repo=clean_repo,
+            conninfo=committed_db.conninfo,
+        )  # fmt: skip
+    assert len(list((tmp_path / "results").glob("*-extraction-dev-gpt-6-luna.json"))) == 1
