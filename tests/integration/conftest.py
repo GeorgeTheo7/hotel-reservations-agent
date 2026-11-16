@@ -2,8 +2,10 @@
 
 - Once per test session: drop and recreate a throwaway database `<dev db>_test`,
   migrate it to head and load the 2027 seed data. The dev database is never touched.
-- Per test: the `db` fixture is a connection inside an outer transaction that is
-  always rolled back, so tests cannot leave data behind for each other.
+- Per test: the `db` fixture is the session's one connection (`session_conn`) inside
+  a transaction that is always rolled back, so tests cannot leave data behind for each
+  other. One connection, not one per test: per-test connections exhausted local ports
+  on Windows (TIME_WAIT). A commit on it fails the test loudly.
 - Inside that transaction, `db.commit()` raises, and `with db.transaction():` becomes a
   SAVEPOINT (used by tests that expect a constraint violation).
 - `committed_db` is the second harness, for tests that need real commits and several
@@ -28,6 +30,7 @@ from typing import Any
 import psycopg
 import pytest
 from psycopg import sql
+from psycopg.pq import TransactionStatus
 from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 
@@ -75,10 +78,52 @@ def open_rolled_back(test_db: str) -> Callable[[], AbstractContextManager[Conn]]
     return lambda: _rolled_back(test_db)
 
 
-@pytest.fixture
-def db(open_rolled_back: Callable[[], AbstractContextManager[Conn]]) -> Iterator[Conn]:
-    with open_rolled_back() as conn:
+@pytest.fixture(scope="session")
+def session_conn(test_db: str) -> Iterator[Conn]:
+    """The one connection every `db` test uses. A new connection per test left
+    thousands of closed sockets holding local ports (TCP TIME_WAIT), and on Windows a
+    connect now and then failed with "Address already in use" (NOTES 2026-11-16)."""
+    conn = connect(test_db)
+    try:
         yield conn
+    finally:
+        conn.close()
+
+
+class CommitUnderRolledBack(AssertionError):
+    """Something committed on the rolled-back `db` connection: its writes may have
+    leaked into the database every later test sees."""
+
+
+def assert_still_rolled_back(conn: Conn) -> None:
+    """The connection must still be inside the test's transaction. psycopg refuses
+    `commit()` inside it; this also catches a raw `COMMIT`/`ROLLBACK` statement."""
+    status = conn.info.transaction_status
+    if status not in (TransactionStatus.INTRANS, TransactionStatus.INERROR):
+        raise CommitUnderRolledBack(
+            f"the db connection left its transaction (status {status.name}): a commit "
+            "under the rolled-back fixture would leak data between tests"
+        )
+
+
+@pytest.fixture
+def rolled_back_check() -> Callable[[Conn], None]:
+    """The check `db` runs after every test, for the harness test that proves it works."""
+    return assert_still_rolled_back
+
+
+@pytest.fixture
+def db(session_conn: Conn) -> Iterator[Conn]:
+    """`session_conn` inside a transaction that is always rolled back: one top-level
+    transaction per test, not a savepoint in one long transaction, so advisory locks
+    (D52, D61: transaction-level) and row locks end with each test, as they would on a
+    fresh connection. `db.commit()` raises; `with db.transaction():` is a SAVEPOINT."""
+    conn = session_conn
+    if conn.info.transaction_status is not TransactionStatus.IDLE:
+        conn.rollback()  # an earlier test broke out of its transaction; start clean
+    with conn.transaction(force_rollback=True):
+        yield conn
+        assert_still_rolled_back(conn)
 
 
 class Rows:
