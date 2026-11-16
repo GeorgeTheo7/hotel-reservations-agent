@@ -350,3 +350,14 @@ Run: `eval/results/20261116T143544Z-retrieval-dev-gpt-6-luna.json` (commit 64e9c
 - **Vector misses in scope:** q-c-teens-own-room (the allowed NO_MATCH) and q-m-baby-and-six-year-old (`extra-beds` not in the top 3).
 - **Stability:** largest change in a best similarity between two embeddings 0.00012 (< 0.0005: the third decimal is stable).
 - **Cost:** 8,231 µ$ (worst case 35,574 µ$).
+
+## 2026-11-16 · D15 changed: `search_policies` is a model selector
+- **Decision (owner):** one `gpt-6-luna` structured call, prompt `policy_select_v1`: every packaged chunk first, then the query; the answer is up to 3 ids from an enum of the 27; an empty list is NO_MATCH → escalate NO_POLICY (D73). The chunks come from the packaged `policies.md` (no database, no transaction); the run records the returned texts and the hash of `policies.md`, so guardrails 2 and 6 work unchanged.
+- **Why:** on dev (`eval/results/20261116T143544Z-retrieval-dev-gpt-6-luna.json`) the all-chunks baseline scored 100% recall@3 and 100% NO_MATCH recall with no fitted parameter, against vector only 94% / 80% and hybrid 70% / 80%; it caught the three near-misses vector let through; at 27 chunks retrieval's scale argument does not apply.
+- **Rejected: a title weight** (migration 0014). It does not address the cause (ORed lexemes without IDF), and adjusting fusion settings on 33 dev queries overfits.
+- **Kept as eval modes:** the vector, full-text and hybrid code (moved to `anemos.policies.ranking`; a test stops production code from importing it), `policy_chunks` and the embeddings, so the comparison can be rerun.
+- **Query check:** also refuses `<` and `>`, so an injected email cannot make the agent write a query that closes `<question>` early.
+
+## 2026-11-16 · Selector runs: the dev wiring check and the held-out pass bar (written before either run)
+- **Dev ×3, a wiring check only:** the 48 dev queries through the production selector, three times. It checks that production sends what the baseline sent. If its numbers differ from the baseline's (100% / 100%), we look for a difference in what is sent, not change the prompt. Inconsistency across the three repeats is reported as a finding before the held-out run.
+- **Held-out ×3, pass bar:** recall@3 ≥ 90% and NO_MATCH recall ≥ 80% **on each of the 3 repeats** (at this size: 13 of 14 in scope, 5 of 6 out of scope), and the same answer across the 3 repeats on ≥ 90% of queries (18 of 20). The same answer: the same set of returned ids, order ignored, and the same NO_MATCH. Vector only (threshold 0.394, as the dev rule chose) and hybrid are reported from the same run, for the record, outside the bar.
