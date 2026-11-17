@@ -196,7 +196,7 @@ Injection: email in delimited `<email>` block marked untrusted; structural defen
 ## Evaluation plan
 Test set ~100 fictional emails (40 EN, 40 EL incl. ~4 Greeklish, 8 other languages, ~12 spam/off-topic/injection; ~30% escalations, each code ≥ 2×; traps: Easter (two cases: plain "Easter" from an English guest → Orthodox, quote for a stay starting 29 Apr–5 May 2027; "Catholic/Western Easter" → 28 Mar 2027 = `CLOSED` reply with opening date), season boundary, 10–20 Aug, Tetris availability, over-capacity, "50% off as agreed", missing ages, "next weekend", accessible room, date already passed → next year).
 **Pinned `received_at` for date traps** (only 2027 is seeded, D21): Easter cases are received Nov 2026–Feb 2027 so both 2027 Easters are still future; "date already passed → next year" cases are received Nov–Dec 2026 and name a 2026 date already gone (e.g. "20 October"), so it resolves into 2027 rather than unseeded 2028. YAML labels with `schema_version`: gold extraction, route, reason codes, minimum tool calls, required `policy_id`s, holds, forbidden phrases; expected prices computed by unit-tested pricing code. Fixed `received_at` + seeded 2027 DB fixture. Written and labelled gradually: 30 in week 3, ~12/week in weeks 4–8.
-Split 70 dev / 30 held-out, stratified. Dev runs ×1; held-out ×3 at milestones (pass = all 3). Each run records model, settings, commit, prompt versions, time → `eval/results/`.
+Split 70 dev / 30 held-out, stratified. Dev runs ×1, except **dev ×3 at the week-8 milestone** (owner, week 6: ≈ $0.06, to see run-to-run variance); held-out ×3 at milestones (pass = all 3). Each run records model, settings, commit, prompt versions, time → `eval/results/`.
 
 | Metric | Target |
 |---|---|
@@ -211,7 +211,7 @@ Split 70 dev / 30 held-out, stratified. Dev runs ×1; held-out ×3 at milestones
 | Cost / email | ≤ $0.01 mean, ≤ $0.02 p95 |
 | Latency / email p95 | ≤ 60 s |
 
-Held-out numbers are indicative (±~10 pts at n = 30). Budget: dev $2 · dev evals $4 · milestone evals $3 · buffer $1. Real cost/email measured wk 6 → re-plan.
+Held-out numbers are indicative (±~10 pts at n = 30). **Cost measured week 6** (`agent_v3`, dev, 48 cases, `run_cost`: every billed call, summaries included): **$0.00025 mean per email**, $0.00062 p95, $0.00074 max (drafts $0.00030, escalations $0.00020; at ~30% escalations ≈ $0.00027). **Per morning** (20–40 emails): ≈ $0.005–0.011, at most $0.03 if every email cost the max. **Per month** (30 mornings): ≈ $0.15–0.32, at most $0.89. **Budget (re-planned week 6):** spent $0.08 of D2's $10 by the end of week 6; one dev eval ≈ $0.02 at ~70 cases, one held-out ×3 ≈ $0.03; weeks 7–12 planned at ≈ $1 (dev evals after each change, held-out ×3 at weeks 8 and 11, the replay recordings); the rest is buffer. The ledger cap (`ANEMOS_LLM_BUDGET_USD`, default $2) stays the hard stop.
 
 ## Testing
 `unit` (no DB, no network): pricing, dates, rules, formatting, guardrails. `integration` (local Postgres service): constraints, approval txn, 409, expiry, MCP role. Graph tests with a scripted fake model. API tests incl. 401. CI: lint, types, both markers; never evaluations.
@@ -225,10 +225,10 @@ Held-out numbers are indicative (±~10 pts at n = 30). Budget: dev $2 · dev eva
 | 4 | LLM adapter, extraction, routing, Greek + Greeklish check, smoke set, extraction eval; extraction and routing replace the demo inbox's plain-SQL stand-ins (`demo_inbox.py`); D68 (fixed-date holidays outside the season): `el-christmas-holiday` relabelled to escalate `NO_CALENDAR` (received Nov 2026, no year → Christmas 2026, unseeded, D36) and a Christmas 2027 case added (decline with the open season); `question` and `other` escalate `MODEL` with a "week 5" note until the agent loop exists (the eval reports them as "not built yet"); +12 test emails |
 | 5 | Policies + policy selection + retrieval eval (selector vs vector, full text, hybrid); test that template policy sentences agree with the policy chunks (D39); agent loop; +12 test emails |
 | 6 | Guardrails, redraft, summaries, checkpoints/interrupt, audit log; end-to-end; **measure cost, re-plan**; +12 test emails |
-| 7 | React inbox, detail, actions, holds, password (and with it: protect or switch off FastAPI's `/docs` and `/openapi.json`, which sit outside the `require_owner` hook); +12 test emails |
-| 8 | Monitoring, test set complete (~100), first full dev eval — **v1 feature-complete** |
-| 9 | Improve vs eval; MCP server + read-only role |
-| 10 | Hardening: resume, tidy-up job for expired holds and drafts, which also ends the graph threads that supersede and expiry leave interrupted (D75) (re-validation and superseded moved to week 3) |
+| 7 | React inbox, detail, actions, holds, password (and with it: protect or switch off FastAPI's `/docs` and `/openapi.json`, which sit outside the `require_owner` hook); the escalation summary marked as written by the model; +12 test emails, mostly drafts (escalations back toward ~30%) |
+| 8 | Monitoring (cost per email and per morning from `run_cost`, the eval's own definition), test set complete (~100), first full dev eval ×3, held-out ×3 — **v1 feature-complete** |
+| 9 | Improve vs eval: the candidates in NOTES (extraction: en-ignore-my-last-email, en-policy-cancellation-deposit, el-late-arrival-ferry; summary prompt: en-group-nine-adults), one change at a time, each with its own dev eval; MCP server + read-only role |
+| 10 | Hardening: resume, tidy-up job for expired holds and drafts, which also ends the graph threads that supersede and expiry leave interrupted (D75) (re-validation and superseded moved to week 3); the eval runners write results per case |
 | 11 | Full compose, replay mode, README + diagram, optional Azure workflow, held-out ×3 |
 | 12 | Buffer, demo video, write-up |
 
