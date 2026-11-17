@@ -32,6 +32,7 @@ the 8th call too).
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol, TypedDict, cast
 
@@ -40,6 +41,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 from pydantic import BaseModel
 
+from anemos.agent.checks import DraftFacts, check_draft
 from anemos.agent.runner import Answer, Ends
 from anemos.agent.tools import (
     ESCALATE,
@@ -68,7 +70,8 @@ from anemos.reservations.tools import StoredQuote
 
 log = logging.getLogger("anemos.agent")
 
-MAX_CALLS = 8  # D11, counting the final write_draft or escalate
+MAX_CALLS = 8  # D11, counting the final write_draft or escalate, and refused drafts
+MAX_REDRAFTS = 1  # D76: one more write_draft after a refused one
 STEP = "agent"
 
 ROUTE_NOTES: dict[ToolRoute, str] = {
@@ -142,6 +145,11 @@ class LoopContext:
     spec: ToolPromptSpec
     quotes: dict[int, StoredQuote] = field(default_factory=dict)
     hits: dict[str, Hit] = field(default_factory=dict)
+    # D76: with facts, every write_draft is checked here and one redraft is allowed.
+    # The run graph always passes them (anemos.graph); without them (run_loop's
+    # default) only the final write checks.
+    facts: DraftFacts | None = None
+    record: Callable[[dict[str, Any]], None] | None = None  # audits a refused draft
 
 
 type Json = dict[str, Any]
@@ -154,6 +162,7 @@ class LoopFields(TypedDict, total=False):
 
     transcript: Json  # transcript_json
     calls: int
+    redrafts: int  # write_draft refused by the checks so far (D76: at most 1)
     outcomes: list[str]  # CLOSED, NONE_FOUND, NEEDS_INFO (D72), in the order seen
     closed_year: int | None
     quote_ids: list[int]
@@ -254,12 +263,42 @@ def agent_turn(state: LoopFields, ctx: LoopContext) -> LoopFields:
     if call.name == WRITE_DRAFT:
         assert isinstance(args, WriteDraftArgs)
         draft = DraftWanted(args.text, tuple(args.offer_quote_ids), tuple(args.policy_ids))
+        if ctx.facts is not None:
+            return _checked_draft(state, ctx, ctx.facts, transcript, call, draft, calls + 1)
         return {"calls": calls + 1, "end": end_json(draft)}
     if call.name == ESCALATE:
         assert isinstance(args, EscalateArgs)
         wanted = EscalationWanted(ReasonCode(args.reason_code), args.note, "agent")
         return {"calls": calls + 1, "end": end_json(wanted)}
     return {"calls": calls + 1, "pending": _call_json(call)}
+
+
+def _checked_draft(
+    state: LoopFields, ctx: LoopContext, facts: DraftFacts, transcript: Transcript,
+    call: ToolCall, draft: DraftWanted, calls: int,
+) -> LoopFields:  # fmt: skip
+    """D76: a draft that passes ends the loop; the first that fails goes back to the
+    model with the failed checks (its own text only: no rendered block, no price); the
+    second is GUARDRAIL_FAIL. The call counts toward the 8 either way."""
+    checked = check_draft(
+        draft.text, draft.offer_quote_ids, draft.policy_ids, facts, quotes=ctx.quotes,
+        hits=ctx.hits, outcomes=state.get("outcomes", []), closed_year=state.get("closed_year"),
+    )  # fmt: skip
+    if checked.passed:
+        return {"calls": calls, "end": end_json(draft)}
+    redrafts = state.get("redrafts", 0) + 1
+    if ctx.record is not None:
+        ctx.record({"tool": WRITE_DRAFT, "refused": checked.failures, "redraft": redrafts})
+    if redrafts > MAX_REDRAFTS:
+        failed = EscalationWanted(ReasonCode.GUARDRAIL_FAIL, "; ".join(checked.failures), "agent")
+        return {"calls": calls, "redrafts": redrafts, "end": end_json(failed)}
+    refusal: dict[str, object] = {"error": "GUARDRAIL_FAIL", "failed": checked.failures,
+               "message": "The draft was not stored. Fix every failed check and call "
+                          "write_draft again; this is the last chance before the email "
+                          "goes to the owner."}  # fmt: skip
+    output = _output(call.call_id, refusal)
+    return {"calls": calls, "redrafts": redrafts,
+            "transcript": transcript_json(transcript.then(call, output))}  # fmt: skip
 
 
 def tool(state: LoopFields, ctx: LoopContext) -> LoopFields:
@@ -355,8 +394,9 @@ def run_loop(
     message: str,
     email_id: int,
     spec: ToolPromptSpec = CURRENT_AGENT,
+    facts: DraftFacts | None = None,
 ) -> LoopResult:
-    ctx = LoopContext(llm, tools, route, email_id, spec)
+    ctx = LoopContext(llm, tools, route, email_id, spec, facts=facts)
     state = _loop_graph().invoke(start_fields(message, spec), context=ctx,
                                  config={"recursion_limit": RECURSION_LIMIT})  # fmt: skip
     return loop_result(cast(LoopFields, state), ctx)

@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
+from anemos.agent.checks import DraftFacts
 from anemos.agent.loop import (
     MAX_CALLS,
     DraftWanted,
@@ -221,3 +222,66 @@ def test_the_budget_refusing_a_turn_is_system_error(tmp_path: Path) -> None:
     assert isinstance(result.end, EscalationWanted)
     assert result.end.code == ReasonCode.SYSTEM_ERROR and "BudgetExceeded" in result.end.detail
     assert client.turns == []  # nothing sent
+
+
+# --- D76: the redraft (with facts, every write_draft is checked in the loop) ----------------
+
+FACTS = DraftFacts(router_route="policy", lang="en", summarisable=False,
+                   relative_or_holiday=False)  # fmt: skip
+GOOD: dict[str, Any] = {
+    "text": "Dear guest, assistance dogs are welcome.", "offer_quote_ids": [], "policy_ids": [],
+}  # fmt: skip
+BAD: dict[str, Any] = {
+    "text": "Dear guest, the transfer is 26 € and guaranteed.", "offer_quote_ids": [],
+    "policy_ids": [],
+}  # fmt: skip
+
+
+def checked_loop(steps: list[Step]) -> Ran:
+    client = ScriptedClient.of(steps)
+    budget = Budget(CLOCK, 1_000_000, Path("ledger.jsonl"))
+    llm = LLM(client, Settings("gpt-6-luna", 100), budget, None, CLOCK)
+    result = run_loop(llm, FakeTools(), route="policy", message=MESSAGE, email_id=7,
+                      facts=FACTS)  # fmt: skip
+    return result, client
+
+
+def refusal_in(client: ScriptedClient, turn: int) -> dict[str, Any]:
+    """The output the model was sent for its refused draft, as seen at `turn`."""
+    item = client.turns[turn].transcript.items[-1]
+    assert isinstance(item, ToolOutput)
+    refusal: dict[str, Any] = json.loads(item.output)
+    return refusal
+
+
+def test_a_refused_draft_goes_back_once_and_the_fixed_one_ends_the_loop() -> None:
+    result, client = checked_loop([call("write_draft", BAD, 1), call("write_draft", GOOD, 2)])
+    assert result.end == DraftWanted(GOOD["text"], (), ())
+    assert result.state.calls == 2  # the refused draft counted
+    refusal = refusal_in(client, 1)
+    assert set(refusal) == {"error", "failed", "message"} and refusal["error"] == "GUARDRAIL_FAIL"
+    assert refusal["failed"] == [
+        "numbers outside the code-rendered blocks and the returned policies: ['26']",
+        "forbidden phrases: ['guaranteed']",
+    ]  # the model's own text only: no rendered block, no price of ours
+
+
+def test_refused_twice_is_guardrail_fail() -> None:
+    result, _ = checked_loop([call("write_draft", BAD, 1), call("write_draft", BAD, 2)])
+    assert isinstance(result.end, EscalationWanted)
+    assert (result.end.code, result.end.by) == (ReasonCode.GUARDRAIL_FAIL, "agent")
+    assert "forbidden phrases" in result.end.detail and result.state.calls == 2
+
+
+def test_a_first_refusal_on_the_eighth_call_is_loop_limit() -> None:
+    reads = [call("search_policies", {"query": "pets"}, n) for n in range(MAX_CALLS - 1)]
+    result, _ = checked_loop([*reads, call("write_draft", BAD, 99)])
+    assert isinstance(result.end, EscalationWanted)
+    assert result.end.code == ReasonCode.LOOP_LIMIT and result.state.calls == MAX_CALLS
+
+
+def test_without_facts_the_loop_does_not_check() -> None:
+    """run_loop's default: only the final write checks (the graph always passes facts,
+    tests/integration/test_redraft.py)."""
+    result, _ = loop([call("write_draft", BAD)], route="policy")
+    assert result.end == DraftWanted(BAD["text"], (), ())

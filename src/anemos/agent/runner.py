@@ -127,6 +127,17 @@ class ToolRunner:
         return self._in_transaction(SEARCH_POLICIES, {"query": query}, lambda _: result,
                                     record=found.record())  # fmt: skip
 
+    def record(self, output: dict[str, Any]) -> None:
+        """One `agent.tool_called` row for a call that ran no tool (a refused draft,
+        D76), in its own short transaction."""
+        try:
+            write_audit(self.conn, self.clock.now(), "agent", AuditEvent.AGENT_TOOL_CALLED,
+                        email_id=self.email_id, output=output)  # fmt: skip
+            self.conn.commit()
+        except BaseException:
+            self.conn.rollback()
+            raise
+
     def _in_transaction(
         self,
         name: str,

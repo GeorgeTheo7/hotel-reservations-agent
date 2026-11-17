@@ -197,8 +197,10 @@ def test_the_model_escalates_kind_other(committed_db: CommittedDb, tmp_path: Pat
 def test_a_failed_check_escalates_guardrail_fail(
     committed_db: CommittedDb, tmp_path: Path, draft: dict[str, Any], problem: str
 ) -> None:
+    """Failing twice: the first failure goes back to the model (D76)."""
     email_id, _ = run(committed_db, CASES["en-quote-sea-view-june"],
-                      [call("write_draft", draft)], tmp_path)  # fmt: skip
+                      [call("write_draft", draft), call("write_draft", draft)],
+                      tmp_path)  # fmt: skip
     assert email_row(committed_db, email_id) == ("escalated", ["GUARDRAIL_FAIL"])
     assert problem in audit_output(committed_db, email_id, "email.escalated")["detail"]
     assert one(committed_db, "SELECT count(*) FROM drafts")[0] == 0

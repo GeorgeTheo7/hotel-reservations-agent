@@ -43,6 +43,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command, StateSnapshot, interrupt
 from psycopg.rows import TupleRow
 
+from anemos.agent.checks import load_facts
 from anemos.agent.evidence import rebuild_hits, rebuild_quotes
 from anemos.agent.loop import (
     AGENT_TURN,
@@ -356,7 +357,11 @@ def _start_agent(ctx: RunContext, start: AgentStart) -> None:
     email_id = ctx.claimed.email_id
     ctx.start = start
     tools = ToolRunner(ctx.conn, ctx.clock, ctx.llm, email_id, start.request_id)
-    ctx.loop = LoopContext(ctx.llm, tools, start.decision.route, email_id, CURRENT_AGENT)
+    # D76: the loop checks every write_draft with the run's facts (one redraft).
+    facts = load_facts(ctx.conn, start.request_id, start.decision.route, start.lang)
+    ctx.conn.commit()  # a read: no transaction left open during the loop (D71)
+    ctx.loop = LoopContext(ctx.llm, tools, start.decision.route, email_id, CURRENT_AGENT,
+                           facts=facts, record=tools.record)  # fmt: skip
 
 
 def _draft_status(conn: Conn, email_id: int) -> str | None:

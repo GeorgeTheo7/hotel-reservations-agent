@@ -1,5 +1,6 @@
-"""Guardrails 2-5 in the run's final write: a draft that fails one is GUARDRAIL_FAIL,
-with the failed check in the escalation's detail (the redraft comes with D76)."""
+"""Guardrails 2-5 in a run: a draft that fails one twice is GUARDRAIL_FAIL (the first
+failure goes back to the model, D76), with the failed check in the escalation's
+detail."""
 
 from __future__ import annotations
 
@@ -29,7 +30,8 @@ SETTINGS = Settings(model="gpt-6-luna", max_output_tokens=100)
 
 def outcome(committed_db: CommittedDb, case_id: str, text: str, tmp: Path,
             extraction: ExtractionOutput | None = None) -> tuple[str, Any, str | None]:  # fmt: skip
-    """(email status, reason codes, escalation detail) after write_draft(text)."""
+    """(email status, reason codes, escalation detail) after write_draft(text), sent
+    twice if the first is refused (the script then has the same draft again)."""
     case = CASES[case_id]
     clock = FixedClock(case.email.received_at)
     conn = committed_db.connect()
@@ -38,7 +40,7 @@ def outcome(committed_db: CommittedDb, case_id: str, text: str, tmp: Path,
     gold = extraction or case.gold_output()
     assert gold is not None
     write = ToolCallStep("write_draft", {"text": text, "offer_quote_ids": [], "policy_ids": []})
-    client = ScriptedClient.of([Answer(gold), write])
+    client = ScriptedClient.of([Answer(gold), write, write])
     budget = Budget(clock, 1_000_000, tmp / "llm_spend.jsonl")
     llm = LLM(client, SETTINGS, budget, committed_db.connect, clock, sleep=lambda s: None)
     process_email(committed_db.connect, clock, llm, email_id, finish=agent_finish(llm))
@@ -83,7 +85,7 @@ def test_g3_the_same_reply_with_the_summary_is_a_draft(
     ("Dear guest,\n\n{{REQUEST_SUMMARY}}\n\nHow many guests? A discount is possible.\n\nAnemos",
      "forbidden phrases"),  # g5
 ])  # fmt: skip
-def test_g2_g4_g5_fail_in_the_final_write(
+def test_g2_g4_g5_fail_twice_is_guardrail_fail(
     committed_db: CommittedDb, tmp_path: Path, text: str, check: str
 ) -> None:
     status, codes, detail = outcome(committed_db, "en-next-weekend-june", text, tmp_path,
