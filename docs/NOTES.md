@@ -591,3 +591,9 @@ A metric with nothing to measure (n/a) does not pass.
 **Known misses, counted, not excluded:** en-ignore-my-last-email and en-policy-cancellation-deposit (extraction kind misreads, left for week 9).
 **Week 5's findings revisited:** check_availability calls (expected 0, not offered); el-adults-null-we's dates now in `{{REQUEST_SUMMARY}}`, not the model's text; digits in the model's text only from returned policies.
 **After the run:** no prompt is changed on seeing the result; findings are reported and the owner decides. Step 12 (measure cost, re-plan) uses this run's `run_cost` numbers.
+
+## 2026-11-17 · Bar line 8 amended to the SPEC's wording (before any call)
+- **Found while planning the scorer:** the committed line 8 divided false alarms by all `write_draft` calls; the SPEC's target is "guardrail false alarms **on correct drafts** ≤ 5%". They differ when some refusals were right (40 calls, 4 refused, 2 of them false alarms: 2/40 = 5% passes, 2/38 = 5.3% fails).
+- **Decision (owner): the SPEC's.** Rate = false alarms / correct drafts, where correct drafts = every `write_draft` that passed the checks (taken as correct; the owner does not mark them) + every refused draft the owner marks a false alarm. No false alarm passes (including no refusal at all); an unmarked refusal leaves the line uncalled.
+- **n/a (owner):** "a metric with nothing to measure does not pass" applies to the lines that must have cases; line 8 is the exception above.
+- **Marks (owner):** a JSON file committed next to the result, one entry per refused draft (`call`, `false_alarm`, a one-line `reason`), applied by `eval/agent_eval.py --rescore <results> --false-alarms <marks>` with no model or database call.
