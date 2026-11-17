@@ -37,7 +37,7 @@ from anemos.llm.budget import Budget
 from anemos.llm.fake import OnTranscript, ScriptedClient, Step, ToolCallStep
 from anemos.llm.pricing import Usage
 from anemos.policies.search import Hit
-from anemos.prompts import AGENT_MAX_OUTPUT_TOKENS, AGENT_V2, CURRENT_AGENT
+from anemos.prompts import AGENT_MAX_OUTPUT_TOKENS, AGENT_V3, CURRENT_AGENT
 from anemos.reservations.errors import ReasonCode
 
 pytestmark = pytest.mark.unit
@@ -115,7 +115,7 @@ def test_each_route_is_sent_its_own_tools(route: ToolRoute) -> None:
 def test_the_turn_uses_the_agent_prompt_and_settings() -> None:
     _, client = loop([call("escalate", {"reason_code": "MODEL", "note": "n"})])
     [turn] = client.turns
-    assert turn.transcript.instructions == AGENT_V2.text() and CURRENT_AGENT is AGENT_V2
+    assert turn.transcript.instructions == AGENT_V3.text() and CURRENT_AGENT is AGENT_V3
     assert turn.transcript.items == (UserText(MESSAGE),)
     assert (turn.settings.max_output_tokens, turn.settings.reasoning_effort) == (
         AGENT_MAX_OUTPUT_TOKENS, "none")  # fmt: skip

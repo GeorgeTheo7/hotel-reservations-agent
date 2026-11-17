@@ -628,3 +628,8 @@ Run: `eval/results/20261117T152717Z-agent-dev-gpt-6-luna.json` (commit 8224e26, 
 - **Tests changed:** `test_redraft.py`'s bad draft lacked the summary, which now passes; it writes a number of its own instead (G2), and the good draft has no summary, so the stored body shows the inserted one once, after the greeting.
 - **Test changed:** `test_guardrails_wired.py`'s G3 test (a relative-date ask_info without the summary was GUARDRAIL_FAIL) now expects a draft. **Consequence:** G3 can no longer fail on an agent draft, since every route that requires the summary has something to render (quote and decline a complete request, a relative or holiday date its dates); it stays as the check of the insertion and on owner edits.
 - **Mutations caught:** the insertion skipped on a relative ask_info (1 test), the presence check ignored, so the summary inserted twice (1), the final write rendering the model's text instead of `Checked.text` (1).
+
+## 2026-11-17 · `agent_v3`
+- **The prompt (`agent_v3@62876aea`), v2 minus every `{{REQUEST_SUMMARY}}` instruction, plus (owner):** the request summary is added automatically after the greeting; never write it, nor a date, a number of nights or a number of guests, in digits or in words. v2's tools (`AGENT_V3.tools is AGENT_V2.tools`); `agent_v2@192e4031` still reproduces. A test checks the rest is v2's word for word (the refusal, the escalation codes, the forbidden words, the two remaining placeholders).
+- **Tests changed (the version change itself):** `CURRENT_AGENT is AGENT_V3` in the loop test; v2's prompt test no longer asserts v2 is current.
+- **Mutations caught:** the loop still sending v2 (1 test), v3 naming the placeholder again (2).

@@ -10,15 +10,14 @@ from anemos.agent.loop import DRAFT_REFUSED
 from anemos.agent.tools import CHECK_AVAILABILITY
 from anemos.guardrails import no_forbidden_phrases
 from anemos.llm.openai_client import function_tool
-from anemos.prompts import AGENT_V1, AGENT_V2, CURRENT_AGENT, tool_prompt_hash
+from anemos.prompts import AGENT_V1, AGENT_V2, tool_prompt_hash
 
 pytestmark = pytest.mark.unit
 
 TEXT = " ".join(AGENT_V2.text().split())
 
 
-def test_agent_v2_is_current_and_its_pin_covers_its_own_tools() -> None:
-    assert CURRENT_AGENT is AGENT_V2
+def test_agent_v2_pin_covers_its_own_tools() -> None:
     tools: dict[str, Any] = {r: [function_tool(t) for t in ts] for r, ts in AGENT_V2.tools.items()}
     pinned = tool_prompt_hash(AGENT_V2.text(), tools, max_output_tokens=AGENT_V2.max_output_tokens,
                               reasoning_effort=AGENT_V2.reasoning_effort)  # fmt: skip

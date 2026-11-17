@@ -216,7 +216,17 @@ AGENT_V2 = ToolPromptSpec(
     reasoning_effort=AGENT_REASONING_EFFORT,
     tools=TOOLS_BY_ROUTE_V2,
 )
-CURRENT_AGENT = AGENT_V2  # what the agent loop sends (D2, D11)
+# v3 (week 6, owner, NOTES): code inserts {{REQUEST_SUMMARY}} where guardrail 3 requires
+# it (D80), so the prompt no longer names it; never a date, nights or guests, in digits
+# or words. v2's tools.
+AGENT_V3 = ToolPromptSpec(
+    name="agent_v3",
+    sha256_8="62876aea",
+    max_output_tokens=AGENT_MAX_OUTPUT_TOKENS,
+    reasoning_effort=AGENT_REASONING_EFFORT,
+    tools=TOOLS_BY_ROUTE_V2,
+)
+CURRENT_AGENT = AGENT_V3  # what the agent loop sends (D2, D11)
 
 # The escalation summary (D81, week 6): one structured call per escalation after
 # extraction (not INJECTION or THREAD_REPLY); English, 2-3 sentences (~100 tokens), and
@@ -232,7 +242,7 @@ CURRENT_SUMMARY = ESCALATION_SUMMARY_V1
 
 PROMPTS: tuple[PromptSpec | ToolPromptSpec, ...] = (
     EXTRACTION_V1, EXTRACTION_V2, EXTRACTION_V3, RETRIEVAL_BASELINE_V1, POLICY_SELECT_V1,
-    POLICY_SELECT_V2, AGENT_V1, AGENT_V2, ESCALATION_SUMMARY_V1,
+    POLICY_SELECT_V2, AGENT_V1, AGENT_V2, AGENT_V3, ESCALATION_SUMMARY_V1,
 )  # fmt: skip
 CURRENT_POLICY_SELECT = POLICY_SELECT_V2  # what search_policies sends (D2, D15)
 CURRENT_EXTRACTION = EXTRACTION_V3  # what runs and evaluations send (D2)
