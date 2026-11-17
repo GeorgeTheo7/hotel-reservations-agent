@@ -84,6 +84,8 @@ class EmailDetail(BaseModel):
     received_at: datetime
     status: EmailStatus
     reason_codes: list[str]
+    # D81: written by a model (week 7: the UI marks it so); None if there is none.
+    escalation_summary: str | None = None
     draft: Draft | None
     outbox: Outbox | None
 

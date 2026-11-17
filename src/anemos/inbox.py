@@ -145,17 +145,21 @@ def ingest(connect: Callable[[], Conn], clock: Clock, mailbox: Mailbox) -> list[
 
 def escalate(
     conn: Conn, now: datetime, email_id: int, codes: Sequence[ReasonCode], detail: str,
-    *, actor: Actor,
+    *, actor: Actor, summary: str | None = None, model_added: Sequence[ReasonCode] = (),
 ) -> None:  # fmt: skip
     """processing -> escalated with every reason code (spec Escalation rules), audited.
-    The caller holds the sender lock and has checked the status."""
-    values = [code.value for code in codes]
+    The caller holds the sender lock and has checked the status. `summary` and the codes
+    the summary call added (D81) are stored and audited when there are any."""
+    values = list(dict.fromkeys([c.value for c in codes] + [c.value for c in model_added]))
     conn.execute(
-        "UPDATE emails SET status = %s, reason_codes = %s WHERE id = %s",
-        (EmailStatus.ESCALATED, values, email_id),
+        "UPDATE emails SET status = %s, reason_codes = %s, escalation_summary = %s WHERE id = %s",
+        (EmailStatus.ESCALATED, values, summary, email_id),
     )
+    output: dict[str, object] = {"reason": values[0], "reasons": values, "detail": detail}
+    if summary is not None or model_added:
+        output |= {"summary": summary, "added_by_model": [c.value for c in model_added]}
     write_audit(conn, now, actor, AuditEvent.EMAIL_ESCALATED, email_id=email_id,
-                output={"reason": values[0], "reasons": values, "detail": detail})  # fmt: skip
+                output=output)  # fmt: skip
 
 
 def set_aside(conn: Conn, now: datetime, email_id: int) -> None:

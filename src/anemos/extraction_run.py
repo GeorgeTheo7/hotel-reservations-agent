@@ -86,8 +86,20 @@ class AgentStart:
     lang: Lang
 
 
+@dataclass(frozen=True)
+class EscalateLater:
+    """What `finish` returns for an escalation by code that gets a summary (D81, D71):
+    the transaction commits with the email still `processing`; the summary call runs
+    with nothing held, then one final transaction escalates."""
+
+    codes: tuple[ReasonCode, ...]
+    detail: str
+
+
 type Then = Callable[[Conn], Literal["finished", "discarded"]]
-type Finish = Callable[[Conn, Clock, Claimed, ExtractionOutput], Then | AgentStart | None]
+type Finish = Callable[
+    [Conn, Clock, Claimed, ExtractionOutput], Then | AgentStart | EscalateLater | None
+]
 
 
 def _neutral(text: str) -> str:

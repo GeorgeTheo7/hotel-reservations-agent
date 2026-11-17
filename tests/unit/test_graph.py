@@ -10,7 +10,7 @@ def test_the_run_graph_has_the_steps_as_nodes_in_order() -> None:
     edges = {(e.source, e.target) for e in graph.edges}
     assert set(graph.nodes) == {
         START, "claim", "extract", "store_and_route", "agent_turn", "tool", "final_write",
-        "await_owner", END,
+        "await_owner", "summarise", "write_escalation", END,
     }  # fmt: skip
     assert edges == {
         (START, "claim"),
@@ -19,6 +19,12 @@ def test_the_run_graph_has_the_steps_as_nodes_in_order() -> None:
         ("extract", "store_and_route"),
         ("store_and_route", END),  # set aside, escalated by code, discarded
         ("store_and_route", "await_owner"),  # the stub drafter stored a draft
+        ("store_and_route", "summarise"),  # escalated by code: summary first (D81)
+        ("summarise", "write_escalation"),  # ... then its final transaction
+        ("write_escalation", END),
+        ("agent_turn", "summarise"),  # the loop ended in an escalation (D81)
+        ("tool", "summarise"),
+        ("summarise", "final_write"),
         ("store_and_route", "agent_turn"),  # D71 phase 1 committed
         ("agent_turn", "tool"),
         ("agent_turn", "agent_turn"),  # a rejected call, answered and counted

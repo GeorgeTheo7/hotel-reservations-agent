@@ -5,9 +5,9 @@ committed database.
 Every evaluation case runs on its own (docs/email-format.md: each file is one email on
 its own): an emptied database (committed_db truncates every operational table before
 each test, and the run checks it is empty), the case's own `world` bookings, then the
-run. A case either ends exactly as labelled (status, draft route, reason codes, holds)
-or is listed in SECONDARY_CODES with what it ends as today; a listed case that starts
-to match fails, so the list only shrinks on purpose. A case also calls every labelled
+run. Every case ends exactly as labelled (status, draft route, reason codes, holds);
+the two that once lacked a second code (el-group-wedding, el-complaint-legal) get it
+from the escalation summary (D81). A case also calls every labelled
 required tool and retrieves every labelled policy id. No network: every model call is
 answered by the gold client (anemos.gold) from the case's labels. Superseding (D48) is
 tested on purpose, below (with the stub drafter, as the demo used to run).
@@ -26,7 +26,6 @@ from psycopg.rows import TupleRow
 
 from anemos.clock import FixedClock
 from anemos.email_cases import EmailCase, load_cases
-from anemos.evaluation import NOT_BUILT_YET
 from anemos.extraction import ExtractionFlag
 from anemos.extraction_run import process_email
 from anemos.gold import GoldClient
@@ -35,7 +34,6 @@ from anemos.llm.adapter import LLM, ModelClient, Prompt, Settings
 from anemos.llm.budget import Budget
 from anemos.llm.fake import Answer, ScriptedClient, Step
 from anemos.mailbox import IncomingEmail
-from anemos.reservations.errors import ReasonCode
 from anemos.reservations.formatting import Lang, format_money
 from anemos.run import agent_finish, process_inbox, route_and_draft
 
@@ -49,16 +47,7 @@ type Outcome = tuple[str, tuple[str, ...], int]  # route, codes, holds
 
 CASES = {c.id: c for c in load_cases(Path(__file__).resolve().parents[2] / "eval" / "emails")}
 SETTINGS = Settings(model="gpt-6-luna", max_output_tokens=100)
-GROUP, LEGAL = ReasonCode.GROUP.value, ReasonCode.LEGAL.value
-
-# The run cannot reach these labels yet: the router escalates them by code before the
-# agent, so the second code only the model adds (DISCOUNT, COMPLAINT) is missing. The
-# spec's open item on secondary codes decides them in week 6.
-SECONDARY_CODES: dict[str, Outcome] = {
-    "el-group-wedding": ("escalate", (GROUP,), 0),
-    "el-complaint-legal": ("escalate", (LEGAL,), 0),
-}
-EXACT = sorted(set(CASES) - set(SECONDARY_CODES))
+EXACT = sorted(CASES)
 
 
 def in_world(committed_db: CommittedDb, case: EmailCase) -> None:
@@ -156,9 +145,7 @@ def routed(committed_db: CommittedDb, email_id: int) -> dict[str, Any]:
 
 
 def test_every_case_is_counted_once() -> None:
-    assert len(CASES) == 55 and set(SECONDARY_CODES) <= set(CASES) and len(EXACT) == 53
-    # The extraction eval keeps the stub drafter and its own, longer list.
-    assert set(SECONDARY_CODES) <= NOT_BUILT_YET
+    assert len(CASES) == 55 and len(EXACT) == 55
 
 
 @pytest.mark.parametrize("case_id", EXACT)
@@ -196,16 +183,6 @@ def test_each_quote_block_shows_the_stored_quotes_amounts(
         rates = {line["room_rate_cents"] for line in lines}
         for cents in (subtotal, city_tax, deposit, *rates):
             assert format_money(cents, lang) in block, (cents, block)
-
-
-@pytest.mark.parametrize(("case_id", "expected"), sorted(SECONDARY_CODES.items()))
-def test_a_listed_case_ends_as_recorded_and_still_differs(
-    committed_db: CommittedDb, tmp_path: Path, case_id: str, expected: Outcome
-) -> None:
-    email_id, _ = run_case(committed_db, CASES[case_id], tmp_path)
-    got = outcome(committed_db, email_id)
-    assert got == expected
-    assert got != gold(CASES[case_id]), f"{case_id} now matches its label: move it to EXACT"
 
 
 # --- single behaviours ---------------------------------------------------------------------

@@ -162,7 +162,7 @@ def test_a_resume_with_a_changed_policies_file_ends_system_error(
     assert first.calls == ["ExtractionOutput", "turn", "PolicySelection", "turn"]
     monkeypatch.setattr(evidence, "policies_sha256", lambda: "0" * 64)
     result, again = resume(committed_db, POLICY_CASE, email_id, clock, tmp_path)
-    assert again.calls == []  # refused before any model call
+    assert again.calls == ["EscalationSummary"]  # no agent turn; only the summary (D81)
     assert result is not None
     assert email_status(committed_db, email_id) == ("escalated", ["SYSTEM_ERROR"])
     detail = one(committed_db, "SELECT output ->> 'detail' FROM audit_log WHERE email_id = %s"
@@ -182,7 +182,7 @@ def test_a_resume_after_a_price_change_ends_system_error(
     finally:
         conn.execute("UPDATE room_rates SET rate_cents = rate_cents - 100")
         conn.commit()
-    assert again.calls == [] and result is not None
+    assert again.calls == ["EscalationSummary"] and result is not None  # no agent turn (D81)
     assert email_status(committed_db, email_id) == ("escalated", ["SYSTEM_ERROR"])
     detail = one(committed_db, "SELECT output ->> 'detail' FROM audit_log WHERE email_id = %s"
                  " AND event = 'email.escalated'", email_id)[0]  # fmt: skip

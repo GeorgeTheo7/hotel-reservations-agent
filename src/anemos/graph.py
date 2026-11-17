@@ -70,6 +70,7 @@ from anemos.extraction import ExtractionOutput
 from anemos.extraction_run import (
     AgentStart,
     Claimed,
+    EscalateLater,
     Finish,
     RunResult,
     claim,
@@ -85,8 +86,9 @@ from anemos.llm.adapter import LLM
 from anemos.prompts import CURRENT_AGENT, CURRENT_EXTRACTION, PromptSpec
 from anemos.reservations.errors import ReasonCode
 from anemos.routing import ToAgent
-from anemos.run import final_write
+from anemos.run import final_write, write_escalation
 from anemos.states import DraftStatus, EmailStatus
+from anemos.summary import Summary, summarise, wanted
 
 type Conn = psycopg.Connection[TupleRow]
 type Connect = Callable[[], Conn]
@@ -94,6 +96,7 @@ type Outcome = Literal["finished", "escalated", "discarded"]
 
 CLAIM, EXTRACT, STORE_AND_ROUTE = "claim", "extract", "store_and_route"
 FINAL_WRITE, AWAIT_OWNER = "final_write", "await_owner"
+SUMMARISE, WRITE_ESCALATION = "summarise", "write_escalation"
 # The draft statuses an owner action ends a draft in (D75: they resume the thread).
 OWNER_ENDED = frozenset({DraftStatus.APPROVED, DraftStatus.REJECTED, DraftStatus.INVALIDATED})
 
@@ -105,6 +108,8 @@ class RunState(LoopFields, total=False):
     extraction: dict[str, Any] | None  # ExtractionOutput, as JSON
     error: str  # why extraction failed
     agent: dict[str, Any]  # AgentStart: route, detail, request_id, lang
+    escalation: dict[str, Any]  # EscalateLater (by code, D81): codes, detail
+    summary: dict[str, Any] | None  # Summary as JSON; present (maybe None) once summarised
     outcome: Outcome  # set when the run's work has ended
     draft_stored: bool  # a draft was stored: the run waits for the owner
     finished: str  # the draft's status when the owner's action resumed the thread
@@ -171,6 +176,8 @@ def _store_and_route(state: RunState, runtime: Runtime[RunContext]) -> RunState:
     conn.commit()
     if then is None:
         return {"outcome": "finished", "draft_stored": _draft_stored(conn, email_id)}
+    if isinstance(then, EscalateLater):  # D81: summary first, nothing held (D71)
+        return {"escalation": {"codes": [c.value for c in then.codes], "detail": then.detail}}
     if not isinstance(then, AgentStart):
         outcome = then(conn)
         return {"outcome": outcome, "draft_stored": _draft_stored(conn, email_id)}
@@ -196,8 +203,44 @@ def _final_write(state: RunState, runtime: Runtime[RunContext]) -> RunState:
     ctx = runtime.context
     assert ctx.claimed is not None and ctx.start is not None and ctx.loop is not None
     loop = loop_result(state, ctx.loop)
-    outcome = final_write(ctx.conn, ctx.clock, ctx.claimed, ctx.start, loop)
+    data = state.get("summary")
+    summary = None if data is None else Summary.from_json(data)
+    outcome = final_write(ctx.conn, ctx.clock, ctx.claimed, ctx.start, loop, summary)
     return {"outcome": outcome, "draft_stored": _draft_stored(ctx.conn, ctx.claimed.email_id)}
+
+
+def _summarise(state: RunState, runtime: Runtime[RunContext]) -> RunState:
+    """D81: one summary call for an escalation, with no transaction open (D71); its
+    result is checkpointed, so a resume does not call again."""
+    ctx = runtime.context
+    assert ctx.claimed is not None and ctx.llm is not None
+    codes, detail = _escalation(state)
+    transcript: dict[str, Any] = state.get("transcript", {"items": []})
+    results = [i["output"] for i in transcript["items"] if i["type"] == "tool_output"]
+    found = summarise(ctx.llm, email_id=ctx.claimed.email_id, codes=codes, detail=detail,
+                      extraction=state.get("extraction"), tool_results=results,
+                      subject=ctx.claimed.subject, body=ctx.claimed.clean_body)  # fmt: skip
+    return {"summary": None if found is None else found.json()}
+
+
+def _write_escalation(state: RunState, runtime: Runtime[RunContext]) -> RunState:
+    ctx = runtime.context
+    assert ctx.claimed is not None
+    data, codes_detail = state.get("summary"), state["escalation"]
+    later = EscalateLater(tuple(ReasonCode(c) for c in codes_detail["codes"]),
+                          codes_detail["detail"])  # fmt: skip
+    summary = None if data is None else Summary.from_json(data)
+    return {"outcome": write_escalation(ctx.conn, ctx.clock, ctx.claimed, later, summary)}
+
+
+def _escalation(state: RunState) -> tuple[list[ReasonCode], str]:
+    """The escalation to summarise: by code (`escalation`) or the loop's end."""
+    by_code = state.get("escalation")
+    if by_code is not None:
+        return [ReasonCode(c) for c in by_code["codes"]], by_code["detail"]
+    end = state.get("end")
+    assert end is not None and end["kind"] == "escalation"
+    return [ReasonCode(end["code"])], end["detail"]
 
 
 def _await_owner(state: RunState, runtime: Runtime[RunContext]) -> RunState:
@@ -226,9 +269,31 @@ def _after_claim(state: RunState) -> str:
 
 
 def _after_store(state: RunState) -> str:
+    if "escalation" in state:
+        return SUMMARISE
     if "outcome" not in state:
         return AGENT_TURN
     return AWAIT_OWNER if state.get("draft_stored") else END
+
+
+def _after_loop(route: Callable[[LoopFields], str]) -> Callable[[RunState], str]:
+    """The loop's own edge, with its end sent to the summary first when it is an
+    escalation that gets one (D81), else to the final write."""
+
+    def choose(state: RunState) -> str:
+        step = route(state)
+        if step != DONE:
+            return step
+        end = state.get("end")
+        if end is not None and end["kind"] == "escalation" and wanted([ReasonCode(end["code"])]):
+            return SUMMARISE
+        return FINAL_WRITE
+
+    return choose
+
+
+def _after_summary(state: RunState) -> str:
+    return FINAL_WRITE if "agent" in state else WRITE_ESCALATION
 
 
 def _after_final_write(state: RunState) -> str:
@@ -246,13 +311,18 @@ def _build(checkpointer_: BaseCheckpointSaver[Any] | None) -> CompiledStateGraph
     g.add_node(TOOL, _tool)
     g.add_node(FINAL_WRITE, _final_write)
     g.add_node(AWAIT_OWNER, _await_owner)
+    g.add_node(SUMMARISE, _summarise)
+    g.add_node(WRITE_ESCALATION, _write_escalation)
     g.add_edge(START, CLAIM)
     g.add_conditional_edges(CLAIM, _after_claim, [EXTRACT, END])
     g.add_edge(EXTRACT, STORE_AND_ROUTE)
-    g.add_conditional_edges(STORE_AND_ROUTE, _after_store, [AGENT_TURN, AWAIT_OWNER, END])
-    g.add_conditional_edges(AGENT_TURN, after_turn,
-                            {TOOL: TOOL, AGENT_TURN: AGENT_TURN, DONE: FINAL_WRITE})  # fmt: skip
-    g.add_conditional_edges(TOOL, after_tool, {AGENT_TURN: AGENT_TURN, DONE: FINAL_WRITE})
+    g.add_conditional_edges(STORE_AND_ROUTE, _after_store,
+                            [AGENT_TURN, SUMMARISE, AWAIT_OWNER, END])  # fmt: skip
+    g.add_conditional_edges(AGENT_TURN, _after_loop(after_turn),
+                            [TOOL, AGENT_TURN, SUMMARISE, FINAL_WRITE])  # fmt: skip
+    g.add_conditional_edges(TOOL, _after_loop(after_tool), [AGENT_TURN, SUMMARISE, FINAL_WRITE])
+    g.add_conditional_edges(SUMMARISE, _after_summary, [FINAL_WRITE, WRITE_ESCALATION])
+    g.add_edge(WRITE_ESCALATION, END)
     g.add_conditional_edges(FINAL_WRITE, _after_final_write, [AWAIT_OWNER, END])
     g.add_edge(AWAIT_OWNER, END)
     return g.compile(checkpointer=checkpointer_)

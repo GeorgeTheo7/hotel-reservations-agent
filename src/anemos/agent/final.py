@@ -49,6 +49,7 @@ from anemos.reservations.errors import NeedsInfo, ReasonCode
 from anemos.reservations.formatting import Lang
 from anemos.reservations.loader import load_hotel_data
 from anemos.reservations.tools import load_known, load_request
+from anemos.summary import Summary
 
 type Conn = psycopg.Connection[TupleRow]
 
@@ -65,10 +66,13 @@ def finish_agent(
     router_route: str,
     request_id: int | None,
     lang: Lang,
+    summary: Summary | None = None,
 ) -> Drafted | EscalationWanted:
     end = loop.end
     if isinstance(end, EscalationWanted):
-        escalate(conn, now, email_id, (end.code,), end.detail, actor=end.by)
+        escalate(conn, now, email_id, (end.code,), end.detail, actor=end.by,
+                 summary=None if summary is None else summary.text,
+                 model_added=() if summary is None else summary.added)  # fmt: skip
         return end
     return _draft(conn, now, email_id, end, loop.state, router_route, request_id, lang)
 

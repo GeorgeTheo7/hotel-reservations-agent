@@ -59,11 +59,13 @@ from anemos.llm.adapter import (
 from anemos.llm.pricing import Usage
 from anemos.policies import PolicySelection
 from anemos.reservations.formatting import Lang
+from anemos.summary_schema import EscalationSummary
 
 GOLD_RESPONSE_MODEL = "gold-labels"
 NO_USAGE = Usage(0, 0, 0)
 GOLD_QUERY = "What does the hotel's policy say about the question in this email?"
 MODEL_CODES = frozenset({"COMPLAINT", "DISCOUNT", "CHANGE", "CANCELLATION", "MODEL"})
+SECONDARY = frozenset({"COMPLAINT", "DISCOUNT"})  # what a summary may add (D81)
 
 
 @dataclass
@@ -78,6 +80,11 @@ class GoldClient:
             case = self._require_current()
             ids = case.labels.policy_ids
             output: Any = schema.model_validate({"policy_ids": ids})
+        elif schema is EscalationSummary:  # D81: the labelled codes only a model judges
+            case = self._find(prompt.input)
+            labelled = {c.value for c in case.labels.reason_codes} & SECONDARY
+            output = schema.model_validate({"summary": f"Gold summary of {case.id}.",
+                                            "add_codes": sorted(labelled)})  # fmt: skip
         elif schema is ExtractionOutput:
             case = self._find(prompt.input)
             gold = case.gold_output()

@@ -114,7 +114,7 @@ def get_email(conn: ConnDep, email_id: int) -> EmailDetail:
     email = _one(
         conn,
         "SELECT id, message_id, from_address, subject, raw_body, clean_body, language,"
-        " received_at, status, reason_codes FROM emails WHERE id = %s",
+        " received_at, status, reason_codes, escalation_summary FROM emails WHERE id = %s",
         (email_id,),
     )
     if email is None:

@@ -32,6 +32,7 @@ from anemos.extraction import ExtractionOutput
 from anemos.extraction_run import (
     AgentStart,
     Claimed,
+    EscalateLater,
     Finish,
     RunResult,
     discarded,
@@ -47,15 +48,20 @@ from anemos.reservations.loader import load_hotel_data
 from anemos.routing import EmailFacts, Escalate, Routed, SetAside, ToAgent, route
 from anemos.states import EmailStatus, TransitionRefused
 from anemos.stub_drafter import draft_claimed
+from anemos.summary import Summary, wanted
 
 type Conn = psycopg.Connection[TupleRow]
 
 log = logging.getLogger("anemos.run")
 
 
-def routed(conn: Conn, clock: Clock, claimed: Claimed, out: ExtractionOutput) -> Routed:
+def routed(
+    conn: Conn, clock: Clock, claimed: Claimed, out: ExtractionOutput, *, defer: bool = False
+) -> Routed:
     """Route the email (D70) inside the final transaction; audit the decision; write a
-    set-aside or an escalation. The hotel data is read in the same transaction."""
+    set-aside or an escalation. The hotel data is read in the same transaction. With
+    `defer`, an escalation that gets a summary (D81) is not written here: the caller
+    returns EscalateLater."""
     hotel = load_hotel_data(conn)
     spec = out.date_spec_value()
     resolved = None if spec is None else resolve(spec, claimed.received_at)
@@ -66,7 +72,8 @@ def routed(conn: Conn, clock: Clock, claimed: Claimed, out: ExtractionOutput) ->
         case SetAside():
             set_aside(conn, now, claimed.email_id)
         case Escalate(codes=codes, detail=detail):
-            escalate(conn, now, claimed.email_id, codes, detail, actor="system")
+            if not (defer and wanted(codes)):
+                escalate(conn, now, claimed.email_id, codes, detail, actor="system")
         case ToAgent():
             pass
     return decision
@@ -91,8 +98,10 @@ def agent_finish(llm: LLM) -> Finish:
 
     def finish(
         conn: Conn, clock: Clock, claimed: Claimed, out: ExtractionOutput
-    ) -> AgentStart | None:
-        decision = routed(conn, clock, claimed, out)
+    ) -> AgentStart | EscalateLater | None:
+        decision = routed(conn, clock, claimed, out, defer=True)
+        if isinstance(decision, Escalate) and wanted(decision.codes):
+            return EscalateLater(tuple(decision.codes), decision.detail)  # D81
         if not isinstance(decision, ToAgent):
             return None
         row = conn.execute(
@@ -106,7 +115,12 @@ def agent_finish(llm: LLM) -> Finish:
 
 
 def final_write(
-    conn: Conn, clock: Clock, claimed: Claimed, start: AgentStart, loop: LoopResult
+    conn: Conn,
+    clock: Clock,
+    claimed: Claimed,
+    start: AgentStart,
+    loop: LoopResult,
+    summary: Summary | None = None,
 ) -> Literal["finished", "discarded"]:
     """Phase 3 (D71): one short transaction under the sender lock; discarded if the
     email is no longer `processing`."""
@@ -120,7 +134,7 @@ def final_write(
         return "discarded"
     try:
         finish_agent(conn, clock.now(), email_id, loop, router_route=start.decision.route,
-                     request_id=start.request_id, lang=start.lang)  # fmt: skip
+                     request_id=start.request_id, lang=start.lang, summary=summary)  # fmt: skip
         conn.commit()
     except Exception as exc:  # a bug in the final write: escalated, never stuck (D49)
         log.exception("final write for email %s failed", email_id)
@@ -141,6 +155,27 @@ def _system_error(conn: Conn, clock: Clock, claimed: Claimed, loop: LoopResult,
                  f"final write failed after the loop ended ({ended}): {error}",
                  actor="system")  # fmt: skip
     conn.commit()
+
+
+def write_escalation(
+    conn: Conn, clock: Clock, claimed: Claimed, later: EscalateLater, summary: Summary | None
+) -> Literal["finished", "discarded"]:
+    """The final transaction of an escalation by code that got its summary (D81, D71):
+    under the sender lock, if the email is still `processing`."""
+    lock_sender(conn, claimed.from_address)
+    row = conn.execute(
+        "SELECT status FROM emails WHERE id = %s FOR UPDATE", (claimed.email_id,)
+    ).fetchone()
+    assert row is not None
+    if row[0] != EmailStatus.PROCESSING:
+        conn.rollback()
+        discarded(conn, clock, claimed.email_id, row[0], step="summary")
+        return "discarded"
+    escalate(conn, clock.now(), claimed.email_id, later.codes, later.detail, actor="system",
+             summary=None if summary is None else summary.text,
+             model_added=() if summary is None else summary.added)  # fmt: skip
+    conn.commit()
+    return "finished"
 
 
 def process_inbox(

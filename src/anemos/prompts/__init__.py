@@ -24,6 +24,7 @@ from anemos.llm.adapter import Effort, Tool
 from anemos.llm.openai_client import function_tool, text_format
 from anemos.policies import BaselineAnswer, PolicySelection
 from anemos.policies.selection_v1 import PolicySelection as PolicySelectionV1
+from anemos.summary_schema import EscalationSummary
 
 
 @dataclass(frozen=True)
@@ -217,9 +218,21 @@ AGENT_V2 = ToolPromptSpec(
 )
 CURRENT_AGENT = AGENT_V2  # what the agent loop sends (D2, D11)
 
+# The escalation summary (D81, week 6): one structured call per escalation after
+# extraction (not INJECTION or THREAD_REPLY); English, 2-3 sentences (~100 tokens), and
+# up to two codes the model may add. 200 output tokens; reasoning "none".
+ESCALATION_SUMMARY_V1 = PromptSpec(
+    name="escalation_summary_v1",
+    schema=EscalationSummary,
+    sha256_8="22bc258a",
+    max_output_tokens=200,
+    reasoning_effort="none",
+)
+CURRENT_SUMMARY = ESCALATION_SUMMARY_V1
+
 PROMPTS: tuple[PromptSpec | ToolPromptSpec, ...] = (
     EXTRACTION_V1, EXTRACTION_V2, EXTRACTION_V3, RETRIEVAL_BASELINE_V1, POLICY_SELECT_V1,
-    POLICY_SELECT_V2, AGENT_V1, AGENT_V2,
+    POLICY_SELECT_V2, AGENT_V1, AGENT_V2, ESCALATION_SUMMARY_V1,
 )  # fmt: skip
 CURRENT_POLICY_SELECT = POLICY_SELECT_V2  # what search_policies sends (D2, D15)
 CURRENT_EXTRACTION = EXTRACTION_V3  # what runs and evaluations send (D2)
