@@ -30,6 +30,7 @@ from anemos.llm.adapter import (
 )
 from anemos.llm.budget import Budget
 from anemos.llm.pricing import Usage
+from anemos.prompts import CURRENT_AGENT
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixtures' classes are for mypy only
     from conftest import CommittedDb
@@ -108,7 +109,7 @@ def test_the_gold_agent_passes_the_bar(committed_db: CommittedDb, clean_repo: Pa
         "latency per email": True,
     }  # fmt: skip
     run_info = data["run"]
-    assert run_info["prompt_versions"]["agent"].startswith("agent_v1@")
+    assert run_info["prompt_versions"]["agent"] == CURRENT_AGENT.version  # agent_v2 (week 6)
     assert run_info["settings"]["agent_max_output_tokens"] == 2000
     by_id = {c["case_id"]: c for c in data["cases"]}
     assert by_id["el-pets-policy"]["retrieved"] == ["pets-assistance-dogs"]

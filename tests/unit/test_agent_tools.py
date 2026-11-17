@@ -11,6 +11,8 @@ from anemos.agent.tools import (
     READ_ONLY,
     TOOLS,
     TOOLS_BY_ROUTE,
+    TOOLS_BY_ROUTE_V1,
+    TOOLS_BY_ROUTE_V2,
     WRITE_TOOLS,
     ModelEscalationCode,
 )
@@ -20,16 +22,26 @@ from anemos.reservations.errors import ReasonCode
 
 pytestmark = pytest.mark.unit
 
-ALL_SIX = ["check_availability", "quote_price", "suggest_alternatives", "search_policies",
-           "write_draft", "escalate"]  # fmt: skip
+ALL_FIVE = ["quote_price", "suggest_alternatives", "search_policies", "write_draft", "escalate"]
+ALL_SIX = ["check_availability", *ALL_FIVE]  # agent_v1's (week 5)
 
 
-def names(route: str) -> list[str]:
-    return [t.name for t in TOOLS_BY_ROUTE[route]]  # type: ignore[index]
+def names(table: Any, route: str) -> list[str]:
+    return [t.name for t in table[route]]
 
 
 def test_the_tools_per_route_are_d11s() -> None:
-    assert {r: names(r) for r in TOOLS_BY_ROUTE} == {
+    """agent_v2 (current): no check_availability (D11, week 6)."""
+    assert TOOLS_BY_ROUTE is TOOLS_BY_ROUTE_V2
+    assert {r: names(TOOLS_BY_ROUTE, r) for r in TOOLS_BY_ROUTE} == {
+        "quote": ALL_FIVE, "ask_info": ALL_FIVE, "decline": ALL_FIVE,
+        "policy": ["search_policies", "write_draft", "escalate"],
+        "other": ["escalate"],
+    }  # fmt: skip
+
+
+def test_agent_v1_keeps_the_lists_it_was_hashed_with() -> None:
+    assert {r: names(TOOLS_BY_ROUTE_V1, r) for r in TOOLS_BY_ROUTE_V1} == {
         "quote": ALL_SIX, "ask_info": ALL_SIX, "decline": ALL_SIX,
         "policy": ["search_policies", "write_draft", "escalate"],
         "other": ["escalate"],
@@ -40,7 +52,8 @@ def test_no_route_gives_the_model_a_write_tool() -> None:
     """D12: hold_room and send_reply run only in the approval handler. Every tool any
     route sends is a read tool or one that ends the loop (it writes nothing until the
     run's final transaction, which code decides)."""
-    sent = {t.name for tools in TOOLS_BY_ROUTE.values() for t in tools}
+    sent = {t.name for table in (TOOLS_BY_ROUTE_V1, TOOLS_BY_ROUTE_V2)
+            for tools in table.values() for t in tools}  # fmt: skip
     assert sent <= READ_ONLY | ENDING
     assert not sent & WRITE_TOOLS
     assert not set(TOOLS) & WRITE_TOOLS

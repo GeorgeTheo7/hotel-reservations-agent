@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from anemos.agent.checks import DraftFacts
 from anemos.agent.loop import (
+    DRAFT_REFUSED,
     MAX_CALLS,
     DraftWanted,
     EscalationWanted,
@@ -36,7 +37,7 @@ from anemos.llm.budget import Budget
 from anemos.llm.fake import OnTranscript, ScriptedClient, Step, ToolCallStep
 from anemos.llm.pricing import Usage
 from anemos.policies.search import Hit
-from anemos.prompts import AGENT_MAX_OUTPUT_TOKENS, AGENT_V1, CURRENT_AGENT
+from anemos.prompts import AGENT_MAX_OUTPUT_TOKENS, AGENT_V2, CURRENT_AGENT
 from anemos.reservations.errors import ReasonCode
 
 pytestmark = pytest.mark.unit
@@ -114,7 +115,7 @@ def test_each_route_is_sent_its_own_tools(route: ToolRoute) -> None:
 def test_the_turn_uses_the_agent_prompt_and_settings() -> None:
     _, client = loop([call("escalate", {"reason_code": "MODEL", "note": "n"})])
     [turn] = client.turns
-    assert turn.transcript.instructions == AGENT_V1.text() and CURRENT_AGENT is AGENT_V1
+    assert turn.transcript.instructions == AGENT_V2.text() and CURRENT_AGENT is AGENT_V2
     assert turn.transcript.items == (UserText(MESSAGE),)
     assert (turn.settings.max_output_tokens, turn.settings.reasoning_effort) == (
         AGENT_MAX_OUTPUT_TOKENS, "none")  # fmt: skip
@@ -259,7 +260,7 @@ def test_a_refused_draft_goes_back_once_and_the_fixed_one_ends_the_loop() -> Non
     assert result.end == DraftWanted(GOOD["text"], (), ())
     assert result.state.calls == 2  # the refused draft counted
     refusal = refusal_in(client, 1)
-    assert set(refusal) == {"error", "failed", "message"} and refusal["error"] == "GUARDRAIL_FAIL"
+    assert set(refusal) == {"error", "failed", "message"} and refusal["error"] == DRAFT_REFUSED
     assert refusal["failed"] == [
         "numbers outside the code-rendered blocks and the returned policies: ['26']",
         "forbidden phrases: ['guaranteed']",

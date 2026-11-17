@@ -45,7 +45,6 @@ from anemos.agent.checks import DraftFacts, check_draft
 from anemos.agent.runner import Answer, Ends
 from anemos.agent.tools import (
     ESCALATE,
-    TOOLS_BY_ROUTE,
     WRITE_DRAFT,
     EscalateArgs,
     ToolRoute,
@@ -72,6 +71,9 @@ log = logging.getLogger("anemos.agent")
 
 MAX_CALLS = 8  # D11, counting the final write_draft or escalate, and refused drafts
 MAX_REDRAFTS = 1  # D76: one more write_draft after a refused one
+# The refusal the model gets for a write_draft that failed the checks (D76); agent_v2
+# quotes it. Not GUARDRAIL_FAIL, which is the escalation code after the second one.
+DRAFT_REFUSED = "DRAFT_REFUSED"
 STEP = "agent"
 
 ROUTE_NOTES: dict[ToolRoute, str] = {
@@ -246,7 +248,7 @@ def agent_turn(state: LoopFields, ctx: LoopContext) -> LoopFields:
     settings = replace(ctx.llm.settings, max_output_tokens=spec.max_output_tokens,
                        reasoning_effort=spec.reasoning_effort)  # fmt: skip
     try:
-        turn = ctx.llm.tool_turn(transcript, TOOLS_BY_ROUTE[ctx.route], step=STEP,
+        turn = ctx.llm.tool_turn(transcript, ctx.spec.tools[ctx.route], step=STEP,
                                  prompt_version=spec.version, email_id=ctx.email_id,
                                  settings=settings)  # fmt: skip
     except RejectedCall as exc:
@@ -292,7 +294,7 @@ def _checked_draft(
     if redrafts > MAX_REDRAFTS:
         failed = EscalationWanted(ReasonCode.GUARDRAIL_FAIL, "; ".join(checked.failures), "agent")
         return {"calls": calls, "redrafts": redrafts, "end": end_json(failed)}
-    refusal: dict[str, object] = {"error": "GUARDRAIL_FAIL", "failed": checked.failures,
+    refusal: dict[str, object] = {"error": DRAFT_REFUSED, "failed": checked.failures,
                "message": "The draft was not stored. Fix every failed check and call "
                           "write_draft again; this is the last chance before the email "
                           "goes to the owner."}  # fmt: skip
@@ -309,7 +311,7 @@ def tool(state: LoopFields, ctx: LoopContext) -> LoopFields:
     assert pending is not None
     call = _call_from_json(pending)
     try:
-        offered = {t.name: t for t in TOOLS_BY_ROUTE[ctx.route]}
+        offered = {t.name: t for t in ctx.spec.tools[ctx.route]}
         args = offered[call.name].args.model_validate_json(call.arguments)
         result = ctx.tools.run(call.name, args)
     except Exception as exc:  # a bug in a tool: escalated, never stuck

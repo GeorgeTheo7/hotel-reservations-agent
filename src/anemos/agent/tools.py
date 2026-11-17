@@ -100,12 +100,22 @@ TOOLS: dict[str, Tool] = {
     )
 }  # fmt: skip
 
-_ALL = (CHECK_AVAILABILITY, QUOTE_PRICE, SUGGEST_ALTERNATIVES, SEARCH_POLICIES, WRITE_DRAFT,
-        ESCALATE)  # fmt: skip
-TOOLS_BY_ROUTE: dict[ToolRoute, tuple[Tool, ...]] = {
-    "quote": tuple(TOOLS[n] for n in _ALL),
-    "ask_info": tuple(TOOLS[n] for n in _ALL),
-    "decline": tuple(TOOLS[n] for n in _ALL),
-    "policy": tuple(TOOLS[n] for n in (SEARCH_POLICIES, WRITE_DRAFT, ESCALATE)),
-    "other": (TOOLS[ESCALATE],),
-}
+
+def _by_route(reservation: tuple[str, ...]) -> dict[ToolRoute, tuple[Tool, ...]]:
+    every = (*reservation, SEARCH_POLICIES, WRITE_DRAFT, ESCALATE)
+    return {
+        "quote": tuple(TOOLS[n] for n in every),
+        "ask_info": tuple(TOOLS[n] for n in every),
+        "decline": tuple(TOOLS[n] for n in every),
+        "policy": tuple(TOOLS[n] for n in (SEARCH_POLICIES, WRITE_DRAFT, ESCALATE)),
+        "other": (TOOLS[ESCALATE],),
+    }
+
+
+# Each agent prompt version is hashed with the tool lists it was sent with (prompts,
+# ToolPromptSpec), so each keeps its own table. agent_v1 (week 5) offered
+# check_availability; agent_v2 (week 6) does not: the dev eval never called it, and
+# quote_price checks availability itself (D59, D11). The function stays for MCP (D16).
+TOOLS_BY_ROUTE_V1 = _by_route((CHECK_AVAILABILITY, QUOTE_PRICE, SUGGEST_ALTERNATIVES))
+TOOLS_BY_ROUTE_V2 = _by_route((QUOTE_PRICE, SUGGEST_ALTERNATIVES))
+TOOLS_BY_ROUTE = TOOLS_BY_ROUTE_V2  # the current prompt's (agent_v2)

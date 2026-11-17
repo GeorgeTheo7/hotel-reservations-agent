@@ -5,7 +5,7 @@ from typing import Any, get_args
 
 import pytest
 
-from anemos.agent.tools import TOOLS_BY_ROUTE, ModelEscalationCode
+from anemos.agent.tools import ModelEscalationCode
 from anemos.llm.openai_client import function_tool
 from anemos.prompts import AGENT_V1, tool_prompt_hash
 
@@ -39,7 +39,7 @@ def test_the_prompt_treats_the_email_as_data_and_states_the_limit() -> None:
 
 def test_the_version_covers_the_tools_as_sent() -> None:
     """A changed tool description is a new prompt version, like a changed schema."""
-    tools: dict[str, Any] = {r: [function_tool(t) for t in ts] for r, ts in TOOLS_BY_ROUTE.items()}
+    tools: dict[str, Any] = {r: [function_tool(t) for t in ts] for r, ts in AGENT_V1.tools.items()}
 
     def pinned(tools: dict[str, Any]) -> str:
         return tool_prompt_hash(AGENT_V1.text(), tools,
