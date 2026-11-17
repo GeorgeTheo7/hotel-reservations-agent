@@ -38,7 +38,7 @@ def test_fills_an_inbox_and_a_second_run_stores_nothing(committed_db: CommittedD
             for item in inbox
         }
         set_aside = api.get("/emails", params={"status": "set_aside"}).json()["items"]
-    # Each drafted case gets the route its label names (the stub drafter agrees).
+    # Each drafted case gets the route its label names (through the agent).
     labelled = {
         c.email.subject: c.labels.route for c in demo_cases() if c.labels.route != "set_aside"
     }
@@ -54,15 +54,20 @@ def test_fills_an_inbox_and_a_second_run_stores_nothing(committed_db: CommittedD
         " (SELECT count(*) FROM drafts)"
     ).fetchone()
     assert counts == (6, 5, 5)
-    # Every email went through the real run: extracted (by the scripted gold client,
-    # named in the audit, at no cost) and routed in code.
-    audit = conn.execute(
+    # Every email went through the production run: extracted, routed in code, and the
+    # five that are not spam drafted by the agent; every model call answered by the gold
+    # client (named in the audit, at no cost).
+    routed, calls, gold_calls, agents = conn.execute(
         "SELECT (SELECT count(*) FROM audit_log WHERE event = 'email.routed'),"
+        " (SELECT count(*) FROM audit_log WHERE event = 'llm.called'),"
         " (SELECT count(*) FROM audit_log WHERE event = 'llm.called'"
-        "  AND output->>'response_model' = 'gold-labels' AND cost_micro_usd = 0)"
-    ).fetchone()
+        "  AND output->>'response_model' = 'gold-labels' AND cost_micro_usd = 0),"
+        " (SELECT count(DISTINCT email_id) FROM audit_log WHERE event = 'llm.called'"
+        "  AND step = 'agent')"
+    ).fetchone()  # type: ignore[misc]
     conn.commit()
-    assert audit == (6, 6)
+    assert (routed, agents) == (6, 5)
+    assert calls == gold_calls > 6
 
 
 def test_a_mailbox_of_eval_cases_is_stored_once(committed_db: CommittedDb) -> None:

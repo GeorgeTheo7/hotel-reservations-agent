@@ -2,19 +2,20 @@
 anemos.demo_inbox [--at TIME] [--model gpt-6-luna]`. The emails are the demo cases in
 anemos/demo_emails/ (the test-email format, docs/email-format.md); all fictional.
 
-Each email goes through the real run (anemos.run): stored by `store_email`, claimed,
-extracted, routed in code and drafted, set aside or escalated. Only the model's answer
-is a stand-in by default: a scripted client answers each email with its case's gold
-labels (no key, no network, no cost; the audit names it `gold-labels`, with a throwaway
-spend ledger). `--model gpt-6-luna` sends the emails to the real model instead, under
-the spend cap. Running it again stores and runs nothing twice (D4).
+Each email goes through the production run (anemos.run): stored by `store_email`,
+claimed, extracted, routed in code, then the agent (loop, read tools, final write), set
+aside or escalated. Only the model is a stand-in by default: the gold client
+(anemos.gold) answers every call from the case's labels (no key, no network, no cost;
+the audit names it `gold-labels`, with a throwaway spend ledger). `--model gpt-6-luna`
+sends extraction and the agent's turns to the real model instead, under the spend cap.
+Running it again stores and runs nothing twice (D4).
 
 The stays are in the 2027 season (seed data, D21), so run it before they pass.
 """
 
 import argparse
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -25,33 +26,19 @@ from anemos.clock import Clock, FixedClock, SystemClock
 from anemos.db.connection import connect as db_connect
 from anemos.email_cases import EmailCase, demo_cases
 from anemos.extraction_run import process_email
+from anemos.gold import GoldClient
 from anemos.inbox import store_email
-from anemos.llm.adapter import LLM, ModelClient, Prompt, Settings
+from anemos.llm.adapter import LLM, ModelClient, Settings
 from anemos.llm.budget import Budget, cap_from_env
-from anemos.llm.fake import Answer, ScriptedClient
 from anemos.llm.openai_client import OpenAIClient
-from anemos.llm.pricing import PRICES, Usage
+from anemos.llm.pricing import PRICES
 from anemos.prompts import CURRENT_EXTRACTION
-from anemos.run import route_and_draft
+from anemos.run import agent_finish
 
 type Conn = psycopg.Connection[TupleRow]
 
 GOLD = "gold"
 GOLD_MODEL = "gpt-6-luna"  # priced, for the adapter's reservation; the usage is zero
-GOLD_RESPONSE_MODEL = "gold-labels"  # what the audit rows name as the answering model
-
-
-def gold_client(cases: Sequence[EmailCase], calls: int) -> ScriptedClient:
-    """Answers each demo email with its case's gold extraction, found by its body."""
-    answers = {c.email.body.strip(): c.gold_output() for c in cases}
-
-    def answer(prompt: Prompt) -> Answer:
-        for body, out in answers.items():
-            if body in prompt.input and out is not None:
-                return Answer(out, usage=Usage(0, 0, 0), response_model=GOLD_RESPONSE_MODEL)
-        raise LookupError("this email is not a demo case")
-
-    return ScriptedClient.of([answer] * calls)
 
 
 def fill(connect: Callable[[], Conn], clock: Clock, model: str = GOLD) -> list[str]:
@@ -70,22 +57,22 @@ def fill(connect: Callable[[], Conn], clock: Clock, model: str = GOLD) -> list[s
         key=lambda c: (c.email.received_at, stored[c.id]),
     )
     with tempfile.TemporaryDirectory() as scratch:
-        llm = _llm(connect, clock, model, len(to_run), Path(scratch))
+        llm = _llm(connect, clock, model, Path(scratch))
         for case in to_run:
             email_id = stored[case.id]
             assert email_id is not None
-            process_email(connect, clock, llm, email_id, finish=route_and_draft)
+            process_email(connect, clock, llm, email_id, finish=agent_finish(llm))
     with connect() as conn:
         lines = [_line(conn, case, stored[case.id]) for case in cases]
         conn.commit()
     return lines
 
 
-def _llm(connect: Callable[[], Conn], clock: Clock, model: str, calls: int, scratch: Path) -> LLM:
+def _llm(connect: Callable[[], Conn], clock: Clock, model: str, scratch: Path) -> LLM:
     spec = CURRENT_EXTRACTION
     client: ModelClient
     if model == GOLD:
-        client, budget = gold_client(demo_cases(), calls), Budget(clock, 10**6, scratch / "spend")
+        client, budget = GoldClient(demo_cases()), Budget(clock, 10**6, scratch / "spend")
         model = GOLD_MODEL
     else:
         client, budget = OpenAIClient(), Budget(clock, cap_from_env())
