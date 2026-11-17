@@ -6,6 +6,7 @@ Add a name here before using it.
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
@@ -129,3 +130,60 @@ def write_llm_audit(
         (at, event.value, email_id, step, model, prompt_version, input_tokens, output_tokens,
          cost_micro_usd, latency_ms, error, None if output is None else Jsonb(output)),
     )  # fmt: skip
+
+
+# A run's own ending (D74, D65, states.md): exactly one of these per run, written by
+# the run. What the owner does later (approve, edit, run.finished) is not the run's.
+TERMINAL_EVENTS = frozenset({
+    AuditEvent.EMAIL_ESCALATED, AuditEvent.EMAIL_SET_ASIDE, AuditEvent.DRAFT_CREATED,
+    AuditEvent.RUN_DISCARDED,
+})  # fmt: skip
+
+
+@dataclass(frozen=True)
+class StepCost:
+    """The model calls of one step (extract, agent, policy_select, summary)."""
+
+    attempts: int  # every billed attempt: llm.called and llm.failed rows
+    failed: int  # llm.failed rows: a retried attempt, a cut-off reply, a rejected call
+    input_tokens: int
+    output_tokens: int
+    cost_micro_usd: int
+    latency_ms: int
+
+
+@dataclass(frozen=True)
+class RunCost:
+    steps: dict[str, StepCost]
+
+    @property
+    def cost_micro_usd(self) -> int:
+        return sum(s.cost_micro_usd for s in self.steps.values())
+
+    @property
+    def attempts(self) -> int:
+        return sum(s.attempts for s in self.steps.values())
+
+
+def run_cost(conn: psycopg.Connection[TupleRow], email_id: int) -> RunCost:
+    """What one email's run cost, from its audit rows: the one definition the agent eval
+    and monitoring share. Failed attempts count too (llm.failed rows carry the usage
+    the provider billed: a cut-off reply, a rejected tool call, a first try before a
+    retry), so a messy run is not under-costed. Cached input is billed at its own price
+    inside cost_micro_usd; the audit stores no separate cached count. A budget refusal
+    sent nothing and costs nothing (llm.refused_budget is not counted)."""
+    rows = conn.execute(
+        "SELECT step, event, coalesce(input_tokens, 0), coalesce(output_tokens, 0),"
+        " coalesce(cost_micro_usd, 0), coalesce(latency_ms, 0) FROM audit_log"
+        " WHERE email_id = %s AND event IN (%s, %s) ORDER BY id",
+        (email_id, AuditEvent.LLM_CALLED.value, AuditEvent.LLM_FAILED.value),
+    ).fetchall()
+    steps: dict[str, StepCost] = {}
+    for step, event, tokens_in, tokens_out, micro_usd, latency in rows:
+        was = steps.get(step, StepCost(0, 0, 0, 0, 0, 0))
+        steps[step] = StepCost(
+            was.attempts + 1, was.failed + (event == AuditEvent.LLM_FAILED.value),
+            was.input_tokens + tokens_in, was.output_tokens + tokens_out,
+            was.cost_micro_usd + micro_usd, was.latency_ms + latency,
+        )  # fmt: skip
+    return RunCost(steps)

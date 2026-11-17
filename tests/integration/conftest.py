@@ -451,3 +451,34 @@ def expect_violation(db: Conn) -> ExpectViolation:
         assert caught.value.diag.constraint_name == constraint
 
     return check
+
+
+# --- a run's ending (audit.TERMINAL_EVENTS) ---------------------------------------------
+
+type EndedOnce = Callable[[int], str]
+
+
+@pytest.fixture
+def ended_once(committed_db: CommittedDb) -> EndedOnce:
+    """Check a finished run: exactly one terminal audit event (escalated, set aside,
+    draft created or discarded), the email not left `processing`, and no model-call row
+    in the database without an email (every cost is attributed). Returns the event."""
+    from anemos.audit import TERMINAL_EVENTS
+
+    def check(email_id: int) -> str:
+        with connect(committed_db.conninfo) as conn:
+            events = [e for (e,) in conn.execute(
+                "SELECT event FROM audit_log WHERE email_id = %s AND event = ANY(%s)"
+                " ORDER BY id", (email_id, [e.value for e in TERMINAL_EVENTS]),
+            ).fetchall()]  # fmt: skip
+            status = conn.execute("SELECT status FROM emails WHERE id = %s",
+                                  (email_id,)).fetchone()  # fmt: skip
+            orphans = conn.execute(
+                "SELECT count(*) FROM audit_log WHERE event LIKE 'llm.%%' AND email_id IS NULL"
+            ).fetchone()
+        assert len(events) == 1, f"email {email_id}: terminal events {events}"
+        assert status is not None and status[0] != "processing", status
+        assert orphans == (0,), "model calls without an email"
+        return str(events[0])
+
+    return check

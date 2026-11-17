@@ -34,6 +34,7 @@ import anemos.db.scratch as scratch
 from anemos.agent.loop import MAX_CALLS, first_message
 from anemos.agent.tools import TOOLS_BY_ROUTE
 from anemos.agent_evaluation import AgentCase, ToolUse, bar, provider_failure, reported
+from anemos.audit import run_cost
 from anemos.clock import Clock, FixedClock, SystemClock
 from anemos.db.connection import connect
 from anemos.email_cases import EmailCase
@@ -263,7 +264,7 @@ def collect(conn: Conn, case: EmailCase, email_id: int, model: str) -> AgentCase
         system_error=(escalated[0] if escalated else "") if "SYSTEM_ERROR" in codes else None,
         model_text=drafts[-1]["arguments"]["text"] if drafts else None,
         draft_body=body, guardrail_fail="GUARDRAIL_FAIL" in codes,
-        cost_micro_usd=sum(int(c or 0) for _, _, c, *_ in calls),
+        cost_micro_usd=run_cost(conn, email_id).cost_micro_usd,  # one definition (audit)
     )  # fmt: skip
     if draft_id is not None:
         found.unsafe += _offer_problems(conn, draft_id, email_id)

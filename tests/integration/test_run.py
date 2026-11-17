@@ -38,7 +38,7 @@ from anemos.reservations.formatting import Lang, format_money
 from anemos.run import agent_finish, process_inbox, route_and_draft
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixtures' classes are for mypy only
-    from conftest import CommittedDb
+    from conftest import CommittedDb, EndedOnce
 
 pytestmark = pytest.mark.integration
 
@@ -149,10 +149,13 @@ def test_every_case_is_counted_once() -> None:
 
 
 @pytest.mark.parametrize("case_id", EXACT)
-def test_a_run_ends_as_labelled(committed_db: CommittedDb, tmp_path: Path, case_id: str) -> None:
+def test_a_run_ends_as_labelled(
+    committed_db: CommittedDb, tmp_path: Path, case_id: str, ended_once: EndedOnce
+) -> None:
     case = CASES[case_id]
     email_id, _ = run_case(committed_db, case, tmp_path)
     assert outcome(committed_db, email_id) == gold(case)
+    ended_once(email_id)  # one terminal audit event, never left processing (audit)
     called, retrieved = tools_used(committed_db, email_id)
     assert set(case.labels.required_tools) <= set(called), called
     assert set(case.labels.policy_ids) <= retrieved, retrieved
