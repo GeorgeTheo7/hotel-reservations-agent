@@ -9,11 +9,12 @@ stored:
   decline; else NEEDS_INFO -> ask_info; else the router's route.
 - **Hold (D72):** exactly one offer, and its quote's hold_allowed (D9).
 - **Checks** (every result stored with the draft version): guardrail 1 (quote block
-  exactly once on the quote route, never elsewhere), guardrail 6 (every cited policy
-  id was returned by search_policies in this run), guardrail 7 (offers are this run's
-  quotes; a hold satisfies D9), and the placeholders (only {{QUOTE_BLOCK}},
-  {{REQUEST_SUMMARY}} and {{OPEN_SEASON}}, each renderable here). Any failure ->
-  GUARDRAIL_FAIL, no draft (a redraft is week 6).
+  exactly once on the quote route, never elsewhere), 2 (every number in the model's
+  text is a number of a returned policy, D78), 3 (the request summary where required,
+  D80), 4 (the reply's script, D79), 5 (no forbidden phrase), 6 (every cited policy
+  id was returned by search_policies in this run), 7 (offers are this run's quotes; a
+  hold satisfies D9), and the placeholders (only {{QUOTE_BLOCK}}, {{REQUEST_SUMMARY}}
+  and {{OPEN_SEASON}}, each renderable here). Any failure -> GUARDRAIL_FAIL, no draft.
 - **Rendering:** from hotel data read in this transaction and the quotes the tools
   priced (kept in memory: the stored row alone cannot rebuild a quote block).
   {{HOLD_UNTIL}} inside a held block stays for approval to fill (D8).
@@ -41,7 +42,11 @@ from anemos.guardrails import (
     ProposedOffer,
     all_passed,
     holds_valid,
+    no_forbidden_phrases,
+    numbers_from_policies,
     quote_block_once,
+    reply_script,
+    summary_present,
 )
 from anemos.inbox import escalate
 from anemos.reservations.errors import Closed, NeedsInfo, NoneFound, ReasonCode
@@ -130,8 +135,14 @@ def _draft(
     known = None if loaded is not None or request_id is None else load_known(conn, request_id)
     route = draft_route([o.quote_id for o in offers], state.outcomes, router_route)
     text = wanted.text
+    policy_texts = [h.text for h in state.hits.values()]
+    relative = request_id is not None and _relative_or_holiday(conn, request_id)
     results: dict[str, bool | str] = {
         "g1_quote_block_once": quote_block_once(text, route),
+        "g2_numbers_from_policies": numbers_from_policies(text, policy_texts),
+        "g3_summary_present": summary_present(text, route, relative_or_holiday=relative),
+        "g4_reply_script": reply_script(text, lang),
+        "g5_no_forbidden_phrases": no_forbidden_phrases(text, policy_texts),
         "g6_policies_returned": policies_returned(wanted.policy_ids, state.hits),
         "g7_holds_valid": holds_valid(
             offers, state.quotes, {i: q.offer.hold_allowed for i, q in state.quotes.items()}
@@ -158,3 +169,12 @@ def _draft(
         text = text.replace(OPEN_SEASON, open_season(hotel, state.closed_year, lang))
     return store_draft(conn, now, email_id, request_id, route, text, results, offers, blocks,
                        audit={"policy_ids": list(wanted.policy_ids)})  # fmt: skip
+
+
+def _relative_or_holiday(conn: Conn, request_id: int) -> bool:
+    """Guardrail 3's input: the stored DateSpec is relative ("next weekend") or a
+    holiday, so the guest must see the dates code resolved (D28, D29)."""
+    row = conn.execute(
+        "SELECT extracted -> 'date_spec' ->> 'kind' FROM requests WHERE id = %s", (request_id,)
+    ).fetchone()
+    return row is not None and row[0] in ("relative", "holiday")

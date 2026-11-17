@@ -129,8 +129,11 @@ def test_a_quote_with_a_hold(committed_db: CommittedDb, tmp_path: Path) -> None:
     assert "{{QUOTE_BLOCK}}" not in body and "{{REQUEST_SUMMARY}}" not in body
     assert "€" in body and "{{HOLD_UNTIL}}" in body  # the held block keeps it for approval
     assert all(r is True for r in draft["results"].values())
-    assert set(draft["results"]) == {"g1_quote_block_once", "g6_policies_returned",
-                                     "g7_holds_valid", "placeholders"}  # fmt: skip
+    assert set(draft["results"]) == {
+        "g1_quote_block_once", "g2_numbers_from_policies", "g3_summary_present",
+        "g4_reply_script", "g5_no_forbidden_phrases", "g6_policies_returned",
+        "g7_holds_valid", "placeholders",
+    }  # fmt: skip
 
 
 def test_a_closed_stay_is_declined_with_the_open_season(

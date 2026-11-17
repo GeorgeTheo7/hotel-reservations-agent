@@ -1,0 +1,30 @@
+{
+  "_note": "Guardrail 5. Matched in the draft's free text after casefolding, removing accents and collapsing spaces, so Greek entries may be stems (επιβεβαιωμεν catches every gender and number). A phrase found in a policy chunk returned in this run is policy wording and allowed. Both lists apply to every draft.",
+  "en": [
+    "booking is confirmed",
+    "booking has been confirmed",
+    "reservation is confirmed",
+    "reservation has been confirmed",
+    "confirmed your booking",
+    "confirmed your reservation",
+    "we have reserved",
+    "your room is reserved",
+    "free upgrade",
+    "complimentary upgrade",
+    "upgrade for free",
+    "guaranteed",
+    "we guarantee",
+    "% off",
+    "discount"
+  ],
+  "el": [
+    "επιβεβαιωμεν",
+    "επιβεβαιωθηκε",
+    "επιβεβαιωνουμε την κρατηση",
+    "κλεισαμε το δωματιο",
+    "δωρεαν αναβαθμιση",
+    "εγγυημεν",
+    "εγγυομαστε",
+    "εκπτωσ"
+  ]
+}
