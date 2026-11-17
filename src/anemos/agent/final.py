@@ -97,7 +97,7 @@ def _draft(
     loaded = None if isinstance(found, NeedsInfo) else found
     known = None if loaded is not None or request_id is None else load_known(conn, request_id)
     hotel = load_hotel_data(conn)
-    text, offers = wanted.text, checked.offers
+    text, offers = checked.text, checked.offers  # the summary inserted (D80)
     blocks: dict[int, str] = {}
     if loaded is not None:
         quotes = [state.quotes[o.quote_id] for o in offers]

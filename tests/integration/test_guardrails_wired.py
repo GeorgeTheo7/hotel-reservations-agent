@@ -58,14 +58,15 @@ def party_missing(case_id: str) -> ExtractionOutput:
     return ExtractionOutput.model_validate(gold.model_dump() | {"adults": None, "children": None})
 
 
-def test_g3_a_relative_date_ask_info_without_the_summary_fails(
+def test_g3_a_relative_date_ask_info_without_the_summary_gets_it_from_code(
     committed_db: CommittedDb, tmp_path: Path
 ) -> None:
+    """D80 (owner, week 6): code inserts the summary, so the reply is a draft; it was
+    GUARDRAIL_FAIL before."""
     text = "Dear guest,\n\nHow many guests will stay?\n\nHotel Anemos"
     status, codes, detail = outcome(committed_db, "en-next-weekend-june", text, tmp_path,
                                     party_missing("en-next-weekend-june"))  # fmt: skip
-    assert (status, codes) == ("escalated", ["GUARDRAIL_FAIL"])
-    assert detail is not None and "required for a relative or holiday date" in detail
+    assert (status, codes, detail) == ("awaiting_approval", [], None)
 
 
 def test_g3_the_same_reply_with_the_summary_is_a_draft(

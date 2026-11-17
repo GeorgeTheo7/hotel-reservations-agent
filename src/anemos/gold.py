@@ -41,7 +41,7 @@ from anemos.agent.tools import (
     WRITE_DRAFT,
     ModelEscalationCode,
 )
-from anemos.drafting import OPEN_SEASON, REQUEST_SUMMARY, phrases, template
+from anemos.drafting import OPEN_SEASON, phrases, template
 from anemos.email_cases import EmailCase
 from anemos.extraction import ExtractionOutput
 from anemos.extraction_run import LEFT, RIGHT
@@ -182,16 +182,8 @@ def _draft(case: EmailCase, transcript: Transcript,
         text = Template(template(f"stub_ask_info_{lang}.txt")).substitute(
             missing=_missing(lang, answers, transcript)
         )
-        if _relative_or_holiday(case):  # guardrail 3 requires the resolved dates (D80)
-            greeting, rest = text.split("\n\n", 1)
-            text = f"{greeting}\n\n{REQUEST_SUMMARY}\n\n{rest}"
+        # No {{REQUEST_SUMMARY}}: code inserts it where guardrail 3 requires it (D80).
     return {"text": text, "offer_quote_ids": offers, "policy_ids": list(dict.fromkeys(cited))}
-
-
-def _relative_or_holiday(case: EmailCase) -> bool:
-    gold = case.gold_output()
-    spec = None if gold is None else gold.date_spec
-    return spec is not None and spec.kind in ("relative", "holiday")
 
 
 def _missing(lang: Lang, answers: list[tuple[str, dict[str, Any]]],

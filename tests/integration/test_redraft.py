@@ -38,8 +38,10 @@ assert _GOLD is not None
 EXTRACTION = ExtractionOutput.model_validate(
     _GOLD.model_dump() | {"adults": None, "children": None}
 )
-BAD = "Dear guest,\n\nHow many guests will stay?\n\nHotel Anemos"
-GOOD = "Dear guest,\n\n{{REQUEST_SUMMARY}}\n\nHow many guests will stay?\n\nHotel Anemos"
+# BAD writes a number of its own (guardrail 2). GOOD has no {{REQUEST_SUMMARY}}: code
+# inserts it, since "next weekend" is relative (D80, owner, week 6).
+BAD = "Dear guest,\n\nFor your 2 nights, how many guests will stay?\n\nHotel Anemos"
+GOOD = "Dear guest,\n\nHow many guests will stay?\n\nHotel Anemos"
 
 
 class Stop(BaseException):
@@ -92,11 +94,12 @@ def test_a_refused_draft_is_redrafted_through_process_email(
     assert email(committed_db, email_id)[0] == "awaiting_approval"
     body = rows(committed_db, "SELECT v.body FROM draft_versions v JOIN drafts d ON"
                 " d.id = v.draft_id WHERE d.email_id = %s", email_id)[0][0]  # fmt: skip
-    assert "Friday 11 June 2027" in body  # the fixed draft, with the summary rendered
+    assert body.count("Friday 11 June 2027") == 1  # the summary code inserted, rendered once
+    assert body.index("Friday 11 June 2027") < body.index("How many guests")  # after greeting
     assert refusals(committed_db, email_id) == [{
         "tool": "write_draft", "redraft": 1,
-        "refused": ["{{REQUEST_SUMMARY}} missing: required for a relative or holiday date"],
-        "checks": ["g3_summary_present"],
+        "refused": ["numbers outside the code-rendered blocks and the returned policies: ['2']"],
+        "checks": ["g2_numbers_from_policies"],
     }]  # fmt: skip
 
 

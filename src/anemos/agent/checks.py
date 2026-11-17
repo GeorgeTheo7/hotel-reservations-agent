@@ -7,7 +7,9 @@ a second is GUARDRAIL_FAIL); the run's final write runs them again before storin
   request can fill {{REQUEST_SUMMARY}} (complete, or its known part, D80) and whether
   its date was relative or a holiday (guardrail 3). The request is committed in phase 1
   and never changes, so the loop and the final write see the same facts.
-- `check_draft` is pure: D72's route and offers, guardrails 1-7 and the placeholders.
+- `check_draft` is pure: D72's route and offers, then `with_summary` (D80: code inserts
+  {{REQUEST_SUMMARY}} where guardrail 3 requires it), then guardrails 1-7 and the
+  placeholders on that text, which the final write renders (`Checked.text`).
 """
 
 import re
@@ -55,6 +57,7 @@ class Checked:
     route: str
     offers: list[ProposedOffer]
     results: dict[str, bool | str]
+    text: str  # the draft as checked: the model's, with the summary code inserted (D80)
 
     @property
     def passed(self) -> bool:
@@ -92,6 +95,7 @@ def check_draft(
 ) -> Checked:
     offers = proposed_offers(offer_quote_ids, quotes)
     route = draft_route([o.quote_id for o in offers], set(outcomes), facts.router_route)
+    text = with_summary(text, route, facts)
     policy_texts = [h.text for h in hits.values()]
     results: dict[str, bool | str] = {
         "g1_quote_block_once": quote_block_once(text, route),
@@ -107,7 +111,22 @@ def check_draft(
             text, route, offers=len(offers), summarisable=facts.summarisable,
             closed_year=closed_year),
     }  # fmt: skip
-    return Checked(route, offers, results)
+    return Checked(route, offers, results, text)
+
+
+def with_summary(text: str, route: str, facts: DraftFacts) -> str:
+    """D80 (owner, week 6): code inserts {{REQUEST_SUMMARY}} wherever guardrail 3
+    requires it, as its own paragraph after the greeting (the first blank line; first if
+    there is none). Not when the model already wrote it (kept where it is, never twice),
+    and not when it cannot render (nothing known): guardrail 3 then fails as before."""
+    if not facts.summarisable:
+        return text
+    if summary_present(text, route, relative_or_holiday=facts.relative_or_holiday) is True:
+        return text  # already there (the model's, kept), or not required on this route
+    head, sep, rest = text.partition("\n\n")
+    if not sep:
+        return f"{REQUEST_SUMMARY}\n\n{text}"
+    return f"{head}\n\n{REQUEST_SUMMARY}\n\n{rest}"
 
 
 def draft_route(offers: Sequence[int], outcomes: Collection[str], router_route: str) -> str:
