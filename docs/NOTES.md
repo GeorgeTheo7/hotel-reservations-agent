@@ -487,3 +487,8 @@ Run: `eval/results/20261117T014501Z-agent-dev-gpt-6-luna.json` (commit a9af47a, 
 ## 2026-11-17 · For week 6: `check_availability` leaves the agent's tools with `agent_v2`
 - **Decision (owner):** the dev run never called it (0 of 40): `quote_price` checks availability itself (D59), so the call is redundant for the agent. It is removed from every case's `required_tools` now (18 cases); with `agent_v2` it is removed from the tool lists per route (D11). The function stays in `anemos.reservations.tools` for the week 9 MCP read tools.
 
+## 2026-11-17 · Week 6 decisions: LangGraph, redraft, guardrail units, summaries
+- **LangGraph (owner, D75):** the run becomes a `StateGraph` over the existing steps, as D10 and D17 planned. Proposed instead: no graph, with the `pending_approval` draft as the interrupt and a write-once checkpoint table, to avoid a second copy of the state. Kept by the owner's rules: graph state holds only ids, transcript and counters; the database wins on any disagreement; the checkpointer has its own connection (D71). Built in two commits: the port with no behaviour change (every existing test passes untouched; any test change is a finding), then checkpointer, interrupt and resume.
+- **Versions:** `langgraph` 1.2.19 and `langgraph-checkpoint-postgres` 3.2.0, the newest releases at least two weeks old (1.2.22 and 3.2.1 were 3 days old on 2026-11-17); nothing in the newer patches is needed.
+- **Redraft, owner edits, guardrails 2–4, summaries:** D76–D81. INJECTION gets no summary: the email text is not sent to a model again.
+- **Extraction candidates (en-ignore-my-last-email, en-policy-cancellation-deposit): week 9.** Both fail safely, and changing extraction in the same week as `agent_v2` would mix the two effects in the week-6 eval.
