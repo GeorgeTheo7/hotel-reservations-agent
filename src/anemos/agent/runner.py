@@ -70,17 +70,11 @@ type Conn = psycopg.Connection[TupleRow]
 
 
 @dataclass(frozen=True)
-class QuoteSeen:
-    quote_id: int
-    hold_allowed: bool  # D9, the offer's half; D72 holds only a single such offer
-
-
-@dataclass(frozen=True)
 class Answer:
     """What goes back to the model (`output`, JSON), and what the loop keeps."""
 
     output: dict[str, Any]
-    quotes: tuple[QuoteSeen, ...] = ()
+    quotes: tuple[StoredQuote, ...] = ()  # rendered from these in phase 3 (D8)
     outcome: str | None = None  # CLOSED, NONE_FOUND or NEEDS_INFO: D72 reads them
     closed_year: int | None = None  # CLOSED: the year {{OPEN_SEASON}} names
     hits: tuple[Hit, ...] = ()
@@ -235,8 +229,7 @@ def _quoted(result: str, quotes: tuple[StoredQuote, ...], **extra: str) -> Answe
               "rooms": q.offer.quote.rooms, "nights": len(q.offer.quote.stay.nights),
               "changes": sorted(c.value for c in q.offer.changes)}
              for q in quotes]  # fmt: skip
-    seen = tuple(QuoteSeen(q.quote_id, q.offer.hold_allowed) for q in quotes)
-    return Answer({"result": result, **extra, "quotes": shown}, quotes=seen)
+    return Answer({"result": result, **extra, "quotes": shown}, quotes=tuple(quotes))
 
 
 def _needs_info(info: NeedsInfo) -> Answer:

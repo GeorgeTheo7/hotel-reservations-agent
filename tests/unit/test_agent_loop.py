@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -18,7 +19,7 @@ from anemos.agent.loop import (
     first_message,
     run_loop,
 )
-from anemos.agent.runner import Answer, Ends, QuoteSeen
+from anemos.agent.runner import Answer, Ends
 from anemos.agent.tools import TOOLS_BY_ROUTE, ToolRoute
 from anemos.clock import FixedClock
 from anemos.llm.adapter import (
@@ -41,8 +42,9 @@ pytestmark = pytest.mark.unit
 
 CLOCK = FixedClock(datetime(2027, 3, 1, 9, 0, tzinfo=UTC))
 MESSAGE = first_message("quote", "", "en", "Room in July", "Two adults, 5 to 9 July.")
-QUOTED = Answer({"result": "QUOTED", "quotes": [{"quote_id": 11}]},
-                quotes=(QuoteSeen(11, hold_allowed=True),))  # fmt: skip
+# A stand-in for a priced quote: the loop only keeps it by id (the final write renders it).
+QUOTE_11: Any = SimpleNamespace(quote_id=11, offer=SimpleNamespace(hold_allowed=True))
+QUOTED = Answer({"result": "QUOTED", "quotes": [{"quote_id": 11}]}, quotes=(QUOTE_11,))
 DRAFT: dict[str, Any] = {
     "text": "Dear guest,\n{{REQUEST_SUMMARY}}\n{{QUOTE_BLOCK}}",
     "offer_quote_ids": [11],
@@ -94,7 +96,7 @@ def test_quote_then_draft() -> None:
     tools = FakeTools()
     result, client = loop([call("quote_price"), call("write_draft", DRAFT)], tools)
     assert result.end == DraftWanted(DRAFT["text"], (11,), ())
-    assert (result.state.calls, result.state.quotes) == (2, {11: True})
+    assert (result.state.calls, result.state.quotes) == (2, {11: QUOTE_11})
     assert tools.asked == [("quote_price", {})]
     # the second turn saw the first call and its answer, exactly as returned
     second = client.turns[1].transcript.items

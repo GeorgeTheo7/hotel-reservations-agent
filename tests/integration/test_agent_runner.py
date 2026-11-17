@@ -20,7 +20,7 @@ from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 from psycopg.types.range import Range
 
-from anemos.agent.runner import Answer, Ends, QuoteSeen, ToolRunner
+from anemos.agent.runner import Answer, Ends, ToolRunner
 from anemos.agent.tools import NoArgs, SearchPoliciesArgs
 from anemos.clock import FixedClock
 from anemos.llm.adapter import LLM, Settings
@@ -89,7 +89,9 @@ def test_quote_price_commits_its_quote_and_audit_row(
     assert result.output["result"] == "QUOTED"
     assert quote == {"quote_id": quote["quote_id"], "room_type": "sea_view", "rooms": 1,
                      "nights": 4, "changes": []}  # fmt: skip
-    assert result.quotes == (QuoteSeen(quote["quote_id"], hold_allowed=True),)
+    assert [(q.quote_id, q.offer.hold_allowed) for q in result.quotes] == [
+        (quote["quote_id"], True)
+    ]
     assert conn.info.transaction_status == TransactionStatus.IDLE  # nothing left open
     assert counts(committed_db)[2:] == (1, 1)  # committed, seen from another connection
 
@@ -122,7 +124,7 @@ def test_the_tools_never_write_bookings_or_the_outbox(
     assert isinstance(priced, Answer) and priced.output["result"] == "FULLY_BOOKED"
     found = tools.run("suggest_alternatives", NO_ARGS)
     assert isinstance(found, Answer) and found.output["result"] == "ALTERNATIVES"
-    assert all(not q.hold_allowed for q in found.quotes)  # other types: never held (D9)
+    assert all(not q.offer.hold_allowed for q in found.quotes)  # other types: never held (D9)
     tools.run("check_availability", NO_ARGS)
     tools.run("search_policies", SearchPoliciesArgs(query="Can I bring my dog?"))
     assert counts(committed_db)[:2] == before

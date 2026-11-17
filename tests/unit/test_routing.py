@@ -133,16 +133,15 @@ def test_flags_win_over_kind_other() -> None:
     assert codes(result) == (ReasonCode.BILLING,)
 
 
-@pytest.mark.parametrize("kind", ["question", "other"])
-def test_question_and_other_escalate_model_until_week_5(kind: str) -> None:
-    result = run(ext(kind=kind, adults=None, rooms=None), None)
-    assert codes(result) == (ReasonCode.MODEL,)
-    assert isinstance(result, Escalate) and "week 5" in result.detail
+@pytest.mark.parametrize(("kind", "agent_route"), [("question", "policy"), ("other", "other")])
+def test_question_and_other_go_to_the_agent(kind: str, agent_route: str) -> None:
+    """D70 rule 6: a policy question gets the policy tools; kind other only escalate."""
+    assert run(ext(kind=kind, adults=None, rooms=None), None) == ToAgent(agent_route)  # type: ignore[arg-type]
 
 
 def test_kind_other_wins_over_the_calendar() -> None:
     no_calendar = Stay(date(2028, 7, 10), date(2028, 7, 14))
-    assert codes(run(ext(kind="other"), no_calendar)) == (ReasonCode.MODEL,)
+    assert run(ext(kind="other"), no_calendar) == ToAgent("other")
 
 
 # --- 7. NO_CALENDAR ---

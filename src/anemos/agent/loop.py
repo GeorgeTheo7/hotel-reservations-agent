@@ -52,6 +52,7 @@ from anemos.llm.adapter import (
 from anemos.policies.search import Hit
 from anemos.prompts import CURRENT_AGENT, ToolPromptSpec
 from anemos.reservations.errors import ReasonCode
+from anemos.reservations.tools import StoredQuote
 
 log = logging.getLogger("anemos.agent")
 
@@ -91,13 +92,13 @@ class LoopState:
 
     transcript: Transcript
     calls: int = 0
-    quotes: dict[int, bool] = field(default_factory=dict)  # quote id -> hold_allowed (D9)
+    quotes: dict[int, StoredQuote] = field(default_factory=dict)  # priced in this run
     outcomes: set[str] = field(default_factory=set)  # CLOSED, NONE_FOUND, NEEDS_INFO (D72)
     closed_year: int | None = None  # the year {{OPEN_SEASON}} names
     hits: dict[str, Hit] = field(default_factory=dict)  # policy id -> what was returned
 
     def keep(self, answer: Answer) -> None:
-        self.quotes.update({q.quote_id: q.hold_allowed for q in answer.quotes})
+        self.quotes.update({q.quote_id: q for q in answer.quotes})
         if answer.outcome is not None:
             self.outcomes.add(answer.outcome)
         if answer.closed_year is not None:

@@ -7,5 +7,6 @@
     "children's ages": "τις ηλικίες των παιδιών",
     "number of guests": "τον αριθμό των επισκεπτών"
   },
-  "missing_fallback": "μερικές λεπτομέρειες για τη διαμονή σας"
+  "missing_fallback": "μερικές λεπτομέρειες για τη διαμονή σας",
+  "open_season": "από $opens έως $closes"
 }

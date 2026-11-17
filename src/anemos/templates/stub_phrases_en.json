@@ -7,5 +7,6 @@
     "children's ages": "the ages of the children",
     "number of guests": "the number of guests"
   },
-  "missing_fallback": "a few details about your stay"
+  "missing_fallback": "a few details about your stay",
+  "open_season": "from $opens to $closes"
 }

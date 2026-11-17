@@ -235,13 +235,13 @@ def test_process_inbox_runs_every_received_email_once(
         return Answer(found)
 
     llm, client = make_llm(committed_db, [answer, answer], clock, tmp_path)
-    results = process_inbox(committed_db.connect, clock, llm)
+    results = process_inbox(committed_db.connect, clock, llm, finish=route_and_draft)
     assert sorted(r.email_id for r in results) == sorted(stored_ids)
     assert len(client.sent) == 2  # the thread reply made no call
     assert [outcome(committed_db, i) for i in stored_ids] == [
         ("quote", (), 1), ("set_aside", (), 0), ("escalate", ("THREAD_REPLY",), 0),
     ]  # fmt: skip
-    assert process_inbox(committed_db.connect, clock, llm) == []
+    assert process_inbox(committed_db.connect, clock, llm, finish=route_and_draft) == []
 
 
 # --- superseding (D48), on purpose ------------------------------------------------------
@@ -277,13 +277,13 @@ def test_a_newer_email_supersedes_the_older_pending_draft(
     conn = committed_db.connect()
     older = store_email(conn, clock, GUEST.incoming()).email_id
     conn.commit()
-    process_inbox(committed_db.connect, clock, llm)
+    process_inbox(committed_db.connect, clock, llm, finish=route_and_draft)
     assert statuses(committed_db, older) == ("awaiting_approval", "pending_approval")
 
     newer = store_email(conn, clock, second_email(1)).email_id
     conn.commit()
     assert statuses(committed_db, older) == ("superseded", "superseded")
-    process_inbox(committed_db.connect, clock, llm)
+    process_inbox(committed_db.connect, clock, llm, finish=route_and_draft)
     assert statuses(committed_db, newer) == ("awaiting_approval", "pending_approval")
 
 
@@ -300,6 +300,6 @@ def test_a_draft_is_born_superseded_when_a_newer_email_is_already_stored(
     newer = store_email(conn, clock, second_email(1)).email_id
     conn.commit()
     llm, _ = make_llm(committed_db, [Answer(gold_out), Answer(gold_out)], clock, tmp_path)
-    process_inbox(committed_db.connect, clock, llm)
+    process_inbox(committed_db.connect, clock, llm, finish=route_and_draft)
     assert statuses(committed_db, older) == ("superseded", "superseded")
     assert statuses(committed_db, newer) == ("awaiting_approval", "pending_approval")

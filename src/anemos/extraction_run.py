@@ -12,7 +12,13 @@
    written in its own transaction afterwards. If the model call failed (budget, a model
    error, a bug), the email is escalated `SYSTEM_ERROR` (D49). Otherwise the extraction
    is stored (the request row; the email's language) and `finish` runs in the same
-   transaction: routing and drafting (step 5) hand the email on from there.
+   transaction: routing and drafting hand the email on from there.
+4. On an agent route (D71), `finish` returns what runs next (`Then`): the transaction of
+   step 3 commits first (extraction, request and routing decision; the email stays
+   `processing`), then the agent loop and its own final transaction run.
+
+The whole run uses one connection (no transaction open during a model call), so a run
+does not churn local ports (NOTES 2026-11-16).
 """
 
 import logging
@@ -67,7 +73,8 @@ class RunResult:
     extraction: ExtractionOutput | None
 
 
-type Finish = Callable[[Conn, Clock, Claimed, ExtractionOutput], None]
+type Then = Callable[[Conn], Literal["finished", "discarded"]]
+type Finish = Callable[[Conn, Clock, Claimed, ExtractionOutput], Then | None]
 
 
 def _neutral(text: str) -> str:
@@ -132,18 +139,25 @@ def process_email(
     finish: Finish,
     spec: PromptSpec = CURRENT_EXTRACTION,
 ) -> RunResult:
-    with connect() as conn:  # 1. claim
-        claimed = claim(conn, clock, email_id)
-        if claimed.in_reply_to is not None:
-            # Thread replies are routed before extraction: no model call (D70 rule 1).
-            decision = route(EmailFacts(claimed.received_at, claimed.in_reply_to), None, None,
-                             load_hotel_data(conn))  # fmt: skip
-            assert isinstance(decision, Escalate), decision
-            record_route(conn, clock.now(), email_id, decision)
-            escalate(conn, clock.now(), email_id, decision.codes, decision.detail, actor="system")
-            conn.commit()
-            return RunResult(email_id, "escalated", None)
+    with connect() as conn:  # one connection for the whole run
+        return _run(conn, clock, llm, email_id, finish, spec)
+
+
+def _run(
+    conn: Conn, clock: Clock, llm: LLM, email_id: int, finish: Finish, spec: PromptSpec
+) -> RunResult:
+    # 1. claim
+    claimed = claim(conn, clock, email_id)
+    if claimed.in_reply_to is not None:
+        # Thread replies are routed before extraction: no model call (D70 rule 1).
+        decision = route(EmailFacts(claimed.received_at, claimed.in_reply_to), None, None,
+                         load_hotel_data(conn))  # fmt: skip
+        assert isinstance(decision, Escalate), decision
+        record_route(conn, clock.now(), email_id, decision)
+        escalate(conn, clock.now(), email_id, decision.codes, decision.detail, actor="system")
         conn.commit()
+        return RunResult(email_id, "escalated", None)
+    conn.commit()
 
     extraction: ExtractionOutput | None = None  # 2. the model, nothing held
     error = ""
@@ -159,24 +173,24 @@ def process_email(
         log.exception("extraction of email %s failed", email_id)
         error = f"{type(exc).__name__}: {exc}"
 
-    with connect() as conn:  # 3. the final write
-        lock_sender(conn, claimed.from_address)
-        row = conn.execute(
-            "SELECT status FROM emails WHERE id = %s FOR UPDATE", (email_id,)
-        ).fetchone()
-        assert row is not None
-        if row[0] != EmailStatus.PROCESSING:
-            conn.rollback()
-            _discarded(connect, clock, email_id, row[0])
-            return RunResult(email_id, "discarded", extraction)
-        if extraction is None:
-            _escalate_system_error(conn, clock.now(), email_id, error)
-            conn.commit()
-            return RunResult(email_id, "escalated", None)
-        store_extraction(conn, clock, claimed, extraction)
-        finish(conn, clock, claimed, extraction)
+    # 3. the final write
+    lock_sender(conn, claimed.from_address)
+    row = conn.execute("SELECT status FROM emails WHERE id = %s FOR UPDATE", (email_id,)).fetchone()
+    assert row is not None
+    if row[0] != EmailStatus.PROCESSING:
+        conn.rollback()
+        discarded(conn, clock, email_id, row[0], step="extract")
+        return RunResult(email_id, "discarded", extraction)
+    if extraction is None:
+        _escalate_system_error(conn, clock.now(), email_id, error)
         conn.commit()
-    return RunResult(email_id, "finished", extraction)
+        return RunResult(email_id, "escalated", None)
+    store_extraction(conn, clock, claimed, extraction)
+    then = finish(conn, clock, claimed, extraction)
+    conn.commit()
+    if then is None:
+        return RunResult(email_id, "finished", extraction)
+    return RunResult(email_id, then(conn), extraction)  # 4. the agent (D71)
 
 
 def _escalate_system_error(conn: Conn, now: datetime, email_id: int, error: str) -> None:
@@ -196,12 +210,11 @@ def record_route(conn: Conn, now: datetime, email_id: int, decision: Routed) -> 
     write_audit(conn, now, "system", AuditEvent.EMAIL_ROUTED, email_id=email_id, output=output)
 
 
-def _discarded(connect: Callable[[], Conn], clock: Clock, email_id: int, status: str) -> None:
+def discarded(conn: Conn, clock: Clock, email_id: int, status: str, *, step: str) -> None:
     """D65: the run's result was dropped because the email changed meanwhile; recorded
     in its own transaction, after the final write rolled back."""
-    with connect() as conn:
-        write_audit(
-            conn, clock.now(), "system", AuditEvent.RUN_DISCARDED, email_id=email_id,
-            output={"step": "extract", "email_status": status},
-        )  # fmt: skip
-        conn.commit()
+    write_audit(
+        conn, clock.now(), "system", AuditEvent.RUN_DISCARDED, email_id=email_id,
+        output={"step": step, "email_status": status},
+    )  # fmt: skip
+    conn.commit()

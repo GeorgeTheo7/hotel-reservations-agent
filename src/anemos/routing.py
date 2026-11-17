@@ -6,7 +6,8 @@ the hotel's calendar and room types, and returns one of:
 
 - `SetAside`: spam; no draft, no reply.
 - `Escalate(codes)`: the owner handles it; no draft.
-- `ToAgent(route)`: drafting goes on, on route quote, ask_info, decline or policy.
+- `ToAgent(route)`: the agent loop goes on, on route quote, ask_info, decline, policy
+  (kind question) or other (kind other: the agent gets only escalate, D11).
 
 The first rule that matches decides, in this order (D70):
 
@@ -15,7 +16,7 @@ The first rule that matches decides, in this order (D70):
  3. kind spam                          -> set aside
  4. language not en/el                 -> LANGUAGE
  5. flags legal/billing/medical        -> LEGAL, BILLING, MEDICAL (all present, one escalation)
- 6. kind question or other             -> MODEL until the agent loop exists (week 5)
+ 6. kind question / other            -> the agent: route policy / other
  7. a night in a year with no calendar -> NO_CALENDAR (D36)
  8. every night closed                 -> decline (CLOSED, D62)
  9. less than 48 h to check-in         -> SHORT_NOTICE (D31)
@@ -60,10 +61,9 @@ FLAG_CODES: tuple[tuple[ExtractionFlag, ReasonCode], ...] = (
     (ExtractionFlag.BILLING_REQUEST, ReasonCode.BILLING),
     (ExtractionFlag.MEDICAL_NEED, ReasonCode.MEDICAL),
 )
-NOT_BUILT_YET = "week 5: the agent loop does not exist yet"
 
 type Resolved = Stay | Window | FixedHoliday | NeedsInfo | InvalidDates | None
-type AgentRoute = Literal["quote", "ask_info", "decline", "policy"]
+type AgentRoute = Literal["quote", "ask_info", "decline", "policy", "other"]
 
 
 @dataclass(frozen=True)
@@ -117,8 +117,10 @@ def route(
     flagged = tuple(code for flag, code in FLAG_CODES if flag in extraction.flags)
     if flagged:
         return Escalate(flagged, "extraction flags: " + ", ".join(flagged))
-    if extraction.kind in ("question", "other"):
-        return _escalate(ReasonCode.MODEL, f"kind {extraction.kind}; {NOT_BUILT_YET}")
+    if extraction.kind == "question":
+        return ToAgent("policy")
+    if extraction.kind == "other":
+        return ToAgent("other")
 
     # 7-9: the dates, if code could resolve them.
     if isinstance(resolved, Stay | Window | FixedHoliday):

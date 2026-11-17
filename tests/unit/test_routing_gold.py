@@ -29,25 +29,20 @@ HOTEL = hotel_data()
 
 type Outcome = tuple[str, tuple[ReasonCode, ...]]
 
-GROUP, LEGAL, MODEL = ReasonCode.GROUP, ReasonCode.LEGAL, ReasonCode.MODEL
+GROUP, LEGAL = ReasonCode.GROUP, ReasonCode.LEGAL
 
-# Needs model judgement: the agent loop (week 5) decides these. Router outcome today.
-WEEK_5: dict[str, Outcome] = {
+# Decided by the agent loop (model judgement or a tool result): the router hands them
+# on, or escalates without the code only the model adds. Router outcome today.
+BY_AGENT: dict[str, Outcome] = {
     "en-discount-as-agreed": ("quote", ()),  # gold DISCOUNT: "50% off as agreed"
     "el-group-wedding": ("escalate", (GROUP,)),  # gold + DISCOUNT (spec open item)
     "el-complaint-legal": ("escalate", (LEGAL,)),  # gold + COMPLAINT (spec open item)
-    "el-cancellation": ("escalate", (MODEL,)),  # gold CANCELLATION
-    "el-change-dates": ("escalate", (MODEL,)),  # gold CHANGE
-    "el-pets-policy": ("escalate", (MODEL,)),  # gold route policy
-    "el-greeklish-transfer-policy": ("escalate", (MODEL,)),  # gold route policy
-    "en-policy-cancellation-deposit": ("escalate", (MODEL,)),  # gold route policy
-    "el-policy-checkin-luggage": ("escalate", (MODEL,)),  # gold route policy
-    "el-greeklish-parking-wifi": ("escalate", (MODEL,)),  # gold route policy
-    "el-policy-extra-bed-child": ("escalate", (MODEL,)),  # gold route policy
-    "en-nomatch-pool-gym": ("escalate", (MODEL,)),  # gold NO_POLICY (D73)
-    "el-nomatch-scooter-hire": ("escalate", (MODEL,)),  # gold NO_POLICY (D73)
+    "el-cancellation": ("other", ()),  # gold CANCELLATION
+    "el-change-dates": ("other", ()),  # gold CHANGE
+    "en-nomatch-pool-gym": ("policy", ()),  # gold NO_POLICY (D73)
+    "el-nomatch-scooter-hire": ("policy", ()),  # gold NO_POLICY (D73)
     "en-quote-plus-dinner": ("quote", ()),  # gold NO_POLICY on the quote route (D73)
-    "en-complaint-air-conditioning": ("escalate", (MODEL,)),  # gold COMPLAINT
+    "en-complaint-air-conditioning": ("other", ()),  # gold COMPLAINT
     "el-discount-long-stay": ("quote", ()),  # gold DISCOUNT
 }
 
@@ -56,7 +51,7 @@ BY_TOOLS: dict[str, Outcome] = {
     "en-fully-booked-decline": ("quote", ()),  # gold decline: NONE_FOUND (D60)
 }
 
-EXACT = sorted(set(CASES) - set(WEEK_5) - set(BY_TOOLS))
+EXACT = sorted(set(CASES) - set(BY_AGENT) - set(BY_TOOLS))
 
 
 def routed(case: EmailCase) -> Routed:
@@ -88,11 +83,13 @@ def gold(case: EmailCase) -> Outcome:
 
 def test_every_case_is_counted_once() -> None:
     assert len(CASES) == 55
-    assert set(WEEK_5) == NOT_BUILT_YET  # one list, in anemos.evaluation
-    listed = set(WEEK_5) | set(BY_TOOLS)
+    # The run-level list (stub drafter) also holds the six policy questions the router
+    # now hands to the agent on route policy, exactly as labelled.
+    assert set(BY_AGENT) <= NOT_BUILT_YET
+    listed = set(BY_AGENT) | set(BY_TOOLS)
     assert listed <= set(CASES), f"listed but no such case: {listed - set(CASES)}"
-    assert not set(WEEK_5) & set(BY_TOOLS)
-    assert len(EXACT) == 38
+    assert not set(BY_AGENT) & set(BY_TOOLS)
+    assert len(EXACT) == 44
 
 
 @pytest.mark.parametrize("case_id", EXACT)
@@ -101,7 +98,7 @@ def test_router_matches_the_gold_label(case_id: str) -> None:
     assert outcome(routed(case)) == gold(case)
 
 
-@pytest.mark.parametrize(("case_id", "expected"), sorted({**WEEK_5, **BY_TOOLS}.items()))
+@pytest.mark.parametrize(("case_id", "expected"), sorted({**BY_AGENT, **BY_TOOLS}.items()))
 def test_listed_case_routes_as_recorded_and_still_differs(case_id: str, expected: Outcome) -> None:
     case = CASES[case_id]
     got = outcome(routed(case))
