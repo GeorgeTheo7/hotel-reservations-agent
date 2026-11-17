@@ -1,0 +1,68 @@
+{
+  "el-adults-null-we": [
+    {
+      "call": 1,
+      "false_alarm": false,
+      "reason": "true alarm: the stay's dates '12 to 15 June 2027' in its own text"
+    }
+  ],
+  "el-approximate-late-june": [
+    {
+      "call": 1,
+      "false_alarm": false,
+      "reason": "true alarm: no {{REQUEST_SUMMARY}} on a quote"
+    }
+  ],
+  "el-ask-info-child-ages": [
+    {
+      "call": 1,
+      "false_alarm": false,
+      "reason": "true alarm: the stay's dates '5 to 8 September 2027' in its own text"
+    },
+    {
+      "call": 2,
+      "false_alarm": false,
+      "reason": "true alarm: the same dates again in its own text"
+    }
+  ],
+  "el-infant-cot": [
+    {
+      "call": 1,
+      "false_alarm": false,
+      "reason": "true alarm: the dates '1 to 5 June 2027' and 'under 2' in its own text; no {{REQUEST_SUMMARY}} on a quote"
+    }
+  ],
+  "el-late-arrival-ferry": [
+    {
+      "call": 1,
+      "false_alarm": false,
+      "reason": "true alarm: the dates '20 to 23 September 2027' and '22:00' in its own text; no {{REQUEST_SUMMARY}} on a quote"
+    }
+  ],
+  "el-next-weekend-no-party": [
+    {
+      "call": 1,
+      "false_alarm": false,
+      "reason": "true alarm: no {{REQUEST_SUMMARY}} on ask_info for 'next weekend'"
+    },
+    {
+      "call": 2,
+      "false_alarm": false,
+      "reason": "true alarm: no {{REQUEST_SUMMARY}} again"
+    }
+  ],
+  "en-accessible-wheelchair": [
+    {
+      "call": 1,
+      "false_alarm": false,
+      "reason": "true alarm: the dates '14 to 18 May 2027' and '2 guests' in its own text; no {{REQUEST_SUMMARY}} on a quote"
+    }
+  ],
+  "en-count-wife-and-mother": [
+    {
+      "call": 1,
+      "false_alarm": false,
+      "reason": "true alarm: the dates '5 to 9 July 2027' in its own text; no {{REQUEST_SUMMARY}} on a quote"
+    }
+  ]
+}
