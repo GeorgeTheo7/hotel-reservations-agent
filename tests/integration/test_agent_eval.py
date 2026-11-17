@@ -8,7 +8,7 @@ import importlib.util
 import json
 import subprocess
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
@@ -30,7 +30,7 @@ from anemos.llm.adapter import (
 )
 from anemos.llm.budget import Budget
 from anemos.llm.pricing import Usage
-from anemos.prompts import CURRENT_AGENT
+from anemos.prompts import CURRENT_AGENT, CURRENT_SUMMARY
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixtures' classes are for mypy only
     from conftest import CommittedDb
@@ -79,6 +79,25 @@ class FailingTurns(GoldClient):
         return super().send_turn(transcript, tools, settings)
 
 
+@dataclass
+class OneBadDraft(GoldClient):
+    """The gold client, whose first write_draft carries a number no policy has (G2):
+    refused once (D76), then the gold draft passes."""
+
+    spoiled: bool = False
+
+    def send_turn(
+        self, transcript: Transcript, tools: Sequence[Tool], settings: Settings
+    ) -> TurnReply:
+        reply = super().send_turn(transcript, tools, settings)
+        if reply.call.name != "write_draft" or self.spoiled:
+            return reply
+        self.spoiled = True
+        args = json.loads(reply.call.arguments)
+        args["text"] += " We have 99 rooms."
+        return replace(reply, call=replace(reply.call, arguments=json.dumps(args)))
+
+
 def run(committed_db: CommittedDb, clean_repo: Path, tmp_path: Path, client: Any,
         ids: Sequence[str]) -> tuple[int, dict[str, Any], str]:  # fmt: skip
     args = ["--model", "gpt-6-luna", "--results-dir", str(tmp_path / "results")]
@@ -101,22 +120,79 @@ def test_the_gold_agent_passes_the_bar(committed_db: CommittedDb, clean_repo: Pa
                         IDS)  # fmt: skip
     assert code == 0
     assert {line["name"]: line["passed"] for line in data["bar"]} == {
-        "unsafe actions": True, "SYSTEM_ERROR": True, "extraction stay": True,
-        "extraction adults": True, "extraction child_ages": True,
-        "route accuracy (route, codes, holds)": True, "escalation recall": True,
-        "escalation precision": True, "policy recall": True,
-        "drafts passing the checks first time": True, "cost per email": True,
-        "latency per email": True,
+        "unsafe actions": True, "SYSTEM_ERROR": True, "extraction": True,
+        "route accuracy (route, codes, holds)": True, "escalation": True,
+        "policy recall": True, "drafts passing the checks first time": True,
+        "guardrail false alarms": True, "cost per email": True, "latency per email": True,
+        "escalation summaries": True,
     }  # fmt: skip
     run_info = data["run"]
     assert run_info["prompt_versions"]["agent"] == CURRENT_AGENT.version  # agent_v2 (week 6)
+    assert run_info["prompt_versions"]["summary"] == CURRENT_SUMMARY.version
     assert run_info["settings"]["agent_max_output_tokens"] == 2000
     by_id = {c["case_id"]: c for c in data["cases"]}
     assert by_id["el-pets-policy"]["retrieved"] == ["pets-assistance-dogs"]
     assert by_id["en-quote-sea-view-june"]["model_text"].count("{{QUOTE_BLOCK}}") == 1
     assert by_id["en-fully-booked-decline"]["outcome"]["route"] == "decline"
-    assert data["reported"]["check_availability"]["calls"] == 0  # no label requires it
+    assert data["reported"]["check_availability"] == {
+        "offered": False,
+        "calls": 0,
+        "refused": 0,
+        "per_case": {},
+    }  # agent_v2
     assert data["reported"]["script_mismatch"] == {}
+    assert by_id["el-cancellation"]["summary"]  # the gold summary, collected
+    assert set(by_id["el-cancellation"]["cost_by_step"]) == {"extract", "agent", "summary"}
+    assert by_id["el-pets-policy"]["policy_texts"]["pets-assistance-dogs"]
+    assert [len(c["draft_calls"]) for c in data["cases"]] == [1, 1, 0, 0, 1]
+
+
+def test_a_refused_draft_is_listed_and_marked_by_rescore(
+    committed_db: CommittedDb, clean_repo: Path, tmp_path: Path
+) -> None:
+    """One refusal, then the fixed draft: line 7 and line 8 see it; line 8 waits for the
+    owner's mark, and --rescore applies it with no model or database call."""
+    case_id = "en-quote-sea-view-june"
+    code, data, path = run(committed_db, clean_repo, tmp_path, OneBadDraft([CASES[case_id]]),
+                           [case_id])  # fmt: skip
+    assert code == 0
+    [only] = data["cases"]
+    assert [d["checks"] for d in only["draft_calls"]] == [["g2_numbers_from_policies"], []]
+    [refused] = data["reported"]["refused_drafts"]
+    assert (refused["case"], refused["call"]) == (case_id, 1) and "99 rooms" in refused["text"]
+    passed = {line["name"]: line["passed"] for line in data["bar"]}
+    assert not passed["drafts passing the checks first time"]  # 0/1
+    assert not passed["guardrail false alarms"]  # unmarked
+
+    marks = tmp_path / "marks.json"
+    marks.write_text(
+        json.dumps({case_id: [{"call": 1, "false_alarm": False, "reason": "99 rooms is invented"}]})
+    )
+    client = GoldClient([])
+    assert (
+        eval_module().main(
+            ["--rescore", path, "--false-alarms", str(marks)],
+            client=client,
+            repo=clean_repo,
+            clock=FixedClock(NOW),
+        )
+        == 0
+    )
+    rescored = json.loads(Path(path).with_name(Path(path).stem + "-rescored.json")
+                          .read_text(encoding="utf-8"))  # fmt: skip
+    line8 = next(x for x in rescored["bar"] if x["name"] == "guardrail false alarms")
+    assert line8["passed"] and line8["value"] == "0% (0/1)"
+    assert rescored["rescored"]["marks"] == "marks.json" and client.calls == []
+
+
+def test_marks_that_do_not_fit_are_refused(clean_repo: Path, tmp_path: Path) -> None:
+    results = tmp_path / "r.json"
+    results.write_text(json.dumps({"cases": []}))
+    marks = tmp_path / "marks.json"
+    marks.write_text(json.dumps({"nope": []}))
+    assert eval_module().main(["--rescore", str(results), "--false-alarms", str(marks)],
+                              repo=clean_repo) == 2  # fmt: skip
+    assert not (tmp_path / "r-rescored.json").exists()
 
 
 def test_a_provider_failure_is_rerun_once_and_recorded(

@@ -290,7 +290,9 @@ def _checked_draft(
         return {"calls": calls, "end": end_json(draft)}
     redrafts = state.get("redrafts", 0) + 1
     if ctx.record is not None:
-        ctx.record({"tool": WRITE_DRAFT, "refused": checked.failures, "redraft": redrafts})
+        checks = [name for name, r in checked.results.items() if r is not True]
+        ctx.record({"tool": WRITE_DRAFT, "refused": checked.failures, "checks": checks,
+                    "redraft": redrafts})  # fmt: skip
     if redrafts > MAX_REDRAFTS:
         failed = EscalationWanted(ReasonCode.GUARDRAIL_FAIL, "; ".join(checked.failures), "agent")
         return {"calls": calls, "redrafts": redrafts, "end": end_json(failed)}

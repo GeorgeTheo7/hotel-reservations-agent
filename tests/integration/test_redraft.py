@@ -96,6 +96,7 @@ def test_a_refused_draft_is_redrafted_through_process_email(
     assert refusals(committed_db, email_id) == [{
         "tool": "write_draft", "redraft": 1,
         "refused": ["{{REQUEST_SUMMARY}} missing: required for a relative or holiday date"],
+        "checks": ["g3_summary_present"],
     }]  # fmt: skip
 
 

@@ -15,6 +15,13 @@ Before any call the worst-case cost is estimated from the adapter's reservations
 --max-usd (default 1.00) nothing is sent. Refuses a dirty working tree and held-out
 cases. Writes eval/results/<time>-agent-dev-<model>.json before printing the report.
 Never run by pytest or CI: tests call main() with the gold client or a scripted one.
+
+The owner's false-alarm marks (bar line 8) are applied afterwards, with no model or
+database call:
+
+    uv run python eval/agent_eval.py --rescore <results.json> --false-alarms <marks.json>
+
+which writes <results>-rescored.json next to the results file.
 """
 
 import argparse
@@ -33,7 +40,17 @@ from psycopg.rows import TupleRow
 import anemos.db.scratch as scratch
 from anemos.agent.loop import MAX_CALLS, first_message
 from anemos.agent.tools import TOOLS_BY_ROUTE
-from anemos.agent_evaluation import AgentCase, ToolUse, bar, provider_failure, reported
+from anemos.agent_evaluation import (
+    AgentCase,
+    DraftCall,
+    MarksError,
+    ToolUse,
+    apply_marks,
+    bar,
+    case_from_json,
+    provider_failure,
+    reported,
+)
 from anemos.audit import run_cost
 from anemos.clock import Clock, FixedClock, SystemClock
 from anemos.db.connection import connect
@@ -58,8 +75,15 @@ from anemos.llm.openai_client import OpenAIClient
 from anemos.llm.pricing import PRICES, max_cost
 from anemos.policies import load_policies
 from anemos.policies.search import selector_prompt
-from anemos.prompts import CURRENT_AGENT, CURRENT_EXTRACTION, CURRENT_POLICY_SELECT
+from anemos.prompts import (
+    CURRENT_AGENT,
+    CURRENT_EXTRACTION,
+    CURRENT_POLICY_SELECT,
+    CURRENT_SUMMARY,
+)
+from anemos.reservations.errors import ReasonCode
 from anemos.run import agent_finish
+from anemos.summary import summary_input
 
 type Conn = psycopg.Connection[TupleRow]
 
@@ -81,12 +105,20 @@ def main(
 ) -> int:
     parser = argparse.ArgumentParser(prog="eval/agent_eval.py",
                                      description=__doc__.split("\n")[0])  # fmt: skip
-    parser.add_argument("--model", required=True, choices=sorted(PRICES))
+    parser.add_argument("--model", choices=sorted(PRICES))
     parser.add_argument("--case", action="append", default=[], dest="cases",
                         help="run only this dev case (repeatable)")  # fmt: skip
     parser.add_argument("--max-usd", type=float, default=1.00)
     parser.add_argument("--results-dir", type=Path, default=EVAL / "results")
+    parser.add_argument("--rescore", type=Path, help="a results file to score again (no call)")
+    parser.add_argument("--false-alarms", type=Path, help="the owner's marks, with --rescore")
     args = parser.parse_args(argv)
+    if args.rescore is not None or args.false_alarms is not None:
+        if args.rescore is None or args.false_alarms is None:
+            parser.error("--rescore and --false-alarms go together")
+        return rescore(args.rescore, args.false_alarms, repo, clock or SystemClock())
+    if args.model is None:
+        parser.error("--model is required")
 
     commit, dirty = git_state(repo)
     if dirty:
@@ -111,10 +143,42 @@ def main(
     llm = LLM(client or OpenAIClient(), settings, budget or Budget(clock, cap_from_env()),
               lambda: connect(conninfo), clock)  # fmt: skip
     results = [run_case(conninfo, llm, case, timer) for case in cases]
-    lines, extra = bar(results), reported(results)
+    lines, extra = bar(results), reported_items(results)
     # Written before anything is printed: the calls are paid for (docs/NOTES.md).
     path = write(args.results_dir, started, args.model, commit, estimate, results, lines, extra)
     print(report(results, lines, extra))
+    print(f"\nwritten: {path}")
+    return 0
+
+
+def reported_items(cases: Sequence[AgentCase]) -> dict[str, Any]:
+    offered = any(t.name == "check_availability"
+                  for tools in CURRENT_AGENT.tools.values() for t in tools)  # fmt: skip
+    texts = {i: t for c in cases for i, t in c.policy_texts.items()}
+    return reported(cases, texts, check_availability_offered=offered)
+
+
+def rescore(results: Path, marks_path: Path, repo: Path, clock: Clock) -> int:
+    """Bar line 8 with the owner's marks: the stored cases scored again, no model or
+    database call. Writes <results>-rescored.json next to the results file."""
+    data = json.loads(results.read_text(encoding="utf-8"))
+    marks = json.loads(marks_path.read_text(encoding="utf-8"))
+    try:
+        cases = apply_marks([case_from_json(c) for c in data["cases"]], marks)
+    except MarksError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    lines, extra = bar(cases), reported_items(cases)
+    commit, dirty = git_state(repo)
+    data |= {
+        "rescored": {"marks": marks_path.name, "commit": commit, "dirty": dirty,
+                     "at": clock.now().isoformat()},
+        "bar": [asdict(line) for line in lines], "reported": extra,
+        "cases": [asdict(c) for c in cases],
+    }  # fmt: skip
+    path = results.with_name(f"{results.stem}-rescored.json")
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    print(report(cases, lines, extra))
     print(f"\nwritten: {path}")
     return 0
 
@@ -132,11 +196,26 @@ GROWTH_BYTES = 2_000
 SEARCH_OUTPUT_TOKENS = 400
 
 
+# The escalation summary's input beyond the email: the extraction's JSON (at most 600
+# output tokens) and the escalation note (at most one agent output, 2,000 tokens), at a
+# generous 8 bytes per token, plus every tool result of a full loop.
+SUMMARY_EXTRA_BYTES = 8 * (600 + 2_000) + MAX_CALLS * GROWTH_BYTES
+
+
+def summary_cost(case: EmailCase, model: str) -> int:
+    """One summary call at its full output limit (D81): counted for every case, since
+    any case may end in an escalation."""
+    text = summary_input(list(ReasonCode), "", None, [], case.email.subject, case.email.body)
+    sent = len((CURRENT_SUMMARY.text() + text).encode()) + SUMMARY_EXTRA_BYTES
+    return max_cost(model, max_input_tokens=sent,
+                    max_output_tokens=CURRENT_SUMMARY.max_output_tokens)  # fmt: skip
+
+
 def worst_case(cases: Sequence[EmailCase], model: str) -> int:
     """The most the cases can cost: extraction, then 8 agent turns, each resending a
     transcript grown by GROWTH_BYTES per turn. Each turn either uses the whole output
     limit, or writes a valid search (a short output) and adds one selector call:
-    whichever costs more is counted, never both."""
+    whichever costs more is counted, never both. Then one escalation summary per case."""
     extraction = estimate_max_cost(cases, CURRENT_EXTRACTION, model)
     longest = max((len(c.text.encode()) for c in load_policies()), default=0)
     assert 3 * longest + 500 <= GROWTH_BYTES, "a policy answer outgrows the estimate"
@@ -156,6 +235,7 @@ def worst_case(cases: Sequence[EmailCase], model: str) -> int:
             search = max_cost(model, max_input_tokens=sent,
                               max_output_tokens=SEARCH_OUTPUT_TOKENS) + selector  # fmt: skip
             total += max(full, search)
+        total += summary_cost(case, model)
     return total
 
 
@@ -234,9 +314,12 @@ def collect(conn: Conn, case: EmailCase, email_id: int, model: str) -> AgentCase
         " ORDER BY id", (email_id,),
     ).fetchall()  # fmt: skip
     escalated = conn.execute(
-        "SELECT output->>'detail' FROM audit_log WHERE email_id = %s"
+        "SELECT output->>'detail', output->'added_by_model' FROM audit_log WHERE email_id = %s"
         " AND event = 'email.escalated' ORDER BY id DESC LIMIT 1", (email_id,),
     ).fetchone()  # fmt: skip
+    summary_row = conn.execute(
+        "SELECT escalation_summary FROM emails WHERE id = %s", (email_id,)
+    ).fetchone()
     failed_extraction = not any(e == "llm.called" and s == "extract" for e, s, *_ in calls)
     outcome = CaseOutcome(
         case.id, labels.route, tuple(c.value for c in labels.reason_codes), labels.holds,
@@ -250,25 +333,42 @@ def collect(conn: Conn, case: EmailCase, email_id: int, model: str) -> AgentCase
     drafts = [
         out for e, out, _, _ in agent if e == "llm.called" and out.get("tool") == "write_draft"
     ]
+    cost = run_cost(conn, email_id)  # one definition (audit)
+    hits = [h for r in tools for h in r[0].get("record", {}).get("hits", [])]
     found = AgentCase(
         case_id=case.id, language=labels.language, outcome=outcome,
         extraction=_extraction_row(case, calls, model),
         required_tools=list(labels.required_tools), policy_ids=list(labels.policy_ids),
         forbidden_phrases=list(labels.forbidden_phrases),
         tools=[_tool_use(r[0]) for r in tools],
-        retrieved=sorted({h["policy_id"] for r in tools
-                          for h in r[0].get("record", {}).get("hits", [])}),
+        retrieved=sorted({h["policy_id"] for h in hits}),
+        policy_texts={h["policy_id"]: h["text"] for h in hits},
         rejected=rejected, write_tool_calls=write_calls,
         agent_turns=sum(1 for e, _, err, _ in agent if e == "llm.called" or err in rejected),
         max_output_tokens=max((t or 0 for e, _, _, t in agent if e == "llm.called"), default=0),
         system_error=(escalated[0] if escalated else "") if "SYSTEM_ERROR" in codes else None,
         model_text=drafts[-1]["arguments"]["text"] if drafts else None,
         draft_body=body, guardrail_fail="GUARDRAIL_FAIL" in codes,
-        cost_micro_usd=run_cost(conn, email_id).cost_micro_usd,  # one definition (audit)
+        draft_calls=draft_calls([d["arguments"]["text"] for d in drafts],
+                                [r[0] for r in tools if "refused" in r[0]]),
+        summary=summary_row[0] if summary_row else None,
+        summary_added=list(escalated[1] or []) if escalated else [],
+        cost_micro_usd=cost.cost_micro_usd,
+        cost_by_step={step: s.cost_micro_usd for step, s in cost.steps.items()},
     )  # fmt: skip
     if draft_id is not None:
         found.unsafe += _offer_problems(conn, draft_id, email_id)
     return found
+
+
+def draft_calls(texts: Sequence[str], refusals: Sequence[dict[str, Any]]) -> list[DraftCall]:
+    """Every write_draft in order. A refused one is followed by another write_draft or
+    ends the run (D76), so the refusal rows belong to the first calls, in order."""
+    assert len(refusals) <= len(texts), (len(refusals), len(texts))
+    calls = [DraftCall(t) for t in texts]
+    for i, r in enumerate(refusals):
+        calls[i] = DraftCall(texts[i], tuple(r["refused"]), tuple(r.get("checks", ())))
+    return calls
 
 
 def _rejection(error: str | None) -> bool:
@@ -293,6 +393,8 @@ def _offer_problems(conn: Conn, draft_id: int, email_id: int) -> list[str]:
 def _tool_use(output: dict[str, Any]) -> ToolUse:
     if "ends" in output:
         return ToolUse(output["tool"], f"ENDS {output['ends']['code']}")
+    if "refused" in output:  # a refused draft (D76)
+        return ToolUse(output["tool"], "DRAFT_REFUSED")
     answer = output.get("answer", {})
     detail = output.get("record", {}).get("invalid_query", "")
     return ToolUse(output["tool"], str(answer.get("result") or answer.get("error")), detail)
@@ -341,7 +443,8 @@ def write(
             "model": model, "commit": commit, "dirty": False, "started_at": started.isoformat(),
             "prompt_versions": {"extraction": CURRENT_EXTRACTION.version,
                                 "agent": CURRENT_AGENT.version,
-                                "policy_select": CURRENT_POLICY_SELECT.version},
+                                "policy_select": CURRENT_POLICY_SELECT.version,
+                                "summary": CURRENT_SUMMARY.version},
             "settings": {"agent_max_output_tokens": CURRENT_AGENT.max_output_tokens,
                          "agent_reasoning_effort": CURRENT_AGENT.reasoning_effort,
                          "extraction_max_output_tokens": CURRENT_EXTRACTION.max_output_tokens,
