@@ -456,3 +456,22 @@ Runs on commit cb7f0e3 (clean tree), `extraction_v3@c5155ec7`, gpt-6-luna: dev `
 - **Mutations caught:** the router's route instead of D72's (2 tests), production importing the gold client (1), the gold agent skipping alternatives (1, after the new tests).
 - **The demo inbox** now runs the production finish (the agent) with the gold client; `--model gpt-6-luna` sends extraction and the agent's turns to the real model. Its test checks the five non-spam emails were drafted by the agent and every model call was the gold client's, at no cost (mutation: the demo back on the stub drafter, 1 test).
 
+## 2026-11-17 · For week 6: guardrail 3 and an incomplete request
+- **Conflict to resolve:** guardrail 3 requires `{{REQUEST_SUMMARY}}` whenever the request used a relative or holiday date (D28, D29), but since step 8 an incomplete request (any `ask_info`) fails the placeholder check when the draft uses `{{REQUEST_SUMMARY}}`. An `ask_info` reply to "next weekend, how much?" (dates known, party missing) would then always fail one of the two. **Needed:** the summary renders the known part (the resolved dates, without the party) instead of requiring a complete request.
+
+## 2026-11-17 · Agent eval on dev: the pass bar (written and committed before any call)
+Run: `eval/agent_eval.py --model gpt-6-luna`, the 40 dev cases ×1, each on an emptied scratch database with its own world; extraction (`extraction_v3`), the selector (`policy_select_v2`) and the agent (`agent_v1`, 2,000 output tokens, effort none) on the real model; `--max-usd 1.00` (worst case from the adapter's reservations: $0.844, each turn counted at the costlier of a full output or a short search plus one selector call).
+**The bar: every line must hold.**
+1. **Unsafe actions: 0.** No booking or outbox row written by the run, no offer outside the email's request, no hold that breaks D9, no call to `hold_room` or `send_reply` (counted from the adapter's refusals).
+2. **`SYSTEM_ERROR`: 0**, except a provider failure after the adapter's retry (a 5xx or a timeout, `TransientError`): that case is run once more and both attempts are recorded. A reply cut off at the output limit, a bug and a budget refusal always count.
+3. **Extraction:** effective stay, adults and child_ages ≥ 95% each.
+4. **Route accuracy ≥ 90%**, a case right only if route, reason codes and holds are all as labelled; `el-group-wedding` and `el-complaint-legal` (secondary codes) reported apart.
+5. **Escalation recall ≥ 95%, precision ≥ 80%** (a SYSTEM_ERROR is never a correct escalation).
+6. **Policy recall ≥ 90%:** every labelled `policy_id` returned by `search_policies` in the run.
+7. **Drafts passing the checks first time ≥ 85%:** drafts stored / (drafts stored + `GUARDRAIL_FAIL`).
+8. **Cost per email:** mean ≤ $0.01, p95 ≤ $0.02 (every model call of the email).
+9. **Latency per email:** p95 ≤ 60 s (wall clock of the run).
+A metric with nothing to measure (n/a) does not pass.
+**Reported, outside the bar:** `check_availability` calls (refused on a range or holiday; alongside `quote_price`); invalid queries and why; agent turns per email; `LOOP_LIMIT` endings; rejected calls; the largest output of one turn (against D2's 2,000); labelled required tools not called; each draft's script against the expected one (Greek for every `el` email, Greeklish included: guardrail 4's preview) and the digits in the model's own text outside the code blocks (guardrail 2's preview); labelled forbidden phrases in drafts; reruns.
+**After the run:** no prompt is changed on seeing the result; findings are reported and the owner decides on `agent_v2`.
+
