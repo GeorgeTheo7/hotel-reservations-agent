@@ -38,5 +38,5 @@ labels:
     rooms: 1
     room_type: sea_view
   route: quote
-  required_tools: [check_availability, suggest_alternatives, quote_price]
+  required_tools: [suggest_alternatives, quote_price]
   holds: 0

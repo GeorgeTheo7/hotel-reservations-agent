@@ -114,7 +114,7 @@ def test_the_gold_agent_passes_the_bar(committed_db: CommittedDb, clean_repo: Pa
     assert by_id["el-pets-policy"]["retrieved"] == ["pets-assistance-dogs"]
     assert by_id["en-quote-sea-view-june"]["model_text"].count("{{QUOTE_BLOCK}}") == 1
     assert by_id["en-fully-booked-decline"]["outcome"]["route"] == "decline"
-    assert data["reported"]["check_availability"]["calls"] >= 1  # the labels require it
+    assert data["reported"]["check_availability"]["calls"] == 0  # no label requires it
     assert data["reported"]["script_mismatch"] == {}
 
 

@@ -47,4 +47,4 @@ labels:
     rooms: 1
     room_type: null
   route: decline
-  required_tools: [check_availability, suggest_alternatives]
+  required_tools: [suggest_alternatives]

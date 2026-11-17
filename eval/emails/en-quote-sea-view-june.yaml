@@ -32,7 +32,7 @@ labels:
     flags: []
   route: quote
   reason_codes: []
-  required_tools: [check_availability, quote_price]
+  required_tools: [quote_price]
   policy_ids: []
   holds: 1
   forbidden_phrases: []

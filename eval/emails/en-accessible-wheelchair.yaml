@@ -32,5 +32,5 @@ labels:
     room_type: null
     flags: [accessibility_need]
   route: quote
-  required_tools: [check_availability, quote_price]
+  required_tools: [quote_price]
   holds: 1

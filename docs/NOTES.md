@@ -484,3 +484,6 @@ Run: `eval/results/20261117T014501Z-agent-dev-gpt-6-luna.json` (commit a9af47a, 
 - **Finding 4, output size:** the largest output of one turn was 174 tokens (D2's limit 2,000); agent turns per email at most 3, mean 1.89. No invalid query, no rejected call, no `LOOP_LIMIT`, no script mismatch, no forbidden phrase.
 - **Not changed after seeing it:** no prompt; the owner decides on `agent_v2` and on the required-tools labels.
 
+## 2026-11-17 · For week 6: `check_availability` leaves the agent's tools with `agent_v2`
+- **Decision (owner):** the dev run never called it (0 of 40): `quote_price` checks availability itself (D59), so the call is redundant for the agent. It is removed from every case's `required_tools` now (18 cases); with `agent_v2` it is removed from the tool lists per route (D11). The function stays in `anemos.reservations.tools` for the week 9 MCP read tools.
+
