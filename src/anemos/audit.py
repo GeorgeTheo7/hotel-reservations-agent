@@ -32,6 +32,7 @@ class AuditEvent(StrEnum):
     DRAFT_EXPIRED = "draft.expired"
     DRAFT_ACTION_REFUSED = "draft.action_refused"
     DRAFT_PRICE_WARNING_SHOWN = "draft.price_warning_shown"
+    DRAFT_GUARDRAIL_WARNING_SHOWN = "draft.guardrail_warning_shown"  # D77, one per warning
     DRAFT_SUPERSEDED = "draft.superseded"
     DRAFT_APPROVED = "draft.approved"
     DRAFT_INVALIDATED = "draft.invalidated"
@@ -60,6 +61,7 @@ API_ONLY_EVENTS = frozenset(
         AuditEvent.EMAIL_ACTION_REFUSED,
         AuditEvent.BOOKING_ACTION_REFUSED,
         AuditEvent.DRAFT_PRICE_WARNING_SHOWN,
+        AuditEvent.DRAFT_GUARDRAIL_WARNING_SHOWN,
         AuditEvent.RUN_RESUME_FAILED,  # after an owner action committed (D75)
     }
 )

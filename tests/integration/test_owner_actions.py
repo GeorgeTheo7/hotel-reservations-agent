@@ -231,7 +231,9 @@ def test_an_edit_from_an_old_version_is_refused(
 ) -> None:
     """D67: editing from v1 after v2 exists would silently drop v2. Nothing written."""
     _, draft_id = pending_draft(rows)
-    assert edit_draft(db, clock, draft_id, "Dear guest, v2.", base_version=1) == Edited(2, None)
+    # No digit in the label: guardrail 2 would warn on an owner's "v2" (D77).
+    second = edit_draft(db, clock, draft_id, "Dear guest, second version.", base_version=1)
+    assert second == Edited(2, None)
     before = snapshot(db)
     with pytest.raises(StaleVersion) as stale:
         edit_draft(db, clock, draft_id, "Dear guest, from v1.", base_version=base)

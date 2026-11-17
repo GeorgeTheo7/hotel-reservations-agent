@@ -22,11 +22,13 @@ import psycopg
 from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 
+from anemos.agent.evidence import recorded_policy_texts
 from anemos.audit import AuditEvent, write_audit
 from anemos.clock import Clock
-from anemos.guardrails import PRICE_CHECK, rendered_blocks_unchanged
+from anemos.guardrails import PRICE_CHECK, edit_checks, rendered_blocks_unchanged
 from anemos.inbox import lock_sender
 from anemos.reservations.errors import ReasonCode
+from anemos.reservations.quote_template import summary_line
 from anemos.states import (
     BookingStatus,
     DraftStatus,
@@ -53,6 +55,7 @@ class DraftExpired:
 class Edited:
     version: int
     price_warning: str | None  # D63: set if a quote block changed; approval needs confirm
+    warnings: tuple[str, ...] = ()  # D77: guardrails 2-5 on the changed words; confirm too
 
 
 # --- drafts ---------------------------------------------------------------------------
@@ -67,7 +70,9 @@ def edit_draft(
     Price check (D63): the edit passes only if every quote block of the agent's version
     (draft_offers.rendered_block) appears verbatim in the new text. Otherwise the
     version's guardrail result records the edited-price warning, and approval refuses
-    it unless confirm_warnings (D10). The edit itself is always stored.
+    it unless confirm_warnings (D10). Guardrails 2-5 (D77) check the words the owner
+    changed against version 1; each failure is a warning too. The edit itself is
+    always stored.
 
     D67: `base_version` is the version the owner edited from; if a newer one exists,
     StaleVersion is raised under the draft lock and nothing is written (no lost edit).
@@ -90,18 +95,37 @@ def edit_draft(
     if base_version != latest:
         raise StaleVersion(draft_id, base_version, latest, action="edit", email_id=email_id)
     price_check = rendered_blocks_unchanged(body, blocks)
+    results: dict[str, bool | str] = {PRICE_CHECK: price_check}
+    results |= _edit_guardrails(conn, email_id, draft_id, body, blocks)
     version = latest + 1
     conn.execute(
         "INSERT INTO draft_versions (draft_id, version, author, body, guardrail_results,"
         " created_at) VALUES (%s, %s, 'owner', %s, %s, %s)",
-        (draft_id, version, body, Jsonb({PRICE_CHECK: price_check}), now),
+        (draft_id, version, body, Jsonb(results), now),
     )
     warning = None if price_check is True else str(price_check)
+    warnings = tuple(str(r) for k, r in results.items() if k != PRICE_CHECK and r is not True)
     write_audit(
         conn, now, "owner", AuditEvent.DRAFT_EDITED, email_id=email_id, draft_id=draft_id,
-        output={"version": version, "price_warning": warning},
+        output={"version": version, "price_warning": warning, "warnings": list(warnings)},
     )  # fmt: skip
-    return Edited(version, warning)
+    return Edited(version, warning, warnings)
+
+
+def _edit_guardrails(
+    conn: Conn, email_id: int, draft_id: int, body: str, blocks: list[str]
+) -> dict[str, bool | str]:
+    """Guardrails 2-5 on the words the owner changed against version 1 (D77)."""
+    row = conn.execute(
+        "SELECT v.body, e.language FROM draft_versions v JOIN emails e ON e.id = %s"
+        " WHERE v.draft_id = %s AND v.version = 1",
+        (email_id, draft_id),
+    ).fetchone()
+    assert row is not None  # every draft has version 1 (written with the draft)
+    original, language = str(row[0]), "el" if row[1] == "el" else "en"
+    return edit_checks(original, body, blocks=blocks, summary=summary_line(original),
+                       policy_texts=recorded_policy_texts(conn, email_id),
+                       language=language)  # fmt: skip
 
 
 def reject_draft(conn: Conn, clock: Clock, draft_id: int) -> DraftExpired | None:

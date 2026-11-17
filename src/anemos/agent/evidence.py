@@ -57,6 +57,18 @@ def rebuild_hits(conn: Conn, email_id: int, policy_ids: Sequence[str]) -> dict[s
     return {i: hits[i] for i in policy_ids}
 
 
+def recorded_policy_texts(conn: Conn, email_id: int) -> list[str]:
+    """Every policy text search_policies returned in this email's run, as recorded
+    (guardrails 2 and 5 on an owner edit, D77)."""
+    rows = conn.execute(
+        "SELECT h ->> 'text' FROM audit_log, jsonb_array_elements(output -> 'record' -> 'hits') h"
+        " WHERE email_id = %s AND event = %s AND output ->> 'tool' = 'search_policies'"
+        " ORDER BY audit_log.id",
+        (email_id, AuditEvent.AGENT_TOOL_CALLED.value),
+    ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
 def rebuild_quotes(
     conn: Conn, request_id: int | None, quote_ids: Sequence[int]
 ) -> dict[int, StoredQuote] | str:

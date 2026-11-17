@@ -10,6 +10,7 @@ maps the result to HTTP:
 | DraftExpired (return)            | 409  | committed: the flip and its audit (D54)    |
 | Invalidated (return)             | 409  | committed: invalidated + escalated (D44)   |
 | PriceWarning (return)            | 422  | rolled back, then an audit row (own txn)   |
+| GuardrailWarning (return)        | 422  | rolled back, one audit row per warning     |
 | ActionRefused (raise)            | 409  | rolled back, then an audit row (app.py)    |
 | NotFound (raise)                 | 404  | rolled back                                |
 
@@ -29,10 +30,17 @@ from pydantic import BaseModel, Field, field_validator
 
 from anemos.api.deps import ClockDep, ConnDep, require_owner
 from anemos.api.transactions import record_after_rollback, run_action
-from anemos.approval import Approved, Invalidated, PriceWarning, approve_draft
+from anemos.approval import (
+    Approved,
+    GuardrailWarning,
+    Invalidated,
+    PriceWarning,
+    approve_draft,
+)
 from anemos.audit import AuditEvent, write_audit
 from anemos.clock import Clock
 from anemos.graph import resume_after_owner
+from anemos.guardrails import PRICE_CHECK
 from anemos.owner_actions import (
     DraftExpired,
     Edited,
@@ -68,6 +76,7 @@ class EditRequest(BaseModel):
 class EditResult(BaseModel):
     version: int
     price_warning: str | None  # set: approval will need confirm_warnings (D63)
+    warnings: list[str] = []  # guardrails 2-5 on the edit (D77): confirm_warnings too
 
 
 class ApproveRequest(BaseModel):
@@ -151,7 +160,8 @@ def edit(
     if isinstance(result, DraftExpired):
         return expired(result)
     assert isinstance(result, Edited)
-    return EditResult(version=result.version, price_warning=result.price_warning)
+    return EditResult(version=result.version, price_warning=result.price_warning,
+                      warnings=list(result.warnings))  # fmt: skip
 
 
 @router.post(
@@ -167,7 +177,7 @@ def approve(
         lambda c: approve_draft(
             c, clock, draft_id, version=request.version, confirm_warnings=request.confirm_warnings
         ),
-        keep=lambda r: not isinstance(r, PriceWarning),  # it wrote nothing
+        keep=lambda r: not isinstance(r, PriceWarning | GuardrailWarning),  # wrote nothing
     )
     if isinstance(result, (Approved, Invalidated)):
         resume_thread(http, clock, draft_id)
@@ -186,20 +196,51 @@ def approve(
                 status_code=status.HTTP_409_CONFLICT,
             )
         case PriceWarning():
-            record_after_rollback(
-                http.app.state.connect, clock.now(), AuditEvent.DRAFT_PRICE_WARNING_SHOWN,
-                email_id=None, draft_id=draft_id,
-                output={"action": "approve", "version": result.version,
-                        "quote_ids": list(result.quote_ids)},
-            )  # fmt: skip
+            _shown_price(http, clock, draft_id, result.version, result.quote_ids)
             return JSONResponse(
                 {
                     "error": "price_warning",
                     "message": result.message,
-                    "hint": "repeat with confirm_warnings=true to send it anyway",
+                    "warnings": [{"check": PRICE_CHECK, "message": result.message}],
+                    "hint": CONFIRM_HINT,
                 },
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
+        case GuardrailWarning():
+            # D77: every warning of the version in one response, each one audited, so
+            # confirm_warnings never confirms a warning the owner was not shown.
+            for check, message in result.warnings:
+                if check == PRICE_CHECK:
+                    _shown_price(http, clock, draft_id, result.version, result.quote_ids)
+                else:
+                    record_after_rollback(
+                        http.app.state.connect, clock.now(),
+                        AuditEvent.DRAFT_GUARDRAIL_WARNING_SHOWN, email_id=None,
+                        draft_id=draft_id,
+                        output={"action": "approve", "version": result.version,
+                                "check": check, "message": message},
+                    )  # fmt: skip
+            return JSONResponse(
+                {
+                    "error": "guardrail_warning",
+                    "warnings": [{"check": c, "message": m} for c, m in result.warnings],
+                    "hint": CONFIRM_HINT,
+                },
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            )
+
+
+CONFIRM_HINT = "repeat with confirm_warnings=true to send it anyway"
+
+
+def _shown_price(
+    http: Request, clock: Clock, draft_id: int, version: int, quote_ids: tuple[int, ...]
+) -> None:
+    record_after_rollback(
+        http.app.state.connect, clock.now(), AuditEvent.DRAFT_PRICE_WARNING_SHOWN,
+        email_id=None, draft_id=draft_id,
+        output={"action": "approve", "version": version, "quote_ids": list(quote_ids)},
+    )  # fmt: skip
 
 
 @router.post("/drafts/{draft_id}/reject", responses={409: {}, 404: {}}, response_model=DraftDecided)

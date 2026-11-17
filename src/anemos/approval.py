@@ -10,8 +10,10 @@ Steps, in D10's order:
     pending_approval -> TransitionRefused (409, covers double approval). Older than
     72 h -> flipped to expired, DraftExpired (409 "expired", D54).
  2. Version (D67): the version the owner saw must be the latest, else StaleVersion
-    (409, nothing written). Then warnings: the latest version's price check (D63).
-    A warning -> PriceWarning (422) unless confirm_warnings; nothing is written.
+    (409, nothing written). Then warnings: the latest version's price check (D63) and
+    guardrails 2-5 on an owner edit (D77). Any warning -> 422 unless confirm_warnings,
+    every warning of the version listed together (PriceWarning when the price is the
+    only one, else GuardrailWarning); nothing is written.
  3. Flip stale holds: every `hold` past expires_at becomes `expired` (D10, D22).
  4. Re-validate everything the draft states (D47): each offered quote is priced again
     from the database and must match exactly, and each offered plan must still be
@@ -83,6 +85,18 @@ class PriceWarning:
 
 
 @dataclass(frozen=True)
+class GuardrailWarning:
+    """The latest version (an owner edit) has guardrail warnings (D77), and maybe a
+    changed price too: every warning of the version, listed together so the owner
+    confirms only what was shown; approve again with confirm_warnings=True. Nothing
+    was written. (A version with only a price warning is a PriceWarning, as before.)"""
+
+    version: int
+    warnings: tuple[tuple[str, str], ...]  # (check, message): price_check first, if any
+    quote_ids: tuple[int, ...]  # offers whose rendered_block changed (price_check)
+
+
+@dataclass(frozen=True)
 class Invalidated:
     """Re-validation failed (D44, D47, D52): draft invalidated, email escalated with
     NO_LONGER_AVAILABLE, nothing held or sent. Commit to keep it."""
@@ -103,7 +117,7 @@ class _Offer:
 
 def approve_draft(
     conn: Conn, clock: Clock, draft_id: int, *, version: int, confirm_warnings: bool = False
-) -> Approved | PriceWarning | Invalidated | DraftExpired:
+) -> Approved | PriceWarning | GuardrailWarning | Invalidated | DraftExpired:
     """Approve the draft as the owner saw it: `version` is the version number on the
     owner's screen (D67)."""
     now = clock.now()
@@ -119,9 +133,13 @@ def approve_draft(
     latest, body, results = _latest_version(conn, draft_id)
     if version != latest:
         raise StaleVersion(draft_id, version, latest, action="approve", email_id=email_id)
-    price_check = results.get(PRICE_CHECK, True)
-    if price_check is not True and not confirm_warnings:
-        return PriceWarning(str(price_check), latest, _changed_offers(conn, draft_id, body))
+    warnings = tuple((check, str(r)) for check, r in sorted(results.items(),
+                     key=lambda kv: kv[0] != PRICE_CHECK) if r is not True)  # fmt: skip
+    if warnings and not confirm_warnings:
+        changed = _changed_offers(conn, draft_id, body) if PRICE_CHECK in results else ()
+        if [check for check, _ in warnings] == [PRICE_CHECK]:
+            return PriceWarning(warnings[0][1], latest, changed)
+        return GuardrailWarning(latest, warnings, changed)
 
     # 3. Flip stale holds (in id order, so two approvals lock them in the same order).
     _flip_stale_holds(conn, now)
@@ -178,7 +196,8 @@ def approve_draft(
     write_audit(
         conn, now, "owner", AuditEvent.DRAFT_APPROVED, email_id=email_id, draft_id=draft_id,
         output={"version": version, "outbox_id": outbox_id, "booking_ids": booking_ids,
-                "confirmed_warning": price_check is not True},
+                "confirmed_warning": bool(warnings),
+                "confirmed_checks": [check for check, _ in warnings]},
     )  # fmt: skip
     decide_draft(conn, draft_id, DraftStatus.APPROVED, now)
     set_email(conn, email_id, EmailStatus.ANSWERED)

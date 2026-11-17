@@ -115,7 +115,8 @@ def test_edit_adds_an_owner_version(committed_db: CommittedDb, client: Client) -
     response = client().post(
         f"/drafts/{draft_id}/versions", json={"body": friendlier, "base_version": 1}
     )
-    assert (response.status_code, response.json()) == (201, {"version": 2, "price_warning": None})
+    assert (response.status_code, response.json()) == (
+        201, {"version": 2, "price_warning": None, "warnings": []})  # fmt: skip
     assert read(
         committed_db,
         "SELECT version, author, body FROM draft_versions WHERE draft_id = %s AND version = 2",
@@ -264,6 +265,7 @@ def test_price_warning_is_422_audited_then_confirmed(
     assert (response.status_code, response.json()) == (
         422,
         {"error": "price_warning", "message": warning,
+         "warnings": [{"check": "price_check", "message": warning}],
          "hint": "repeat with confirm_warnings=true to send it anyway"},
     )  # fmt: skip
     assert only_audit_added(committed_db, before, audits) == [

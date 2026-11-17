@@ -13,6 +13,7 @@ import unicodedata
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from difflib import SequenceMatcher
 from functools import cache
 from importlib.resources import files
 
@@ -191,6 +192,76 @@ def no_forbidden_phrases(text: str, policy_texts: Iterable[str]) -> bool | str:
     if not found:
         return True
     return f"forbidden phrases: {found}"
+
+
+# --- guardrails 2-5 on an owner edit (D77) ------------------------------------------------------
+
+_WORD = re.compile(r"\S+")
+RUN_SEPARATOR = " | "  # between runs of changed words: no phrase spans two edits
+
+
+@dataclass(frozen=True)
+class EditChanges:
+    """The words an owner inserted or replaced, against version 1, in runs."""
+
+    free: tuple[str, ...]  # outside the agent's rendered quote blocks
+    in_blocks: tuple[str, ...]  # inside one: a changed price is the price check's (D63)
+
+    def all(self) -> tuple[str, ...]:
+        return self.free + self.in_blocks
+
+
+def edit_changes(original: str, edited: str, blocks: Sequence[str] = ()) -> EditChanges:
+    """A word diff (whitespace-separated tokens) of `edited` against `original`: each
+    inserted or replaced run, marked by whether it falls inside one of the original's
+    rendered quote blocks. Deleted words are not text the owner wrote."""
+    spans = [(m.start(), m.end()) for m in _WORD.finditer(original)]
+    old = [original[a:b] for a, b in spans]
+    new = _WORD.findall(edited)
+    protected: set[int] = set()
+    for block in blocks:
+        start = original.find(block)
+        if start < 0:
+            continue
+        end = start + len(block)
+        protected |= {i for i, (a, b) in enumerate(spans) if a >= start and b <= end}
+    free: list[str] = []
+    in_blocks: list[str] = []
+    matcher = SequenceMatcher(None, old, new, autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag not in ("replace", "insert") or j1 == j2:
+            continue
+        run = " ".join(new[j1:j2])
+        touched = set(range(i1, i2)) if tag == "replace" else {i1 - 1, i1}
+        inside = bool(touched) and touched <= protected
+        (in_blocks if inside else free).append(run)
+    return EditChanges(tuple(free), tuple(in_blocks))
+
+
+def summary_kept(original_line: str | None, edited: str) -> bool | str:
+    """Guardrail 3 on an edit: version 1's summary line, if it had one, is still there
+    word for word (a changed-words check cannot see a deletion)."""
+    if original_line is None or original_line in edited:
+        return True
+    return f"the request summary line was changed or removed: {original_line!r}"
+
+
+def edit_checks(
+    original: str, edited: str, *, blocks: Sequence[str], summary: str | None,
+    policy_texts: Sequence[str], language: str,
+) -> dict[str, bool | str]:  # fmt: skip
+    """Guardrails 2-5 on an owner edit (D77), each a warning the owner confirms at
+    approval, never a block. G2: a changed number outside the quote blocks must be a
+    number of a returned policy or of version 1. G4 and G5 read every changed run."""
+    changes = edit_changes(original, edited, blocks)
+    free = RUN_SEPARATOR.join(changes.free)
+    every = RUN_SEPARATOR.join(changes.all())
+    return {
+        "g2_numbers_from_policies": numbers_from_policies(free, [*policy_texts, original]),
+        "g3_summary_present": summary_kept(summary, edited),
+        "g4_reply_script": reply_script(every, language),
+        "g5_no_forbidden_phrases": no_forbidden_phrases(every, policy_texts),
+    }
 
 
 def all_passed(results: dict[str, bool | str]) -> bool:

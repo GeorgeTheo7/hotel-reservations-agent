@@ -349,3 +349,14 @@ def _render_file(name: str, values: dict[str, str]) -> str:
     rendered = Template(_template_text(name)).substitute(values)
     # Optional parts (note, cot) render empty: drop the blank lines they leave.
     return "\n".join(line for line in rendered.splitlines() if line.strip())
+
+
+def summary_line(text: str) -> str | None:
+    """The {{REQUEST_SUMMARY}} line of a rendered draft (guardrail 3 on owner edits,
+    D77): the first line that starts as a summary template does, in either language."""
+    prefixes = tuple(_template_text(f"summary_{lang}.txt").split("$details")[0].strip()
+                     for lang in ("en", "el"))  # fmt: skip
+    for line in text.splitlines():
+        if line.strip().startswith(prefixes):
+            return line.strip()
+    return None
