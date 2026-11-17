@@ -4,12 +4,13 @@
 and in its final transaction stores the extraction and calls a `finish`:
 
 - `agent_finish(llm)` (production, `process_inbox`): the router's decision is audited
-  (`email.routed`); SetAside and Escalate are written in that transaction. ToAgent runs
-  the agent in D71's three phases: (1) that transaction commits (extraction, request,
-  routing; the email stays `processing`); (2) the agent loop, with no transaction open,
-  each tool call a short transaction on the run's connection; (3) one short final
-  transaction under the sender lock: if the email is no longer `processing`, the run is
-  discarded (audited); else the draft or the escalation is written (agent/final.py).
+  (`email.routed`); SetAside and Escalate are written in that transaction. ToAgent
+  returns `AgentStart`, and the run graph (anemos.graph, D75) runs the agent in D71's
+  three phases: (1) that transaction commits (extraction, request, routing; the email
+  stays `processing`); (2) the agent loop's nodes, with no transaction open, each tool
+  call a short transaction on the run's connection; (3) `final_write`: one short
+  transaction under the sender lock: if the email is no longer `processing`, the run
+  is discarded (audited); else the draft or the escalation is written (agent/final.py).
 - `route_and_draft` (the demo inbox and the extraction eval, until the gold agent):
   the same routing, then the stub drafter on routes quote, ask_info and decline;
   routes policy and other, which only the agent answers, escalate MODEL.
@@ -25,15 +26,14 @@ import psycopg
 from psycopg.rows import TupleRow
 
 from anemos.agent.final import finish_agent
-from anemos.agent.loop import EscalationWanted, LoopResult, first_message, run_loop
-from anemos.agent.runner import ToolRunner
+from anemos.agent.loop import EscalationWanted, LoopResult
 from anemos.clock import Clock
 from anemos.extraction import ExtractionOutput
 from anemos.extraction_run import (
+    AgentStart,
     Claimed,
     Finish,
     RunResult,
-    Then,
     discarded,
     process_email,
     record_route,
@@ -85,9 +85,13 @@ def route_and_draft(conn: Conn, clock: Clock, claimed: Claimed, out: ExtractionO
 
 
 def agent_finish(llm: LLM) -> Finish:
-    """The production finish: routing, then the agent in D71's three phases."""
+    """The production finish: routing, then the agent in D71's three phases (the run
+    graph's agent nodes and final write, anemos.graph). `llm` is the run's model; the
+    graph's context carries it to the agent nodes."""
 
-    def finish(conn: Conn, clock: Clock, claimed: Claimed, out: ExtractionOutput) -> Then | None:
+    def finish(
+        conn: Conn, clock: Clock, claimed: Claimed, out: ExtractionOutput
+    ) -> AgentStart | None:
         decision = routed(conn, clock, claimed, out)
         if not isinstance(decision, ToAgent):
             return None
@@ -96,27 +100,18 @@ def agent_finish(llm: LLM) -> Finish:
         ).fetchone()
         request_id = None if row is None else int(row[0])
         lang: Lang = "el" if out.language == "el" else "en"
-
-        def then(c: Conn) -> Literal["finished", "discarded"]:
-            return _agent(c, clock, llm, claimed, decision, request_id, lang)
-
-        return then
+        return AgentStart(decision, request_id, lang)
 
     return finish
 
 
-def _agent(
-    conn: Conn, clock: Clock, llm: LLM, claimed: Claimed, decision: ToAgent,
-    request_id: int | None, lang: Lang,
-) -> Literal["finished", "discarded"]:  # fmt: skip
-    """Phases 2 and 3 (D71). Phase 1 has committed: the email is `processing`."""
+def final_write(
+    conn: Conn, clock: Clock, claimed: Claimed, start: AgentStart, loop: LoopResult
+) -> Literal["finished", "discarded"]:
+    """Phase 3 (D71): one short transaction under the sender lock; discarded if the
+    email is no longer `processing`."""
     email_id = claimed.email_id
-    tools = ToolRunner(conn, clock, llm, email_id, request_id)
-    message = first_message(decision.route, decision.detail, lang, claimed.subject,
-                            claimed.clean_body)  # fmt: skip
-    loop = run_loop(llm, tools, route=decision.route, message=message, email_id=email_id)
-
-    lock_sender(conn, claimed.from_address)  # phase 3: the final write
+    lock_sender(conn, claimed.from_address)
     row = conn.execute("SELECT status FROM emails WHERE id = %s FOR UPDATE", (email_id,)).fetchone()
     assert row is not None
     if row[0] != EmailStatus.PROCESSING:
@@ -124,8 +119,8 @@ def _agent(
         discarded(conn, clock, email_id, row[0], step="agent")
         return "discarded"
     try:
-        finish_agent(conn, clock.now(), email_id, loop, router_route=decision.route,
-                     request_id=request_id, lang=lang)  # fmt: skip
+        finish_agent(conn, clock.now(), email_id, loop, router_route=start.decision.route,
+                     request_id=start.request_id, lang=start.lang)  # fmt: skip
         conn.commit()
     except Exception as exc:  # a bug in the final write: escalated, never stuck (D49)
         log.exception("final write for email %s failed", email_id)

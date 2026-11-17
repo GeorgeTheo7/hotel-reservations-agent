@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",
     "fastapi>=0.163.0",
+    "langgraph>=1.2.19",
     "openai>=3.51.0",
     "psycopg[binary]>=3.3.8",
     "pydantic>=2.14.3",
@@ -82,3 +83,18 @@ dev = [
     "ruff>=0.17.4",
     "types-pyyaml>=6.0.12.20261113",
 ]
+
+# Releases younger than two weeks are the supply-chain risk window: the langgraph family
+# and the packages it brings are resolved as of 2026-11-03 (NOTES 2026-11-17).
+[tool.uv.exclude-newer-package]
+langgraph = "2026-11-03T00:00:00Z"
+langgraph-checkpoint = "2026-11-03T00:00:00Z"
+langgraph-prebuilt = "2026-11-03T00:00:00Z"
+langgraph-sdk = "2026-11-03T00:00:00Z"
+langchain-core = "2026-11-03T00:00:00Z"
+langchain-protocol = "2026-11-03T00:00:00Z"
+langsmith = "2026-11-03T00:00:00Z"
+jsonpatch = "2026-11-03T00:00:00Z"
+jsonpointer = "2026-11-03T00:00:00Z"
+xxhash = "2026-11-03T00:00:00Z"
+ormsgpack = "2026-11-03T00:00:00Z"

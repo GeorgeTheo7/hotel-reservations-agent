@@ -13,9 +13,11 @@
    error, a bug), the email is escalated `SYSTEM_ERROR` (D49). Otherwise the extraction
    is stored (the request row; the email's language) and `finish` runs in the same
    transaction: routing and drafting hand the email on from there.
-4. On an agent route (D71), `finish` returns what runs next (`Then`): the transaction of
-   step 3 commits first (extraction, request and routing decision; the email stays
-   `processing`), then the agent loop and its own final transaction run.
+4. On an agent route (D71), `finish` returns `AgentStart`: the transaction of step 3
+   commits first (extraction, request and routing decision; the email stays
+   `processing`), then the agent nodes and their own final transaction run.
+
+The steps are nodes of the run graph (anemos.graph, D75); `process_email` runs it.
 
 The whole run uses one connection (no transaction open during a model call), so a run
 does not churn local ports (NOTES 2026-11-16).
@@ -40,6 +42,7 @@ from anemos.llm.adapter import LLM, Prompt
 from anemos.prompts import CURRENT_EXTRACTION, PromptSpec
 from anemos.reservations.datespec import resolve
 from anemos.reservations.errors import ReasonCode
+from anemos.reservations.formatting import Lang
 from anemos.reservations.loader import load_hotel_data
 from anemos.reservations.model import Stay
 from anemos.routing import EmailFacts, Escalate, Routed, SetAside, ToAgent, route
@@ -73,8 +76,18 @@ class RunResult:
     extraction: ExtractionOutput | None
 
 
+@dataclass(frozen=True)
+class AgentStart:
+    """What `finish` returns on an agent route (D71): the run graph goes on to the agent
+    nodes after the transaction commits."""
+
+    decision: ToAgent
+    request_id: int | None
+    lang: Lang
+
+
 type Then = Callable[[Conn], Literal["finished", "discarded"]]
-type Finish = Callable[[Conn, Clock, Claimed, ExtractionOutput], Then | None]
+type Finish = Callable[[Conn, Clock, Claimed, ExtractionOutput], Then | AgentStart | None]
 
 
 def _neutral(text: str) -> str:
@@ -139,61 +152,40 @@ def process_email(
     finish: Finish,
     spec: PromptSpec = CURRENT_EXTRACTION,
 ) -> RunResult:
+    """One run, as the run graph (anemos.graph, D75) on one connection."""
+    from anemos.graph import run_email  # the graph imports this module's steps
+
     with connect() as conn:  # one connection for the whole run
-        return _run(conn, clock, llm, email_id, finish, spec)
+        return run_email(conn, clock, llm, email_id, finish=finish, spec=spec)
 
 
-def _run(
-    conn: Conn, clock: Clock, llm: LLM, email_id: int, finish: Finish, spec: PromptSpec
-) -> RunResult:
-    # 1. claim
-    claimed = claim(conn, clock, email_id)
-    if claimed.in_reply_to is not None:
-        # Thread replies are routed before extraction: no model call (D70 rule 1).
-        decision = route(EmailFacts(claimed.received_at, claimed.in_reply_to), None, None,
-                         load_hotel_data(conn))  # fmt: skip
-        assert isinstance(decision, Escalate), decision
-        record_route(conn, clock.now(), email_id, decision)
-        escalate(conn, clock.now(), email_id, decision.codes, decision.detail, actor="system")
-        conn.commit()
-        return RunResult(email_id, "escalated", None)
-    conn.commit()
-
-    extraction: ExtractionOutput | None = None  # 2. the model, nothing held
-    error = ""
+def extract(llm: LLM, claimed: Claimed, spec: PromptSpec) -> tuple[ExtractionOutput | None, str]:
+    """2. The model call, with no transaction open: the extraction, or the error."""
     settings = replace(llm.settings, max_output_tokens=spec.max_output_tokens,
                        reasoning_effort=spec.reasoning_effort)  # fmt: skip
     try:
         result = llm.structured(
             build_prompt(claimed.subject, claimed.clean_body, spec), ExtractionOutput,
-            step="extract", prompt_version=spec.version, email_id=email_id, settings=settings,
+            step="extract", prompt_version=spec.version, email_id=claimed.email_id,
+            settings=settings,
         )  # fmt: skip
-        extraction = result.output
     except Exception as exc:  # budget, model error or a bug: escalated, never stuck
-        log.exception("extraction of email %s failed", email_id)
-        error = f"{type(exc).__name__}: {exc}"
-
-    # 3. the final write
-    lock_sender(conn, claimed.from_address)
-    row = conn.execute("SELECT status FROM emails WHERE id = %s FOR UPDATE", (email_id,)).fetchone()
-    assert row is not None
-    if row[0] != EmailStatus.PROCESSING:
-        conn.rollback()
-        discarded(conn, clock, email_id, row[0], step="extract")
-        return RunResult(email_id, "discarded", extraction)
-    if extraction is None:
-        _escalate_system_error(conn, clock.now(), email_id, error)
-        conn.commit()
-        return RunResult(email_id, "escalated", None)
-    store_extraction(conn, clock, claimed, extraction)
-    then = finish(conn, clock, claimed, extraction)
-    conn.commit()
-    if then is None:
-        return RunResult(email_id, "finished", extraction)
-    return RunResult(email_id, then(conn), extraction)  # 4. the agent (D71)
+        log.exception("extraction of email %s failed", claimed.email_id)
+        return None, f"{type(exc).__name__}: {exc}"
+    return result.output, ""
 
 
-def _escalate_system_error(conn: Conn, now: datetime, email_id: int, error: str) -> None:
+def escalate_thread_reply(conn: Conn, clock: Clock, claimed: Claimed) -> None:
+    """Thread replies are routed before extraction: no model call (D70 rule 1)."""
+    decision = route(EmailFacts(claimed.received_at, claimed.in_reply_to), None, None,
+                     load_hotel_data(conn))  # fmt: skip
+    assert isinstance(decision, Escalate), decision
+    record_route(conn, clock.now(), claimed.email_id, decision)
+    escalate(conn, clock.now(), claimed.email_id, decision.codes, decision.detail,
+             actor="system")  # fmt: skip
+
+
+def escalate_system_error(conn: Conn, now: datetime, email_id: int, error: str) -> None:
     escalate(conn, now, email_id, (ReasonCode.SYSTEM_ERROR,), error, actor="system")
 
 

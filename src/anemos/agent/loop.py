@@ -3,6 +3,13 @@
 Runs in phase 2 of a run (D71): no transaction open while the model works; each tool
 call is a short transaction on the run's connection (runner.py).
 
+**As graph nodes (D75):** `agent_turn` (one model turn) and `tool` (one read tool). The
+graph state holds the transcript, the counter, plain facts (quote and policy ids, the
+outcome codes, the closed year) and how the loop ended; the quote and policy objects
+the final write renders and checks are kept in `LoopContext`, not in the state.
+`run_loop` runs the two nodes on their own; the run graph (anemos.graph) adds them
+between the routing and the final write.
+
 **The limit: 8 calls**, counting every turn that produced a call: a read tool, a call
 the adapter rejected (UnknownTool, InvalidArguments), a refused call (an invalid query,
 check_availability on a window), and the final write_draft or escalate. A rejected
@@ -26,8 +33,11 @@ the 8th call too).
 import json
 import logging
 from dataclasses import dataclass, field, replace
-from typing import Literal, Protocol
+from typing import Literal, Protocol, TypedDict, cast
 
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.runtime import Runtime
 from pydantic import BaseModel
 
 from anemos.agent.runner import Answer, Ends
@@ -45,6 +55,7 @@ from anemos.llm.adapter import (
     InvalidArguments,
     RejectedCall,
     ReplyCutOff,
+    ToolCall,
     ToolOutput,
     Transcript,
     UserText,
@@ -97,14 +108,6 @@ class LoopState:
     closed_year: int | None = None  # the year {{OPEN_SEASON}} names
     hits: dict[str, Hit] = field(default_factory=dict)  # policy id -> what was returned
 
-    def keep(self, answer: Answer) -> None:
-        self.quotes.update({q.quote_id: q for q in answer.quotes})
-        if answer.outcome is not None:
-            self.outcomes.add(answer.outcome)
-        if answer.closed_year is not None:
-            self.closed_year = answer.closed_year
-        self.hits.update({h.policy_id: h for h in answer.hits})
-
 
 @dataclass(frozen=True)
 class LoopResult:
@@ -124,6 +127,164 @@ def first_message(
     return "\n".join(lines) + "\n\n" + delimited_email(subject, body)
 
 
+@dataclass
+class LoopContext:
+    """What the loop's nodes use and the graph state does not hold (D75): the model, the
+    tools, and the evidence the tools returned (quotes and policy texts, kept as objects
+    for the final write; their ids and the outcome codes are in the state)."""
+
+    llm: LLM
+    tools: Tools
+    route: ToolRoute
+    email_id: int
+    spec: ToolPromptSpec
+    quotes: dict[int, StoredQuote] = field(default_factory=dict)
+    hits: dict[str, Hit] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PendingCall:
+    """A read tool the model asked for, run by the `tool` node."""
+
+    call: ToolCall
+    args: BaseModel
+
+
+class LoopFields(TypedDict, total=False):
+    """The loop's part of the graph state (D75): the transcript, the counter, plain
+    facts, and how the loop ended."""
+
+    transcript: Transcript
+    calls: int
+    outcomes: list[str]  # CLOSED, NONE_FOUND, NEEDS_INFO (D72), in the order seen
+    closed_year: int | None
+    quote_ids: list[int]
+    policy_ids: list[str]
+    pending: PendingCall | None
+    end: DraftWanted | EscalationWanted | None
+
+
+AGENT_TURN, TOOL, DONE = "agent_turn", "tool", "done"
+# Supersteps: at most 8 turns, each followed by a tool node, plus the run's own nodes.
+RECURSION_LIMIT = 40
+
+
+def agent_turn(state: LoopFields, ctx: LoopContext) -> LoopFields:
+    """One model turn. Ends the loop (`end`) on write_draft, escalate, a reply cut off,
+    a failed turn or the 8-call limit; a rejected call is answered and counted; a read
+    tool is left `pending` for the tool node."""
+    calls = state.get("calls", 0)
+    if calls >= MAX_CALLS:
+        return {"end": EscalationWanted(
+            ReasonCode.LOOP_LIMIT, f"{MAX_CALLS} calls without write_draft or escalate",
+            "system")}  # fmt: skip
+    transcript = state["transcript"]
+    spec = ctx.spec
+    settings = replace(ctx.llm.settings, max_output_tokens=spec.max_output_tokens,
+                       reasoning_effort=spec.reasoning_effort)  # fmt: skip
+    try:
+        turn = ctx.llm.tool_turn(transcript, TOOLS_BY_ROUTE[ctx.route], step=STEP,
+                                 prompt_version=spec.version, email_id=ctx.email_id,
+                                 settings=settings)  # fmt: skip
+    except RejectedCall as exc:
+        kind = "INVALID_ARGUMENTS" if isinstance(exc, InvalidArguments) else "UNKNOWN_TOOL"
+        output = _output(exc.call.call_id, {"error": kind, "message": str(exc)})
+        return {"calls": calls + 1, "transcript": transcript.then(exc.call, output)}
+    except ReplyCutOff:
+        return {"end": EscalationWanted(ReasonCode.SYSTEM_ERROR,
+                                        "reply cut off at the output limit", "system")}  # fmt: skip
+    except Exception as exc:  # a failed call, the budget, a bug: escalated, never stuck
+        return {"end": _failed(ctx, exc)}
+    call, args = turn.call, turn.args
+    if call.name == WRITE_DRAFT:
+        assert isinstance(args, WriteDraftArgs)
+        draft = DraftWanted(args.text, tuple(args.offer_quote_ids), tuple(args.policy_ids))
+        return {"calls": calls + 1, "end": draft}
+    if call.name == ESCALATE:
+        assert isinstance(args, EscalateArgs)
+        wanted = EscalationWanted(ReasonCode(args.reason_code), args.note, "agent")
+        return {"calls": calls + 1, "end": wanted}
+    return {"calls": calls + 1, "pending": PendingCall(call, args)}
+
+
+def tool(state: LoopFields, ctx: LoopContext) -> LoopFields:
+    """Run the pending read tool; its answer goes back to the model, an `Ends` ends the
+    loop (escalated by code, D11)."""
+    pending = state.get("pending")
+    assert pending is not None
+    try:
+        result = ctx.tools.run(pending.call.name, pending.args)
+    except Exception as exc:  # a bug in a tool: escalated, never stuck
+        return {"pending": None, "end": _failed(ctx, exc)}
+    if isinstance(result, Ends):
+        return {"pending": None, "end": EscalationWanted(result.code, result.detail, "system")}
+    ctx.quotes.update({q.quote_id: q for q in result.quotes})
+    ctx.hits.update({h.policy_id: h for h in result.hits})
+    outcomes = list(state.get("outcomes", []))
+    if result.outcome is not None and result.outcome not in outcomes:
+        outcomes.append(result.outcome)
+    closed_year = result.closed_year if result.closed_year is not None else state.get("closed_year")
+    output = _output(pending.call.call_id, result.output)
+    return {
+        "pending": None,
+        "transcript": state["transcript"].then(pending.call, output),
+        "outcomes": outcomes,
+        "closed_year": closed_year,
+        "quote_ids": [*state.get("quote_ids", []), *(q.quote_id for q in result.quotes)],
+        "policy_ids": [*state.get("policy_ids", []), *(h.policy_id for h in result.hits)],
+    }
+
+
+def after_turn(state: LoopFields) -> str:
+    if state.get("end") is not None:
+        return DONE
+    return TOOL if state.get("pending") is not None else AGENT_TURN
+
+
+def after_tool(state: LoopFields) -> str:
+    return DONE if state.get("end") is not None else AGENT_TURN
+
+
+def start_fields(message: str, spec: ToolPromptSpec) -> LoopFields:
+    return {"transcript": Transcript(spec.text(), (UserText(message),)), "calls": 0}
+
+
+def loop_result(state: LoopFields, ctx: LoopContext) -> LoopResult:
+    """The loop's state and evidence as the final write reads them."""
+    end = state.get("end")
+    assert end is not None
+    kept = LoopState(state["transcript"], state.get("calls", 0), dict(ctx.quotes),
+                     set(state.get("outcomes", [])), state.get("closed_year"),
+                     dict(ctx.hits))  # fmt: skip
+    return LoopResult(end, kept)
+
+
+def _failed(ctx: LoopContext, exc: Exception) -> EscalationWanted:
+    log.error("agent loop for email %s failed", ctx.email_id, exc_info=exc)
+    return EscalationWanted(ReasonCode.SYSTEM_ERROR, f"{type(exc).__name__}: {exc}", "system")
+
+
+def _loop_graph() -> CompiledStateGraph[LoopFields, LoopContext, LoopFields, LoopFields]:
+    """The loop on its own (run_loop); the run graph (anemos.graph) adds the same two
+    nodes between the routing and the final write."""
+    g = StateGraph(LoopFields, context_schema=LoopContext)
+    g.add_node(AGENT_TURN, _turn_node)
+    g.add_node(TOOL, _tool_node)
+    g.add_edge(START, AGENT_TURN)
+    g.add_conditional_edges(AGENT_TURN, after_turn,
+                            {TOOL: TOOL, AGENT_TURN: AGENT_TURN, DONE: END})  # fmt: skip
+    g.add_conditional_edges(TOOL, after_tool, {AGENT_TURN: AGENT_TURN, DONE: END})
+    return g.compile()
+
+
+def _turn_node(state: LoopFields, runtime: Runtime[LoopContext]) -> LoopFields:
+    return agent_turn(state, runtime.context)
+
+
+def _tool_node(state: LoopFields, runtime: Runtime[LoopContext]) -> LoopFields:
+    return tool(state, runtime.context)
+
+
 def run_loop(
     llm: LLM,
     tools: Tools,
@@ -133,54 +294,10 @@ def run_loop(
     email_id: int,
     spec: ToolPromptSpec = CURRENT_AGENT,
 ) -> LoopResult:
-    state = LoopState(Transcript(spec.text(), (UserText(message),)))
-    try:
-        end = _turns(llm, tools, state, route, email_id, spec)
-    except Exception as exc:  # a failed call, the budget, a bug: escalated, never stuck
-        log.exception("agent loop for email %s failed", email_id)
-        end = EscalationWanted(ReasonCode.SYSTEM_ERROR, f"{type(exc).__name__}: {exc}",
-                               "system")  # fmt: skip
-    return LoopResult(end, state)
-
-
-def _turns(
-    llm: LLM, tools: Tools, state: LoopState, route: ToolRoute, email_id: int,
-    spec: ToolPromptSpec,
-) -> DraftWanted | EscalationWanted:  # fmt: skip
-    offered = TOOLS_BY_ROUTE[route]
-    settings = replace(llm.settings, max_output_tokens=spec.max_output_tokens,
-                       reasoning_effort=spec.reasoning_effort)  # fmt: skip
-    while state.calls < MAX_CALLS:
-        try:
-            turn = llm.tool_turn(state.transcript, offered, step=STEP,
-                                 prompt_version=spec.version, email_id=email_id,
-                                 settings=settings)  # fmt: skip
-        except RejectedCall as exc:
-            state.calls += 1
-            kind = "INVALID_ARGUMENTS" if isinstance(exc, InvalidArguments) else "UNKNOWN_TOOL"
-            state.transcript = state.transcript.then(
-                exc.call, _output(exc.call.call_id, {"error": kind, "message": str(exc)})
-            )
-            continue
-        except ReplyCutOff:
-            return EscalationWanted(ReasonCode.SYSTEM_ERROR,
-                                    "reply cut off at the output limit", "system")  # fmt: skip
-        state.calls += 1
-        call, args = turn.call, turn.args
-        if call.name == WRITE_DRAFT:
-            assert isinstance(args, WriteDraftArgs)
-            return DraftWanted(args.text, tuple(args.offer_quote_ids), tuple(args.policy_ids))
-        if call.name == ESCALATE:
-            assert isinstance(args, EscalateArgs)
-            return EscalationWanted(ReasonCode(args.reason_code), args.note, "agent")
-        result = tools.run(call.name, args)
-        if isinstance(result, Ends):
-            return EscalationWanted(result.code, result.detail, "system")
-        state.keep(result)
-        state.transcript = state.transcript.then(call, _output(call.call_id, result.output))
-    return EscalationWanted(
-        ReasonCode.LOOP_LIMIT, f"{MAX_CALLS} calls without write_draft or escalate", "system"
-    )
+    ctx = LoopContext(llm, tools, route, email_id, spec)
+    state = _loop_graph().invoke(start_fields(message, spec), context=ctx,
+                                 config={"recursion_limit": RECURSION_LIMIT})  # fmt: skip
+    return loop_result(cast(LoopFields, state), ctx)
 
 
 def _output(call_id: str, output: dict[str, object]) -> ToolOutput:
