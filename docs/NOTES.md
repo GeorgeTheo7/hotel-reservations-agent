@@ -605,3 +605,8 @@ A metric with nothing to measure (n/a) does not pass.
 - **The worst case missed the summary call:** `--max-usd` would have been checked against too low an estimate. Now one summary per case at its full output limit (any case may escalate), its input bounded by the email plus a fixed allowance for the extraction, the note and a full loop's tool results.
 - **The loop's refusal record gained `checks`** (the failed checks' names): the reasons alone cannot be counted per check. **Test changed:** `test_redraft.py`'s exact refusal record gained that field.
 - **Mutations caught:** line 7 judged on the last draft (1 test), an unmarked refusal counted as no false alarm (2), line 11 without the Greek check (1), refusals paired with the last drafts (1).
+
+## 2026-11-17 · The agent scorer counted a thread reply as an extraction failure (found after the run)
+- **Found after the week-6 dev run** (as the rooms scorer in week 4): el-thread-reply-greek ended exactly as labelled (escalate THREAD_REPLY) but was a route miss, and its fields were all wrong on the extraction line. The runner set `failed` when the run had no extraction call; a thread reply is stopped by code before extraction (D70), so it never has one. Its gold `kind` is null, so every field applied and every one counted wrong.
+- **Fix:** `extraction_failed` (no successful extraction call, and not a thread reply) for the outcome; the extraction line leaves out cases that ended THREAD_REPLY. `case_from_json` derives `failed` again from the recorded extraction, so `--rescore` applies the fix to a stored run with no call.
+- **Mutations caught:** a thread reply counted as failed (2 tests), a thread reply scored for fields (1), the rescore keeping the stored `failed` (1).

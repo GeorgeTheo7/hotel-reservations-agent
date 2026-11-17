@@ -48,6 +48,7 @@ from anemos.agent_evaluation import (
     apply_marks,
     bar,
     case_from_json,
+    extraction_failed,
     provider_failure,
     reported,
 )
@@ -320,7 +321,9 @@ def collect(conn: Conn, case: EmailCase, email_id: int, model: str) -> AgentCase
     summary_row = conn.execute(
         "SELECT escalation_summary FROM emails WHERE id = %s", (email_id,)
     ).fetchone()
-    failed_extraction = not any(e == "llm.called" and s == "extract" for e, s, *_ in calls)
+    failed_extraction = extraction_failed(
+        codes, extract_called=any(e == "llm.called" and s == "extract" for e, s, *_ in calls)
+    )
     outcome = CaseOutcome(
         case.id, labels.route, tuple(c.value for c in labels.reason_codes), labels.holds,
         route if route is not None else ("escalate" if status == "escalated" else str(status)),

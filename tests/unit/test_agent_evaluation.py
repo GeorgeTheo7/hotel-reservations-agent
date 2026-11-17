@@ -21,6 +21,7 @@ from anemos.agent_evaluation import (
     cost_line,
     escalation_line,
     expected_script,
+    extraction_failed,
     extraction_line,
     false_alarm_line,
     first_draft_line,
@@ -333,6 +334,38 @@ def test_line_values_name_the_counts() -> None:
     assert alarms.value == "50% (1/2)" and alarms.detail == "b #1: a correct reply"
     unmarked = false_alarm_line([case("r", draft_calls=[BAD, BAD])])
     assert unmarked.value.startswith("not called: 2 of 2") and unmarked.detail == "r #1; r #2"
+
+
+def thread_reply(**kw: Any) -> AgentCase:
+    """Stopped by code before extraction: the runner's Row carries an error, no fields."""
+    outcome = CaseOutcome(
+        "t",
+        "escalate",
+        ("THREAD_REPLY",),
+        0,
+        "escalate",
+        ("THREAD_REPLY",),
+        0,
+        extraction_failed(("THREAD_REPLY",), extract_called=False),
+    )
+    row = Row("t", "gpt-6-luna", error="extraction failed", gold_kind=None)
+    return AgentCase(case_id="t", language="el", outcome=outcome, extraction=row, **kw)
+
+
+def test_a_thread_reply_is_not_an_extraction_failure() -> None:
+    """Found after the week-6 dev run: its route was counted a miss and its fields wrong."""
+    assert not extraction_failed(("THREAD_REPLY",), extract_called=False)
+    assert extraction_failed(("SYSTEM_ERROR",), extract_called=False)
+    assert not extraction_failed(("SYSTEM_ERROR",), extract_called=True)
+    cases = [*n(19, case), thread_reply()]
+    assert route_line(cases).value == "100% (20/20)"
+    assert extraction_line(cases).value == "stay 100%, adults 100%, child_ages 100%"
+
+
+def test_a_rescore_derives_failed_again_from_the_recorded_extraction() -> None:
+    stored = asdict(thread_reply())
+    stored["outcome"]["failed"] = True  # as the week-6 run recorded it
+    assert case_from_json(stored).outcome.matches
 
 
 # --- the owner's marks and a stored run ------------------------------------------------------

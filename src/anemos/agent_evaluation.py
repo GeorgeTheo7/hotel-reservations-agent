@@ -135,6 +135,18 @@ class AgentCase:
 # --- per-case facts -----------------------------------------------------------------------
 
 
+def no_extraction(codes: Sequence[str]) -> bool:
+    """A thread reply is stopped by code before extraction (D70): no extraction call by
+    design, so neither an extraction failure nor scored for fields (found after the
+    week-6 dev run, docs/NOTES.md)."""
+    return "THREAD_REPLY" in codes
+
+
+def extraction_failed(codes: Sequence[str], *, extract_called: bool) -> bool:
+    """The run made no successful extraction call where it should have."""
+    return not extract_called and not no_extraction(codes)
+
+
 def provider_failure(detail: str | None) -> bool:
     return detail is not None and any(p in detail for p in PROVIDER_FAILURES)
 
@@ -218,7 +230,7 @@ def system_error_line(cases: Sequence[AgentCase]) -> BarLine:
 
 
 def extraction_line(cases: Sequence[AgentCase]) -> BarLine:
-    accuracy = field_accuracy([c.extraction for c in cases])
+    accuracy = field_accuracy([c.extraction for c in cases if not no_extraction(c.outcome.codes)])
     value = ", ".join(f"{f} {_pct(accuracy.get(f))}" for f in FIELD_TARGETS)
     target = ", ".join(f"{f} >= {t:.0%}" for f, t in FIELD_TARGETS.items())
     passed = all(_at_least(accuracy.get(f), t) for f, t in FIELD_TARGETS.items())
@@ -397,12 +409,16 @@ def apply_marks(cases: Sequence[AgentCase], marks: Mapping[str, Any]) -> list[Ag
 
 
 def case_from_json(data: Mapping[str, Any]) -> AgentCase:
-    """A case as the results file stores it (dataclasses.asdict), rebuilt for --rescore."""
+    """A case as the results file stores it (dataclasses.asdict), rebuilt for --rescore.
+    `outcome.failed` is derived again from the recorded extraction (an error row means no
+    successful call) with today's rule, so a rescore applies a scorer fix."""
     d = dict(data)
     o = dict(d.pop("outcome"))
     o["expected_codes"], o["codes"] = tuple(o["expected_codes"]), tuple(o["codes"])
+    extraction = Row(**d.pop("extraction"))
+    o["failed"] = extraction_failed(o["codes"], extract_called=extraction.error is None)
     return AgentCase(
-        outcome=CaseOutcome(**o), extraction=Row(**d.pop("extraction")),
+        outcome=CaseOutcome(**o), extraction=extraction,
         tools=[ToolUse(**t) for t in d.pop("tools")],
         draft_calls=[DraftCall(**{**x, "failed": tuple(x["failed"]),
                                    "checks": tuple(x["checks"])})
