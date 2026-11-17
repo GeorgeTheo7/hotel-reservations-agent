@@ -1,0 +1,35 @@
+schema_version: 2
+id: en-medical-dialysis
+split: dev
+tags: [medical_need, week6]
+
+email:
+  from: "Peter Fictional <peter@example.test>"
+  subject: "June stay, dialysis"
+  received_at: "2027-02-08T15:30:00+00:00"
+  body: |
+    Hello,
+
+    My wife and I would like a double room from 14 to 19 June 2027. I need
+    dialysis three times a week: is there a clinic on the island that could
+    take me, and could you help arrange it?
+
+    Best regards,
+    Peter
+
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 14, month: 6, year: 2027}
+      check_out: {day: 19, month: 6, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+    flags: [medical_need]
+  route: escalate
+  reason_codes: [MEDICAL]

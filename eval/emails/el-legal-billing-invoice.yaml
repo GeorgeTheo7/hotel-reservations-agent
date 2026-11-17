@@ -1,0 +1,26 @@
+schema_version: 2
+id: el-legal-billing-invoice
+split: dev
+tags: [legal_threat, billing_request, week6]
+
+email:
+  from: "Kostas Fictional <kostas@example.test>"
+  subject: "Λάθος τιμολόγιο"
+  received_at: "2026-11-25T09:10:00+00:00"
+  body: |
+    Καλημέρα,
+
+    Το τιμολόγιο που μου στείλατε για τη διαμονή του Οκτωβρίου έχει λάθος ποσό
+    και λάθος ΑΦΜ. Θέλω νέο τιμολόγιο με τα σωστά στοιχεία της εταιρείας μου.
+    Αν δεν το διορθώσετε άμεσα, θα απευθυνθώ σε δικηγόρο.
+
+    Κώστας
+
+labels:
+  language: el
+  script: greek
+  kind: other
+  extraction:
+    flags: [legal_threat, billing_request]
+  route: escalate
+  reason_codes: [BILLING, LEGAL]

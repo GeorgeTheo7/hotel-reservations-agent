@@ -1,0 +1,29 @@
+schema_version: 2
+id: el-next-weekend-no-party
+split: dev
+tags: [next_weekend, relative_date, ask_info, partial_summary, week6]
+
+email:
+  from: "Dimitra Fictional <dimitra@example.test>"
+  subject: "Το επόμενο Σαββατοκύριακο"
+  received_at: "2027-06-07T06:30:00+00:00"   # Monday 09:30 Athens: Friday 11 June is 4 days away
+  body: |
+    Γεια σας,
+
+    Έχετε ελεύθερο δωμάτιο για το επόμενο Σαββατοκύριακο; Τι τιμές έχετε;
+
+    Δήμητρα
+
+labels:
+  language: el
+  script: greek
+  kind: request
+  extraction:
+    date_spec: {kind: relative, phrase: next_weekend, nights: null}
+    adults: null
+    children: null
+    rooms: 1
+    room_type: null
+  route: ask_info
+  # Guardrail 3: "next weekend" is relative, so the reply shows the resolved dates
+  # (Friday 11 - Sunday 13 June 2027) through {{REQUEST_SUMMARY}}, without a party (D80).

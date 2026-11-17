@@ -44,6 +44,9 @@ BY_AGENT: dict[str, Outcome] = {
     "en-quote-plus-dinner": ("quote", ()),  # gold NO_POLICY on the quote route (D73)
     "en-complaint-air-conditioning": ("other", ()),  # gold COMPLAINT
     "el-discount-long-stay": ("quote", ()),  # gold DISCOUNT
+    "el-change-booking-dates": ("other", ()),  # gold CHANGE
+    "en-cancel-booking": ("other", ()),  # gold CANCELLATION
+    "en-short-notice-complaint": ("escalate", (ReasonCode.SHORT_NOTICE,)),  # + COMPLAINT (D81)
 }
 
 # Decided by the tools, not by routing (D70: availability is not routing).
@@ -82,14 +85,14 @@ def gold(case: EmailCase) -> Outcome:
 
 
 def test_every_case_is_counted_once() -> None:
-    assert len(CASES) == 55
+    assert len(CASES) == 67
     # The run-level list (stub drafter) also holds the six policy questions the router
     # now hands to the agent on route policy, exactly as labelled.
     assert set(BY_AGENT) <= NOT_BUILT_YET
     listed = set(BY_AGENT) | set(BY_TOOLS)
     assert listed <= set(CASES), f"listed but no such case: {listed - set(CASES)}"
     assert not set(BY_AGENT) & set(BY_TOOLS)
-    assert len(EXACT) == 44
+    assert len(EXACT) == 53  # 67 - 13 by the agent - 1 by the tools
 
 
 @pytest.mark.parametrize("case_id", EXACT)

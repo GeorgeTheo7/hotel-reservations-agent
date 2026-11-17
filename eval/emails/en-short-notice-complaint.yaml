@@ -1,0 +1,35 @@
+schema_version: 2
+id: en-short-notice-complaint
+split: dev
+tags: [short_notice, complaint, secondary_code, week6]
+
+email:
+  from: "Claire Fictional <claire@example.test>"
+  subject: "Tomorrow night, and last summer"
+  received_at: "2027-07-13T07:00:00+00:00"   # Tuesday 10:00 Athens
+  body: |
+    Hello,
+
+    Do you have a double room for tomorrow night, Wednesday 14 July 2027, for
+    two adults? And please, not the room by the street this time: last summer
+    the noise kept us awake every night and nobody at reception did anything.
+
+    Claire
+
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 14, month: 7, year: 2027}
+      check_out: {day: 15, month: 7, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: null
+  route: escalate
+  # SHORT_NOTICE by code: check-in 14 July 15:00 Athens is 29 h after received_at (D31);
+  # 14 July 2027 is an open mid-season night. COMPLAINT is added by the summary (D81).
+  reason_codes: [COMPLAINT, SHORT_NOTICE]

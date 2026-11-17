@@ -1,0 +1,22 @@
+schema_version: 2
+id: el-thread-reply-greek
+split: dev
+tags: [thread_reply, week6]
+
+email:
+  from: "Eleni Fictional <eleni@example.test>"
+  subject: "Re: Προσφορά για τον Ιούνιο"
+  received_at: "2027-02-02T19:40:00+00:00"
+  in_reply_to: "<outbox-7@anemos.invalid>"
+  body: |
+    Ευχαριστούμε πολύ! Το κρατάμε. Πώς να στείλουμε την προκαταβολή;
+
+    Ελένη
+
+labels:
+  language: el
+  script: greek
+  kind: null
+  extraction: null
+  route: escalate
+  reason_codes: [THREAD_REPLY]

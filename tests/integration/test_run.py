@@ -145,7 +145,7 @@ def routed(committed_db: CommittedDb, email_id: int) -> dict[str, Any]:
 
 
 def test_every_case_is_counted_once() -> None:
-    assert len(CASES) == 55 and len(EXACT) == 55
+    assert len(CASES) == 67 and len(EXACT) == 67
 
 
 @pytest.mark.parametrize("case_id", EXACT)

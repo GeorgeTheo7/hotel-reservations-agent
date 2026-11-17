@@ -330,6 +330,10 @@ NOT_BUILT_YET = frozenset({
     "en-policy-cancellation-deposit", "el-policy-checkin-luggage", "el-greeklish-parking-wifi",
     "el-policy-extra-bed-child", "en-nomatch-pool-gym", "el-nomatch-scooter-hire",
     "en-quote-plus-dinner", "en-complaint-air-conditioning", "el-discount-long-stay",
+    # week 6: CHANGE and CANCELLATION are the agent's; COMPLAINT is added by the
+    # escalation summary (D81); a policy answer is the agent's.
+    "el-change-booking-dates", "en-cancel-booking", "en-short-notice-complaint",
+    "el-policy-breakfast-hours",
 })  # fmt: skip
 
 # SPEC Evaluation plan targets. Dates are scored as `stay` (resolved by code).

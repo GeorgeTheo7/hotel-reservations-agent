@@ -1,0 +1,34 @@
+schema_version: 2
+id: el-late-arrival-ferry
+split: dev
+tags: [late_arrival, week6]
+
+email:
+  from: "Nikos Fictional <nikos@example.test>"
+  subject: "Άφιξη αργά το βράδυ"
+  received_at: "2027-05-10T08:20:00+00:00"
+  body: |
+    Καλησπέρα,
+
+    Θα θέλαμε ένα δίκλινο standard για δύο άτομα από 20 έως 23 Σεπτεμβρίου 2027.
+    Το πλοίο μας φτάνει στο λιμάνι στις 23:30, οπότε θα είμαστε στο ξενοδοχείο
+    λίγο μετά.
+
+    Νίκος
+
+labels:
+  language: el
+  script: greek
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 20, month: 9, year: 2027}
+      check_out: {day: 23, month: 9, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: standard
+    arrival_time: "23:30"
+  route: escalate
+  reason_codes: [LATE_ARRIVAL]

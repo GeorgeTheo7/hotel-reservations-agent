@@ -1,0 +1,34 @@
+schema_version: 2
+id: el-greeklish-teens-two-rooms
+split: held_out
+tags: [unaccompanied_children, greeklish, two_rooms, week6]
+
+email:
+  from: "Giorgos Fictional <giorgos@example.test>"
+  subject: "2 dwmatia Ioulio"
+  received_at: "2027-03-22T20:00:00+00:00"
+  body: |
+    Kalispera sas,
+
+    Eimai enas pateras me treis efivous (14, 15 kai 17 xronwn) kai thelw 2
+    dwmatia apo 10 ews 15 Iouliou 2027. Ta paidia tha meinoun mazi sto ena
+    dwmatio. Poso kostizei?
+
+    Giorgos
+
+labels:
+  language: el
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 10, month: 7, year: 2027}
+      check_out: {day: 15, month: 7, year: 2027}
+    adults: 1
+    children: 3
+    child_ages: [14, 15, 17]
+    rooms: 2
+    room_type: null
+  route: escalate
+  reason_codes: [UNACCOMPANIED_CHILDREN]   # 1 adult for 2 rooms (D32)

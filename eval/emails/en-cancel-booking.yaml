@@ -1,0 +1,30 @@
+schema_version: 2
+id: en-cancel-booking
+split: held_out
+tags: [cancellation, week6]
+
+email:
+  from: "James Fictional <james@example.test>"
+  subject: "Cancelling our August booking"
+  received_at: "2027-04-20T17:45:00+00:00"
+  body: |
+    Dear Hotel Anemos,
+
+    Unfortunately we have to cancel our booking for 16 to 21 August 2027. Could
+    you tell me how much of the deposit will be refunded?
+
+    Regards,
+    James
+
+labels:
+  language: en
+  script: latin
+  kind: other
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 16, month: 8, year: 2027}
+      check_out: {day: 21, month: 8, year: 2027}
+  route: escalate
+  reason_codes: [CANCELLATION]
+  forbidden_phrases: ["fully refunded"]

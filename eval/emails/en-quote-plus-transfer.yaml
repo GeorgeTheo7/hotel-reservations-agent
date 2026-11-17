@@ -1,0 +1,36 @@
+schema_version: 2
+id: en-quote-plus-transfer
+split: held_out
+tags: [policy_question, quote_with_policy, policy_number, week6]
+
+email:
+  from: "Sarah Fictional <sarah@example.test>"
+  subject: "September and the airport"
+  received_at: "2027-02-14T11:10:00+00:00"
+  body: |
+    Hi,
+
+    Could you quote a sea view double for two adults from 14 to 18 September
+    2027? We land at the airport around noon: how much is a transfer to the hotel?
+
+    Thanks,
+    Sarah
+
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 14, month: 9, year: 2027}
+      check_out: {day: 18, month: 9, year: 2027}
+    adults: 2
+    children: 0
+    rooms: 1
+    room_type: sea_view
+    arrival_time: "12:00"
+  route: quote
+  required_tools: [quote_price, search_policies]
+  policy_ids: [transfer]   # the reply may copy the transfer fare exactly (guardrail 2, D78)
+  holds: 1

@@ -1,0 +1,34 @@
+schema_version: 2
+id: en-accessible-two-rooms
+split: held_out
+tags: [accessibility_need, two_rooms, week6]
+
+email:
+  from: "Helen Fictional <helen@example.test>"
+  subject: "Two rooms, one step-free"
+  received_at: "2027-01-12T10:00:00+00:00"
+  body: |
+    Hi,
+
+    We are two couples looking for two rooms from 5 to 9 June 2027. My husband
+    uses a wheelchair, so we need a step-free room with a step-free shower.
+
+    Thank you,
+    Helen
+
+labels:
+  language: en
+  script: latin
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 5, month: 6, year: 2027}
+      check_out: {day: 9, month: 6, year: 2027}
+    adults: 4
+    children: 0
+    rooms: 2
+    room_type: null
+    flags: [accessibility_need]
+  route: escalate
+  reason_codes: [ACCESSIBILITY]   # an accessibility need with 2 rooms (D56)

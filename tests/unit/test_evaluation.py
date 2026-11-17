@@ -460,7 +460,7 @@ def test_the_95_percent_target_at_32_cases(right: int, passes: bool) -> None:
 
 
 def test_dev_cases_refuse_held_out_and_unknown_ids() -> None:
-    assert {c.split for c in dev_cases(EVAL)} == {"dev"} and len(dev_cases(EVAL)) == 40
+    assert {c.split for c in dev_cases(EVAL)} == {"dev"} and len(dev_cases(EVAL)) == 48
     with pytest.raises(SetError, match="held-out"):
         dev_cases(EVAL, ["fr-request-french"])
     with pytest.raises(SetError, match="no such case"):
@@ -498,7 +498,8 @@ def test_the_eval_refuses_held_out_and_a_dirty_tree(clean_repo: Path) -> None:
 
 
 def test_not_built_yet_is_the_week_5_list_of_the_gold_tests() -> None:
-    assert len(NOT_BUILT_YET) == 16 and {c.id for c in load_cases(EVAL / "emails")} >= NOT_BUILT_YET
+    """Week 5's 16, and week 6's 4 the stub path cannot reach either."""
+    assert len(NOT_BUILT_YET) == 20 and {c.id for c in load_cases(EVAL / "emails")} >= NOT_BUILT_YET
 
 
 # --- raw and effective: one scoring rule (set after the first extraction eval) ------------

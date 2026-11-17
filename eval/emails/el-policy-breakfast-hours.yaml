@@ -1,0 +1,26 @@
+schema_version: 2
+id: el-policy-breakfast-hours
+split: dev
+tags: [policy_question, policy_number, week6]
+
+email:
+  from: "Sofia Fictional <sofia@example.test>"
+  subject: "Πρωινό και άφιξη"
+  received_at: "2027-04-06T13:25:00+00:00"
+  body: |
+    Καλησπέρα,
+
+    Τι ώρα σερβίρεται το πρωινό; Και αν φτάσουμε στις 11:00 το πρωί, μπορούμε
+    να μπούμε νωρίτερα στο δωμάτιο;
+
+    Σοφία
+
+labels:
+  language: el
+  script: greek
+  kind: question
+  extraction:
+    arrival_time: "11:00"
+  route: policy
+  required_tools: [search_policies]
+  policy_ids: [breakfast, early-check-in-late-check-out]
