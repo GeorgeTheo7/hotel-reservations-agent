@@ -147,6 +147,19 @@ def test_the_agent_never_reaches_the_write_side() -> None:
     assert leaking == []
 
 
+GOLD = "anemos.gold"
+GOLD_USERS = frozenset({"anemos.demo_inbox"})  # and tests, which are outside src/
+
+
+def test_only_the_demo_reaches_the_gold_client() -> None:
+    """The gold client answers from the eval's labels: a production path must never be
+    able to call it, directly or through another module."""
+    graph = import_graph()
+    assert GOLD in graph
+    leaking = [n for n in graph if n not in GOLD_USERS | {GOLD} and reaches(graph, n, GOLD)]
+    assert leaking == []
+
+
 def test_the_ranking_check_sees_an_indirect_import() -> None:
     graph = {"anemos.a": {"anemos.b"}, "anemos.b": {RANKING}, RANKING: set()}
     assert reaches(graph, "anemos.a", RANKING)

@@ -1,13 +1,16 @@
-"""A run end to end (D17, D70): store -> claim -> extract (scripted gold answer) -> route
--> draft, set aside or escalate, through the real code, on a committed database.
+"""A run end to end (D17, D70, D71): store -> claim -> extract -> route -> the agent
+(loop, tools, final write), set aside or escalate, through the real code, on a
+committed database.
 
 Every evaluation case runs on its own (docs/email-format.md: each file is one email on
 its own): an emptied database (committed_db truncates every operational table before
 each test, and the run checks it is empty), the case's own `world` bookings, then the
 run. A case either ends exactly as labelled (status, draft route, reason codes, holds)
-or is listed in WEEK_5 with what it ends as today; a listed case that starts to match
-fails, so the list only shrinks on purpose. No network: the model is the scripted
-client answering the gold labels. Superseding (D48) is tested on purpose, below.
+or is listed in SECONDARY_CODES with what it ends as today; a listed case that starts
+to match fails, so the list only shrinks on purpose. A case also calls every labelled
+required tool and retrieves every labelled policy id. No network: every model call is
+answered by the gold client (anemos.gold) from the case's labels. Superseding (D48) is
+tested on purpose, below (with the stub drafter, as the demo used to run).
 """
 
 from __future__ import annotations
@@ -26,13 +29,15 @@ from anemos.email_cases import EmailCase, load_cases
 from anemos.evaluation import NOT_BUILT_YET
 from anemos.extraction import ExtractionFlag
 from anemos.extraction_run import process_email
+from anemos.gold import GoldClient
 from anemos.inbox import store_email
-from anemos.llm.adapter import LLM, Prompt, Settings
+from anemos.llm.adapter import LLM, ModelClient, Prompt, Settings
 from anemos.llm.budget import Budget
 from anemos.llm.fake import Answer, ScriptedClient, Step
 from anemos.mailbox import IncomingEmail
 from anemos.reservations.errors import ReasonCode
-from anemos.run import process_inbox, route_and_draft
+from anemos.reservations.formatting import Lang, format_money
+from anemos.run import agent_finish, process_inbox, route_and_draft
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixtures' classes are for mypy only
     from conftest import CommittedDb
@@ -44,29 +49,16 @@ type Outcome = tuple[str, tuple[str, ...], int]  # route, codes, holds
 
 CASES = {c.id: c for c in load_cases(Path(__file__).resolve().parents[2] / "eval" / "emails")}
 SETTINGS = Settings(model="gpt-6-luna", max_output_tokens=100)
-GROUP, LEGAL, MODEL = (ReasonCode.GROUP.value, ReasonCode.LEGAL.value, ReasonCode.MODEL.value)
+GROUP, LEGAL = ReasonCode.GROUP.value, ReasonCode.LEGAL.value
 
-# Needs model judgement (the agent loop, week 5); what the run ends as today. The same
-# seven as the router's gold test (tests/unit/test_routing_gold.py).
-WEEK_5: dict[str, Outcome] = {
-    "en-discount-as-agreed": ("quote", (), 1),
+# The run cannot reach these labels yet: the router escalates them by code before the
+# agent, so the second code only the model adds (DISCOUNT, COMPLAINT) is missing. The
+# spec's open item on secondary codes decides them in week 6.
+SECONDARY_CODES: dict[str, Outcome] = {
     "el-group-wedding": ("escalate", (GROUP,), 0),
     "el-complaint-legal": ("escalate", (LEGAL,), 0),
-    "el-cancellation": ("escalate", (MODEL,), 0),
-    "el-change-dates": ("escalate", (MODEL,), 0),
-    "el-pets-policy": ("escalate", (MODEL,), 0),
-    "el-greeklish-transfer-policy": ("escalate", (MODEL,), 0),
-    "en-policy-cancellation-deposit": ("escalate", (MODEL,), 0),
-    "el-policy-checkin-luggage": ("escalate", (MODEL,), 0),
-    "el-greeklish-parking-wifi": ("escalate", (MODEL,), 0),
-    "el-policy-extra-bed-child": ("escalate", (MODEL,), 0),
-    "en-nomatch-pool-gym": ("escalate", (MODEL,), 0),
-    "el-nomatch-scooter-hire": ("escalate", (MODEL,), 0),
-    "en-quote-plus-dinner": ("quote", (), 1),
-    "en-complaint-air-conditioning": ("escalate", (MODEL,), 0),
-    "el-discount-long-stay": ("quote", (), 1),
 }
-EXACT = sorted(set(CASES) - set(WEEK_5))
+EXACT = sorted(set(CASES) - set(SECONDARY_CODES))
 
 
 def in_world(committed_db: CommittedDb, case: EmailCase) -> None:
@@ -108,14 +100,28 @@ def one(committed_db: CommittedDb, query: str, *params: Any) -> Any:
 
 def run_case(
     committed_db: CommittedDb, case: EmailCase, tmp: Path, answer: Any = None
-) -> tuple[int, ScriptedClient]:
+) -> tuple[int, ModelClient]:
+    """The production run (the agent), every model call answered by the gold client;
+    `answer` replaces the extraction (then nothing past routing may call a model)."""
     in_world(committed_db, case)
     email_id, clock = stored(committed_db, case)
-    gold = case.gold_output() if answer is None else answer
-    steps: list[Step] = [] if gold is None else [Answer(gold)]  # a thread reply: no call
-    llm, client = make_llm(committed_db, steps, clock, tmp)
-    process_email(committed_db.connect, clock, llm, email_id, finish=route_and_draft)
+    client: ModelClient = GoldClient([case]) if answer is None else ScriptedClient.of(
+        [Answer(answer)])  # fmt: skip
+    budget = Budget(clock, 1_000_000, tmp / "llm_spend.jsonl")
+    llm = LLM(client, SETTINGS, budget, committed_db.connect, clock, sleep=lambda s: None)
+    process_email(committed_db.connect, clock, llm, email_id, finish=agent_finish(llm))
     return email_id, client
+
+
+def tools_used(committed_db: CommittedDb, email_id: int) -> tuple[list[str], set[str]]:
+    """The tools the agent called, and every policy id search_policies returned."""
+    conn = committed_db.connect()
+    rows = conn.execute("SELECT output FROM audit_log WHERE event = 'agent.tool_called'"
+                        " AND email_id = %s ORDER BY id", (email_id,)).fetchall()  # fmt: skip
+    conn.commit()
+    called = [r[0]["tool"] for r in rows]
+    retrieved = {h["policy_id"] for r in rows for h in r[0].get("record", {}).get("hits", [])}
+    return called, retrieved
 
 
 def outcome(committed_db: CommittedDb, email_id: int) -> Outcome:
@@ -150,18 +156,50 @@ def routed(committed_db: CommittedDb, email_id: int) -> dict[str, Any]:
 
 
 def test_every_case_is_counted_once() -> None:
-    assert len(CASES) == 55 and set(WEEK_5) <= set(CASES) and len(EXACT) == 39
-    assert set(WEEK_5) == NOT_BUILT_YET  # one list, in anemos.evaluation
+    assert len(CASES) == 55 and set(SECONDARY_CODES) <= set(CASES) and len(EXACT) == 53
+    # The extraction eval keeps the stub drafter and its own, longer list.
+    assert set(SECONDARY_CODES) <= NOT_BUILT_YET
 
 
 @pytest.mark.parametrize("case_id", EXACT)
 def test_a_run_ends_as_labelled(committed_db: CommittedDb, tmp_path: Path, case_id: str) -> None:
+    case = CASES[case_id]
+    email_id, _ = run_case(committed_db, case, tmp_path)
+    assert outcome(committed_db, email_id) == gold(case)
+    called, retrieved = tools_used(committed_db, email_id)
+    assert set(case.labels.required_tools) <= set(called), called
+    assert set(case.labels.policy_ids) <= retrieved, retrieved
+
+
+QUOTED = [c for c in EXACT if CASES[c].labels.route == "quote"]
+
+
+@pytest.mark.parametrize("case_id", QUOTED)
+def test_each_quote_block_shows_the_stored_quotes_amounts(
+    committed_db: CommittedDb, tmp_path: Path, case_id: str
+) -> None:
+    """Approval re-prices from the stored quotes row (D47), so the block the guest reads
+    must show that row's amounts: the accommodation total, city tax, deposit and every
+    nightly rate. The block is rendered from the quote the tool returned (in memory)."""
     email_id, _ = run_case(committed_db, CASES[case_id], tmp_path)
-    assert outcome(committed_db, email_id) == gold(CASES[case_id])
+    conn = committed_db.connect()
+    rows = conn.execute(
+        "SELECT o.rendered_block, q.accommodation_subtotal_cents, q.city_tax_cents,"
+        " q.deposit_cents, q.lines, e.language FROM draft_offers o"
+        " JOIN drafts d ON d.id = o.draft_id JOIN emails e ON e.id = d.email_id"
+        " JOIN quotes q ON q.id = o.quote_id WHERE d.email_id = %s", (email_id,),
+    ).fetchall()  # fmt: skip
+    conn.commit()
+    assert rows, "no offer"
+    for block, subtotal, city_tax, deposit, lines, language in rows:
+        lang: Lang = "el" if language == "el" else "en"
+        rates = {line["room_rate_cents"] for line in lines}
+        for cents in (subtotal, city_tax, deposit, *rates):
+            assert format_money(cents, lang) in block, (cents, block)
 
 
-@pytest.mark.parametrize(("case_id", "expected"), sorted(WEEK_5.items()))
-def test_a_week_5_case_ends_as_recorded_and_still_differs(
+@pytest.mark.parametrize(("case_id", "expected"), sorted(SECONDARY_CODES.items()))
+def test_a_listed_case_ends_as_recorded_and_still_differs(
     committed_db: CommittedDb, tmp_path: Path, case_id: str, expected: Outcome
 ) -> None:
     email_id, _ = run_case(committed_db, CASES[case_id], tmp_path)
@@ -177,7 +215,7 @@ def test_a_thread_reply_is_escalated_without_a_model_call(
     committed_db: CommittedDb, tmp_path: Path
 ) -> None:
     email_id, client = run_case(committed_db, CASES["en-thread-reply"], tmp_path)
-    assert client.sent == []
+    assert isinstance(client, GoldClient) and client.calls == []
     assert outcome(committed_db, email_id) == ("escalate", ("THREAD_REPLY",), 0)
     assert routed(committed_db, email_id)["codes"] == ["THREAD_REPLY"]
     assert one(committed_db, "SELECT count(*) FROM requests") == (0,)

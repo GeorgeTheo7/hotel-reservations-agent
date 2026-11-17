@@ -64,20 +64,20 @@ def test_guardrail_6_only_cited_ids_that_were_returned() -> None:
     ("Hi {{PRICE}}", "policy", {}, "unknown placeholders"),
     ("Hi {{HOLD_UNTIL}}", "quote", {"offers": 1}, "unknown placeholders"),  # code's own
     ("Open {{OPEN_SEASON}}", "decline", {}, "without CLOSED"),
-    ("{{REQUEST_SUMMARY}}", "policy", {"has_request": False}, "no stored request"),
+    ("{{REQUEST_SUMMARY}}", "ask_info", {"summarisable": False}, "cannot be summarised"),
     ("{{QUOTE_BLOCK}}", "quote", {"offers": 0}, "nothing offered"),
 ])  # fmt: skip
 def test_placeholders_the_run_cannot_render_fail(
     text: str, route: str, kwargs: dict[str, Any], problem: str
 ) -> None:
-    args = {"offers": 0, "has_request": True, "closed_year": None} | kwargs
+    args = {"offers": 0, "summarisable": True, "closed_year": None} | kwargs
     result = placeholders_valid(text, route, **args)
     assert isinstance(result, str) and problem in result
 
 
 def test_renderable_placeholders_pass() -> None:
     text = "{{REQUEST_SUMMARY}}\n{{QUOTE_BLOCK}}\nOpen {{OPEN_SEASON}}"
-    assert placeholders_valid(text, "quote", offers=1, has_request=True, closed_year=2027)
+    assert placeholders_valid(text, "quote", offers=1, summarisable=True, closed_year=2027)
 
 
 def test_the_router_and_the_tools_know_the_same_routes() -> None:
