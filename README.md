@@ -44,13 +44,14 @@ Copy-Item .env.example .env
 cp .env.example .env
 ```
 
-Install, start Postgres, create the schema and load the 2027 seed data.
+Install, start Postgres, create the schema (the Alembic migrations, then LangGraph's
+checkpoint tables in the `langgraph` schema) and load the 2027 seed data.
 These commands are the same in PowerShell and in a Linux/macOS shell:
 
 ```sh
 uv sync
 docker compose up -d --wait
-uv run --env-file .env alembic upgrade head
+uv run --env-file .env python -m anemos.db.migrate
 uv run --env-file .env python -m anemos.db.seed
 ```
 

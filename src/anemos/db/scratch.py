@@ -12,6 +12,8 @@ from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import TupleRow
 
+from anemos.checkpoints import CHECKPOINT_TABLES
+from anemos.checkpoints import SCHEMA as CHECKPOINT_SCHEMA
 from anemos.db.connection import connect, database_url
 from anemos.db.migrate import upgrade
 from anemos.db.seed import seed
@@ -58,14 +60,13 @@ def prepare(suffix: str) -> str:
 
 
 def truncate(conninfo: str) -> None:
-    """Empty the operational tables. TRUNCATE skips row triggers, so even frozen rows
-    (D51) go; RESTART IDENTITY starts the ids again."""
+    """Empty the operational tables and the checkpoint tables (D75: a thread is keyed
+    by the email id, which RESTART IDENTITY reuses). TRUNCATE skips row triggers, so
+    even frozen rows (D51) go; RESTART IDENTITY starts the ids again."""
+    tables = [sql.Identifier(t) for t in OPERATIONAL_TABLES]
+    tables += [sql.Identifier(CHECKPOINT_SCHEMA, t) for t in CHECKPOINT_TABLES]
     with connect(conninfo, autocommit=True) as admin:
-        admin.execute(
-            sql.SQL("TRUNCATE {} RESTART IDENTITY").format(
-                sql.SQL(", ").join(map(sql.Identifier, OPERATIONAL_TABLES))
-            )
-        )
+        admin.execute(sql.SQL("TRUNCATE {} RESTART IDENTITY").format(sql.SQL(", ").join(tables)))
 
 
 def is_empty(conn: Conn) -> bool:

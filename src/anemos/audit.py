@@ -46,6 +46,8 @@ class AuditEvent(StrEnum):
     LLM_FAILED = "llm.failed"
     LLM_REFUSED_BUDGET = "llm.refused_budget"
     RUN_DISCARDED = "run.discarded"
+    RUN_FINISHED = "run.finished"  # D75: the owner's action ended the draft; thread resumed
+    RUN_RESUME_FAILED = "run.resume_failed"  # D75: that resume failed; thread left waiting
     AGENT_TOOL_CALLED = "agent.tool_called"
 
 
@@ -58,6 +60,7 @@ API_ONLY_EVENTS = frozenset(
         AuditEvent.EMAIL_ACTION_REFUSED,
         AuditEvent.BOOKING_ACTION_REFUSED,
         AuditEvent.DRAFT_PRICE_WARNING_SHOWN,
+        AuditEvent.RUN_RESUME_FAILED,  # after an owner action committed (D75)
     }
 )
 
@@ -70,12 +73,13 @@ LLM_EVENTS = frozenset(
 
 # Written only by a run (extraction and routing, anemos.run): a run whose email changed
 # while the model was working (D65), the router's decision for every email (D70), and
-# set-aside spam, and each agent tool call (D11). The cross-rules scenario runs no
-# model, so it never writes them; tests/integration/test_extraction_run.py, test_run.py
-# and test_agent_runner.py cover them.
+# set-aside spam, each agent tool call (D11), and a run's thread resumed after the
+# owner's action (D75). The cross-rules scenario runs no model, so it never writes them;
+# tests/integration/test_extraction_run.py, test_run.py, test_agent_runner.py and
+# test_graph_resume.py cover them.
 RUN_EVENTS = frozenset(
     {AuditEvent.RUN_DISCARDED, AuditEvent.EMAIL_ROUTED, AuditEvent.EMAIL_SET_ASIDE,
-     AuditEvent.AGENT_TOOL_CALLED}
+     AuditEvent.AGENT_TOOL_CALLED, AuditEvent.RUN_FINISHED}
 )  # fmt: skip
 
 

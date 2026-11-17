@@ -33,7 +33,7 @@ the 8th call too).
 import json
 import logging
 from dataclasses import dataclass, field, replace
-from typing import Literal, Protocol, TypedDict, cast
+from typing import Any, Literal, Protocol, TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -53,6 +53,7 @@ from anemos.extraction_run import delimited_email
 from anemos.llm.adapter import (
     LLM,
     InvalidArguments,
+    Item,
     RejectedCall,
     ReplyCutOff,
     ToolCall,
@@ -131,7 +132,8 @@ def first_message(
 class LoopContext:
     """What the loop's nodes use and the graph state does not hold (D75): the model, the
     tools, and the evidence the tools returned (quotes and policy texts, kept as objects
-    for the final write; their ids and the outcome codes are in the state)."""
+    for the final write; their ids and the outcome codes are in the state). A resumed run
+    rebuilds the evidence from the database (anemos.agent.evidence)."""
 
     llm: LLM
     tools: Tools
@@ -142,31 +144,83 @@ class LoopContext:
     hits: dict[str, Hit] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class PendingCall:
-    """A read tool the model asked for, run by the `tool` node."""
-
-    call: ToolCall
-    args: BaseModel
+type Json = dict[str, Any]
 
 
 class LoopFields(TypedDict, total=False):
-    """The loop's part of the graph state (D75): the transcript, the counter, plain
-    facts, and how the loop ended."""
+    """The loop's part of the graph state (D75), plain JSON values only (a checkpoint
+    loads no class): the transcript, the counter, plain facts, the read tool waiting to
+    run, and how the loop ended."""
 
-    transcript: Transcript
+    transcript: Json  # transcript_json
     calls: int
     outcomes: list[str]  # CLOSED, NONE_FOUND, NEEDS_INFO (D72), in the order seen
     closed_year: int | None
     quote_ids: list[int]
     policy_ids: list[str]
-    pending: PendingCall | None
-    end: DraftWanted | EscalationWanted | None
+    pending: Json | None  # the model's call, exactly as written (call_id, name, arguments)
+    end: Json | None  # end_json
 
 
 AGENT_TURN, TOOL, DONE = "agent_turn", "tool", "done"
 # Supersteps: at most 8 turns, each followed by a tool node, plus the run's own nodes.
 RECURSION_LIMIT = 40
+
+
+# --- the state's JSON (D75) ---------------------------------------------------------------
+
+
+def transcript_json(transcript: Transcript) -> Json:
+    items: list[Json] = []
+    for item in transcript.items:
+        match item:
+            case UserText(text=text):
+                items.append({"type": "user_text", "text": text})
+            case ToolCall(call_id=call_id, name=name, arguments=arguments):
+                items.append({"type": "tool_call", "call_id": call_id, "name": name,
+                              "arguments": arguments})  # fmt: skip
+            case ToolOutput(call_id=call_id, output=output):
+                items.append({"type": "tool_output", "call_id": call_id, "output": output})
+    return {"instructions": transcript.instructions, "items": items}
+
+
+def transcript_from_json(data: Json) -> Transcript:
+    items: list[Item] = []
+    for item in data["items"]:
+        match item["type"]:
+            case "user_text":
+                items.append(UserText(item["text"]))
+            case "tool_call":
+                items.append(_call_from_json(item))
+            case "tool_output":
+                items.append(ToolOutput(item["call_id"], item["output"]))
+            case other:
+                raise ValueError(f"unknown transcript item {other!r}")
+    return Transcript(data["instructions"], tuple(items))
+
+
+def end_json(end: DraftWanted | EscalationWanted) -> Json:
+    if isinstance(end, DraftWanted):
+        return {"kind": "draft", "text": end.text, "offer_quote_ids": list(end.offer_quote_ids),
+                "policy_ids": list(end.policy_ids)}  # fmt: skip
+    return {"kind": "escalation", "code": end.code.value, "detail": end.detail, "by": end.by}
+
+
+def end_from_json(data: Json) -> DraftWanted | EscalationWanted:
+    if data["kind"] == "draft":
+        return DraftWanted(data["text"], tuple(data["offer_quote_ids"]), tuple(data["policy_ids"]))
+    return EscalationWanted(ReasonCode(data["code"]), data["detail"], data["by"])
+
+
+def _call_json(call: ToolCall) -> Json:
+    return {"call_id": call.call_id, "name": call.name, "arguments": call.arguments}
+
+
+def _call_from_json(data: Json) -> ToolCall:
+    return ToolCall(data["call_id"], data["name"], data["arguments"])
+
+
+# --- the nodes ------------------------------------------------------------------------------
 
 
 def agent_turn(state: LoopFields, ctx: LoopContext) -> LoopFields:
@@ -175,10 +229,10 @@ def agent_turn(state: LoopFields, ctx: LoopContext) -> LoopFields:
     tool is left `pending` for the tool node."""
     calls = state.get("calls", 0)
     if calls >= MAX_CALLS:
-        return {"end": EscalationWanted(
+        return {"end": end_json(EscalationWanted(
             ReasonCode.LOOP_LIMIT, f"{MAX_CALLS} calls without write_draft or escalate",
-            "system")}  # fmt: skip
-    transcript = state["transcript"]
+            "system"))}  # fmt: skip
+    transcript = transcript_from_json(state["transcript"])
     spec = ctx.spec
     settings = replace(ctx.llm.settings, max_output_tokens=spec.max_output_tokens,
                        reasoning_effort=spec.reasoning_effort)  # fmt: skip
@@ -189,45 +243,52 @@ def agent_turn(state: LoopFields, ctx: LoopContext) -> LoopFields:
     except RejectedCall as exc:
         kind = "INVALID_ARGUMENTS" if isinstance(exc, InvalidArguments) else "UNKNOWN_TOOL"
         output = _output(exc.call.call_id, {"error": kind, "message": str(exc)})
-        return {"calls": calls + 1, "transcript": transcript.then(exc.call, output)}
+        return {"calls": calls + 1,
+                "transcript": transcript_json(transcript.then(exc.call, output))}  # fmt: skip
     except ReplyCutOff:
-        return {"end": EscalationWanted(ReasonCode.SYSTEM_ERROR,
-                                        "reply cut off at the output limit", "system")}  # fmt: skip
+        return {"end": end_json(EscalationWanted(
+            ReasonCode.SYSTEM_ERROR, "reply cut off at the output limit", "system"))}  # fmt: skip
     except Exception as exc:  # a failed call, the budget, a bug: escalated, never stuck
-        return {"end": _failed(ctx, exc)}
+        return {"end": end_json(_failed(ctx, exc))}
     call, args = turn.call, turn.args
     if call.name == WRITE_DRAFT:
         assert isinstance(args, WriteDraftArgs)
         draft = DraftWanted(args.text, tuple(args.offer_quote_ids), tuple(args.policy_ids))
-        return {"calls": calls + 1, "end": draft}
+        return {"calls": calls + 1, "end": end_json(draft)}
     if call.name == ESCALATE:
         assert isinstance(args, EscalateArgs)
         wanted = EscalationWanted(ReasonCode(args.reason_code), args.note, "agent")
-        return {"calls": calls + 1, "end": wanted}
-    return {"calls": calls + 1, "pending": PendingCall(call, args)}
+        return {"calls": calls + 1, "end": end_json(wanted)}
+    return {"calls": calls + 1, "pending": _call_json(call)}
 
 
 def tool(state: LoopFields, ctx: LoopContext) -> LoopFields:
     """Run the pending read tool; its answer goes back to the model, an `Ends` ends the
-    loop (escalated by code, D11)."""
+    loop (escalated by code, D11). The arguments are validated again from the call as
+    the model wrote it, as the adapter did (a resumed run has only the JSON)."""
     pending = state.get("pending")
     assert pending is not None
+    call = _call_from_json(pending)
     try:
-        result = ctx.tools.run(pending.call.name, pending.args)
+        offered = {t.name: t for t in TOOLS_BY_ROUTE[ctx.route]}
+        args = offered[call.name].args.model_validate_json(call.arguments)
+        result = ctx.tools.run(call.name, args)
     except Exception as exc:  # a bug in a tool: escalated, never stuck
-        return {"pending": None, "end": _failed(ctx, exc)}
+        return {"pending": None, "end": end_json(_failed(ctx, exc))}
     if isinstance(result, Ends):
-        return {"pending": None, "end": EscalationWanted(result.code, result.detail, "system")}
+        ended = EscalationWanted(result.code, result.detail, "system")
+        return {"pending": None, "end": end_json(ended)}
     ctx.quotes.update({q.quote_id: q for q in result.quotes})
     ctx.hits.update({h.policy_id: h for h in result.hits})
     outcomes = list(state.get("outcomes", []))
     if result.outcome is not None and result.outcome not in outcomes:
         outcomes.append(result.outcome)
     closed_year = result.closed_year if result.closed_year is not None else state.get("closed_year")
-    output = _output(pending.call.call_id, result.output)
+    transcript = transcript_from_json(state["transcript"])
+    output = _output(call.call_id, result.output)
     return {
         "pending": None,
-        "transcript": state["transcript"].then(pending.call, output),
+        "transcript": transcript_json(transcript.then(call, output)),
         "outcomes": outcomes,
         "closed_year": closed_year,
         "quote_ids": [*state.get("quote_ids", []), *(q.quote_id for q in result.quotes)],
@@ -246,17 +307,18 @@ def after_tool(state: LoopFields) -> str:
 
 
 def start_fields(message: str, spec: ToolPromptSpec) -> LoopFields:
-    return {"transcript": Transcript(spec.text(), (UserText(message),)), "calls": 0}
+    return {"transcript": transcript_json(Transcript(spec.text(), (UserText(message),))),
+            "calls": 0}  # fmt: skip
 
 
 def loop_result(state: LoopFields, ctx: LoopContext) -> LoopResult:
     """The loop's state and evidence as the final write reads them."""
     end = state.get("end")
     assert end is not None
-    kept = LoopState(state["transcript"], state.get("calls", 0), dict(ctx.quotes),
-                     set(state.get("outcomes", [])), state.get("closed_year"),
-                     dict(ctx.hits))  # fmt: skip
-    return LoopResult(end, kept)
+    kept = LoopState(transcript_from_json(state["transcript"]), state.get("calls", 0),
+                     dict(ctx.quotes), set(state.get("outcomes", [])),
+                     state.get("closed_year"), dict(ctx.hits))  # fmt: skip
+    return LoopResult(end_from_json(end), kept)
 
 
 def _failed(ctx: LoopContext, exc: Exception) -> EscalationWanted:

@@ -76,7 +76,7 @@ jobs:
         run: uv sync --locked
       - name: Migrate and seed (the CLI path a developer uses)
         run: |
-          uv run alembic upgrade head
+          uv run python -m anemos.db.migrate
           uv run python -m anemos.db.seed
       - name: Integration tests
         run: uv run pytest -m integration

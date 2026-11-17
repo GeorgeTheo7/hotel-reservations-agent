@@ -123,6 +123,18 @@ def claim(conn: Conn, clock: Clock, email_id: int) -> Claimed:
     return Claimed(email_id, address, subject, body, received_at, in_reply_to)
 
 
+def load_claimed(conn: Conn, email_id: int) -> Claimed:
+    """The claimed email read again (a resumed run, D75); the caller ends the read."""
+    row = conn.execute(
+        "SELECT from_address, subject, clean_body, received_at, in_reply_to FROM emails"
+        " WHERE id = %s",
+        (email_id,),
+    ).fetchone()
+    if row is None:
+        raise NotFound(f"no email {email_id}")
+    return Claimed(email_id, *row)
+
+
 def store_extraction(conn: Conn, clock: Clock, claimed: Claimed, out: ExtractionOutput) -> None:
     """The email's language; for a request, the requests row. The stay is resolved by
     code at the email's received_at; a window (Easter, part of a month) or dates that
@@ -155,8 +167,8 @@ def process_email(
     """One run, as the run graph (anemos.graph, D75) on one connection."""
     from anemos.graph import run_email  # the graph imports this module's steps
 
-    with connect() as conn:  # one connection for the whole run
-        return run_email(conn, clock, llm, email_id, finish=finish, spec=spec)
+    with connect() as conn:  # one connection for the whole run; checkpoints on another
+        return run_email(conn, connect, clock, llm, email_id, finish=finish, spec=spec)
 
 
 def extract(llm: LLM, claimed: Claimed, spec: PromptSpec) -> tuple[ExtractionOutput | None, str]:

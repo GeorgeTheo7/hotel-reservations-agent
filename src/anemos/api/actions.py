@@ -12,8 +12,14 @@ maps the result to HTTP:
 | PriceWarning (return)            | 422  | rolled back, then an audit row (own txn)   |
 | ActionRefused (raise)            | 409  | rolled back, then an audit row (app.py)    |
 | NotFound (raise)                 | 404  | rolled back                                |
+
+After an approve (approved or invalidated) or a reject has committed, the run's graph
+thread is resumed to record the run finished (D75, `resume_thread`). A failed resume
+never fails the owner's request: the error is logged and audited (`run.resume_failed`)
+and the thread stays interrupted for the week-10 tidy-up. Resuming is idempotent.
 """
 
+import logging
 from datetime import datetime
 from typing import Literal
 
@@ -24,7 +30,9 @@ from pydantic import BaseModel, Field, field_validator
 from anemos.api.deps import ClockDep, ConnDep, require_owner
 from anemos.api.transactions import record_after_rollback, run_action
 from anemos.approval import Approved, Invalidated, PriceWarning, approve_draft
-from anemos.audit import AuditEvent
+from anemos.audit import AuditEvent, write_audit
+from anemos.clock import Clock
+from anemos.graph import resume_after_owner
 from anemos.owner_actions import (
     DraftExpired,
     Edited,
@@ -39,6 +47,7 @@ from anemos.owner_actions import (
 from anemos.states import BookingStatus, DraftStatus, EmailStatus
 
 router = APIRouter(dependencies=[Depends(require_owner)])
+log = logging.getLogger("anemos.api")
 
 
 # --- bodies -----------------------------------------------------------------------------
@@ -87,6 +96,36 @@ class BookingMoved(BaseModel):
     status: BookingStatus
 
 
+def resume_thread(http: Request, clock: Clock, draft_id: int) -> None:
+    """D75: after the owner's action committed, resume the run's thread to record it
+    finished. Any failure is logged and audited, never raised: the action stands."""
+    connect = http.app.state.connect
+    email_id: int | None = None
+    try:
+        conn = connect()
+        try:
+            row = conn.execute("SELECT email_id FROM drafts WHERE id = %s", (draft_id,)).fetchone()
+            conn.commit()
+        finally:
+            conn.close()
+        email_id = None if row is None else int(row[0])
+        if email_id is not None:
+            resume_after_owner(connect, clock, email_id)
+    except Exception as exc:
+        log.exception("resuming the run of draft %s failed", draft_id)
+        try:
+            conn = connect()
+            try:
+                write_audit(conn, clock.now(), "system", AuditEvent.RUN_RESUME_FAILED,
+                            email_id=email_id, draft_id=draft_id,
+                            output={"error": f"{type(exc).__name__}: {exc}"})  # fmt: skip
+                conn.commit()
+            finally:
+                conn.close()
+        except Exception:
+            log.exception("auditing the failed resume of draft %s failed", draft_id)
+
+
 def expired(result: DraftExpired) -> JSONResponse:
     return JSONResponse(
         {"error": "expired", "draft_id": result.draft_id}, status_code=status.HTTP_409_CONFLICT
@@ -130,6 +169,8 @@ def approve(
         ),
         keep=lambda r: not isinstance(r, PriceWarning),  # it wrote nothing
     )
+    if isinstance(result, (Approved, Invalidated)):
+        resume_thread(http, clock, draft_id)
     match result:
         case Approved():
             return ApproveResult(
@@ -162,10 +203,13 @@ def approve(
 
 
 @router.post("/drafts/{draft_id}/reject", responses={409: {}, 404: {}}, response_model=DraftDecided)
-def reject(conn: ConnDep, clock: ClockDep, draft_id: int) -> DraftDecided | JSONResponse:
+def reject(
+    http: Request, conn: ConnDep, clock: ClockDep, draft_id: int
+) -> DraftDecided | JSONResponse:
     result = run_action(conn, lambda c: reject_draft(c, clock, draft_id))
     if isinstance(result, DraftExpired):
         return expired(result)
+    resume_thread(http, clock, draft_id)
     return DraftDecided(draft_id=draft_id, status=DraftStatus.REJECTED)
 
 

@@ -41,20 +41,19 @@ from anemos.audit import AuditEvent, write_audit
 from anemos.clock import Clock
 from anemos.guardrails import PRICE_CHECK, missing_blocks
 from anemos.owner_actions import DraftExpired, decide_draft, lock_pending_draft, set_email
+from anemos.repricing import amounts, price_again
 from anemos.reservations.availability import rooms_for_plan
-from anemos.reservations.errors import FullyBooked, NeedsEscalation, NeedsInfo, ReasonCode
+from anemos.reservations.errors import FullyBooked, NeedsInfo, ReasonCode
 from anemos.reservations.formatting import Lang
 from anemos.reservations.hotel_data import HotelData
 from anemos.reservations.hotel_time import check_in_moment
 from anemos.reservations.loader import load_hotel_data
 from anemos.reservations.model import Party, Stay
-from anemos.reservations.pricing import Quote, price_stay
 from anemos.reservations.quote_template import render_hold_until
 from anemos.reservations.tools import (
     LoadedHoliday,
     LoadedRequest,
     LoadedWindow,
-    line_json,
     load_request,
 )
 from anemos.states import BookingStatus, DraftStatus, EmailStatus, StaleVersion
@@ -244,18 +243,10 @@ def _offers(conn: Conn, draft_id: int) -> list[_Offer]:
             room_type_id=str(r[2]),
             stay=Stay(r[3], r[4]),
             rooms=int(r[5]),
-            stored=_amounts(r[6], *r[7:13]),
+            stored=amounts(r[6], *r[7:13]),
         )
         for r in rows
     ]
-
-
-def _amounts(lines: object, *values: object) -> dict[str, Any]:
-    names = (
-        "room_subtotal_cents", "extra_bed_subtotal_cents", "accommodation_subtotal_cents",
-        "city_tax_cents", "deposit_cents", "free_cancellation_until",
-    )  # fmt: skip
-    return {"lines": lines, **dict(zip(names, values, strict=True))}
 
 
 def _request_of(conn: Conn, draft_id: int) -> LoadedRequest | LoadedWindow:
@@ -274,20 +265,9 @@ def _request_of(conn: Conn, draft_id: int) -> LoadedRequest | LoadedWindow:
 
 def _price_changed(hotel: HotelData, party: Party, offer: _Offer) -> str | None:
     """D47: the offer priced again now must equal the stored quote, line by line."""
-    fresh = price_stay(hotel, offer.room_type_id, offer.stay, party, offer.rooms)
-    if not isinstance(fresh, Quote):
-        why = fresh.reason.value if isinstance(fresh, NeedsEscalation) else fresh.code
-        return f"quote {offer.quote_id}: cannot be priced any more ({why})"
-    now_amounts = _amounts(
-        [line_json(line) for line in fresh.lines],
-        fresh.room_subtotal_cents, fresh.extra_bed_subtotal_cents,
-        fresh.accommodation_subtotal_cents, fresh.city_tax_cents, fresh.deposit_cents,
-        fresh.free_cancellation_until,
-    )  # fmt: skip
-    if now_amounts != offer.stored:
-        changed = sorted(k for k in now_amounts if now_amounts[k] != offer.stored[k])
-        return f"quote {offer.quote_id}: price changed ({', '.join(changed)})"
-    return None
+    fresh = price_again(hotel, party, offer.quote_id, offer.room_type_id, offer.stay,
+                        offer.rooms, offer.stored)  # fmt: skip
+    return fresh if isinstance(fresh, str) else None
 
 
 def _insert_holds(
