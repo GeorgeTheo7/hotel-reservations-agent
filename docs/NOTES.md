@@ -511,3 +511,9 @@ Run: `eval/results/20261117T014501Z-agent-dev-gpt-6-luna.json` (commit a9af47a, 
 - **Test changed:** `tests/unit/test_graph.py` (from 1a) gained the `await_owner` node and its three edges. No other existing test changed.
 - **Found on the way:** the local dev database was at migration 0010 (head 0013); the new migrate command brought it to head.
 - **Mutations caught:** resume ignoring the email's status (1 test), resume not checking the thread is waiting (1, the idempotency check), a resumed quote not compared with its stored amounts (1).
+
+## 2026-11-17 · `{{REQUEST_SUMMARY}}` from the known part of a request (D80)
+- **Built:** `load_known` (next to `load_request`) returns the resolved dates (stay, window or fixed-date holiday), rooms, type, and the party only if complete; None if neither dates nor party are known. `render_summary` leaves out the unknown parts; the template is now `Your request: $details.`, and the golden quote files (complete summaries, EN and EL) are byte-identical. The final write renders the known part when `load_request` says NEEDS_INFO; with nothing known the placeholder still fails (D74).
+- **Full dates:** the dates-only summary reuses the formatters guardrail 3 relies on: weekday, day, month and year for a stay, a window (first and last check-in) and a holiday (first and last day), checked in EN and EL.
+- **Tests:** "next weekend" ask_info with the party missing, EN and EL (Friday 11 – Sunday 13 June 2027, no party words); el-adults-null-we, the dev eval's finding, now shows Saturday 12 – Tuesday 15 June 2027 from code.
+- **Mutations caught:** the known part not rendered (3 tests), dates left out without a party (6), `load_known` None when the party is missing (3).

@@ -45,9 +45,11 @@ from anemos.reservations.quote_template import (
     date_with_article,
     render_quote_block,
     render_request_summary,
+    render_summary,
 )
 from anemos.reservations.quote_template import OfferChange as NoteChange
 from anemos.reservations.tools import (
+    KnownRequest,
     Loaded,
     LoadedHoliday,
     LoadedWindow,
@@ -104,6 +106,12 @@ def request_summary(hotel: HotelData, loaded: Loaded, lang: Lang) -> str:
     else:
         asked = loaded.request
     return render_request_summary(hotel, asked, loaded.party, lang)
+
+
+def known_summary(hotel: HotelData, known: KnownRequest, lang: Lang) -> str:
+    """{{REQUEST_SUMMARY}} for an incomplete request: the part it knows (D80)."""
+    return render_summary(hotel, known.dates, known.rooms, known.room_type_id, known.party,
+                          lang)  # fmt: skip
 
 
 def notes(hotel: HotelData, loaded: Loaded, stored: StoredQuote) -> list[NoteChange]:

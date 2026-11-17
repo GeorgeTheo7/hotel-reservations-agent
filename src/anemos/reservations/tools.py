@@ -236,6 +236,37 @@ def load_request(conn: Conn, request_id: int) -> Loaded | NeedsInfo:
     return LoadedRequest(request, party, need)
 
 
+@dataclass(frozen=True)
+class KnownRequest:
+    """What a stored request already says, complete or not (D80): the resolved dates
+    (a stay, a window or a fixed-date holiday; None if unknown), the rooms and type, and
+    the party only if it is complete. For {{REQUEST_SUMMARY}} on an incomplete request."""
+
+    dates: Stay | Window | FixedHoliday | None
+    rooms: int
+    room_type_id: str | None
+    party: Party | None
+
+
+def load_known(conn: Conn, request_id: int) -> KnownRequest | None:
+    """The known part of a stored request; None when neither the dates nor the party
+    are known (nothing a summary could show)."""
+    row = conn.execute(REQUEST_SQL, (request_id,)).fetchone()
+    if row is None:
+        raise LookupError(f"no request {request_id}")
+    stay_range, adults, children, child_ages, rooms, room_type_id, extracted, received_at = row
+    dates: Stay | Window | FixedHoliday | None
+    if stay_range is not None:
+        dates = Stay(stay_range.lower, stay_range.upper)
+    else:
+        dates = _stored_dates(extracted, received_at)
+    found = party_from_counts(adults, children, child_ages)
+    party = None if isinstance(found, NeedsInfo) else found
+    if dates is None and party is None:
+        return None
+    return KnownRequest(dates, rooms_or_default(rooms), room_type_id, party)
+
+
 def _stored_dates(
     extracted: Mapping[str, Any], received_at: datetime
 ) -> Window | FixedHoliday | None:

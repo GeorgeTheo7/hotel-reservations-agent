@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from anemos.db.seed import hotel_data
-from anemos.reservations.datespec import Window
+from anemos.reservations.datespec import FixedHoliday, Window
 from anemos.reservations.formatting import Lang
 from anemos.reservations.model import Party, RoomRequest, Stay
 from anemos.reservations.pricing import Quote, price_stay
@@ -31,6 +31,7 @@ from anemos.reservations.quote_template import (
     render_hold_until,
     render_quote_block,
     render_request_summary,
+    render_summary,
 )
 
 pytestmark = pytest.mark.unit
@@ -297,3 +298,42 @@ def test_every_change_has_a_note_in_both_languages(change: OfferChange, en: str,
     q = quote("standard", Stay(date(2027, 6, 1), date(2027, 6, 4)), Party.of(2))
     assert en in render_quote_block(HOTEL, q, "en", hold=False, changes=(change,))
     assert el in render_quote_block(HOTEL, q, "el", hold=False, changes=(change,))
+
+
+# --- {{REQUEST_SUMMARY}} from the known part of a request (D80) ------------------------------
+
+PARTIAL: dict[
+    str, tuple[Stay | Window | FixedHoliday | None, str | None, Party | None, dict[str, str]]
+] = {
+    "stay": (Stay(date(2027, 6, 11), date(2027, 6, 13)), "standard", None, {
+        "en": "Your request: Standard Double, 1 room,"
+              " Friday 11 June 2027 – Sunday 13 June 2027 (2 nights).",
+        "el": "Το αίτημά σας: Δίκλινο Standard, 1 δωμάτιο,"
+              " Παρασκευή 11 Ιουνίου 2027 – Κυριακή 13 Ιουνίου 2027 (2 νύχτες).",
+    }),
+    "window": (Window(date(2027, 4, 29), date(2027, 5, 5), 3), None, None, {
+        "en": "Your request: 1 room, check-in between Thursday 29 April 2027"
+              " and Wednesday 5 May 2027, 3 nights.",
+        "el": "Το αίτημά σας: 1 δωμάτιο, άφιξη από Πέμπτη 29 Απριλίου 2027"
+              " έως Τετάρτη 5 Μαΐου 2027, 3 νύχτες.",
+    }),
+    "holiday": (FixedHoliday("christmas", date(2027, 12, 24), date(2027, 12, 26)), None, None, {
+        "en": "Your request: 1 room, Christmas,"
+              " Friday 24 December 2027 – Sunday 26 December 2027.",
+        "el": "Το αίτημά σας: 1 δωμάτιο, Χριστούγεννα,"
+              " Παρασκευή 24 Δεκεμβρίου 2027 – Κυριακή 26 Δεκεμβρίου 2027.",
+    }),
+    "party only": (None, None, Party.of(2, ()), {
+        "en": "Your request: 1 room, 2 adults.",
+        "el": "Το αίτημά σας: 1 δωμάτιο, 2 ενήλικες.",
+    }),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("lang", LANGS)
+@pytest.mark.parametrize("name", list(PARTIAL))
+def test_a_partial_summary_shows_what_is_known_with_dates_in_full(name: str, lang: Lang) -> None:
+    """Dates only (stay, window, holiday) keep guardrail 3's full format: weekday, day,
+    month, year; the party is left out when unknown, the dates when unknown."""
+    dates, room_type, party, expected = PARTIAL[name]
+    assert render_summary(HOTEL, dates, 1, room_type, party, lang) == expected[lang]

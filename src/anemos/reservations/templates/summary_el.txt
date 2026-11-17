@@ -1,1 +1,1 @@
-Το αίτημά σας: $what, $dates, $party.
+Το αίτημά σας: $details.

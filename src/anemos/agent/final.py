@@ -31,6 +31,7 @@ from anemos.drafting import (
     OPEN_SEASON,
     REQUEST_SUMMARY,
     Drafted,
+    known_summary,
     open_season,
     render_offers,
     store_draft,
@@ -46,7 +47,7 @@ from anemos.inbox import escalate
 from anemos.reservations.errors import Closed, NeedsInfo, NoneFound, ReasonCode
 from anemos.reservations.formatting import Lang
 from anemos.reservations.loader import load_hotel_data
-from anemos.reservations.tools import StoredQuote, load_request
+from anemos.reservations.tools import StoredQuote, load_known, load_request
 
 type Conn = psycopg.Connection[TupleRow]
 
@@ -94,7 +95,7 @@ def placeholders_valid(
     if OPEN_SEASON in text and closed_year is None:
         return f"{OPEN_SEASON} without CLOSED in this run"
     if REQUEST_SUMMARY in text and not summarisable:
-        return f"{REQUEST_SUMMARY} but the request cannot be summarised (none, or incomplete)"
+        return f"{REQUEST_SUMMARY} but the request cannot be summarised (no dates, no party)"
     if route == "quote" and offers == 0:
         return "quote route with nothing offered"
     return True
@@ -125,6 +126,8 @@ def _draft(
     # An ask_info request is incomplete by definition: it is summarised only if it can be.
     found = None if request_id is None else load_request(conn, request_id)
     loaded = None if isinstance(found, NeedsInfo) else found
+    # D80: an incomplete request is summarised from the part it knows.
+    known = None if loaded is not None or request_id is None else load_known(conn, request_id)
     route = draft_route([o.quote_id for o in offers], state.outcomes, router_route)
     text = wanted.text
     results: dict[str, bool | str] = {
@@ -134,7 +137,7 @@ def _draft(
             offers, state.quotes, {i: q.offer.hold_allowed for i, q in state.quotes.items()}
         ),
         "placeholders": placeholders_valid(
-            text, route, offers=len(offers), summarisable=loaded is not None,
+            text, route, offers=len(offers), summarisable=loaded is not None or known is not None,
             closed_year=state.closed_year,
         ),
     }  # fmt: skip
@@ -149,6 +152,8 @@ def _draft(
     if loaded is not None:
         quotes = [state.quotes[o.quote_id] for o in offers]
         text, blocks = render_offers(hotel, text, loaded, quotes, offers, lang)
+    elif known is not None:
+        text = text.replace(REQUEST_SUMMARY, known_summary(hotel, known, lang))
     if state.closed_year is not None:
         text = text.replace(OPEN_SEASON, open_season(hotel, state.closed_year, lang))
     return store_draft(conn, now, email_id, request_id, route, text, results, offers, blocks,

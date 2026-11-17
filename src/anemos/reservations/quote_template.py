@@ -30,7 +30,7 @@ from anemos.reservations.formatting import (
 )
 from anemos.reservations.hotel_data import HotelData
 from anemos.reservations.hotel_time import HOTEL_TZ
-from anemos.reservations.model import ExtraBedBand, Party, RoomRequest
+from anemos.reservations.model import ExtraBedBand, Party, RoomRequest, Stay
 from anemos.reservations.money import Cents
 from anemos.reservations.occupancy import is_infant
 from anemos.reservations.pricing import Quote
@@ -167,31 +167,56 @@ def render_request_summary(
     lang: Lang,
 ) -> str:
     """What the guest asked for, with dates resolved in full (guardrail 3)."""
-    what = count(request.rooms, "room", lang)
-    if request.room_type_id is not None:
-        what = f"{room_type_name(hotel.room_types[request.room_type_id], lang)}, {what}"
+    dates: Stay | Window | FixedHoliday
     if isinstance(request, RoomRequest):
-        dates = format_stay(request.stay, lang)
+        dates = request.stay
     elif isinstance(request, HolidayRequest):
-        holiday = request.holiday
-        dates = _phrase(
+        dates = request.holiday
+    else:
+        dates = request.window
+    return render_summary(hotel, dates, request.rooms, request.room_type_id, party, lang)
+
+
+def render_summary(
+    hotel: HotelData,
+    dates: Stay | Window | FixedHoliday | None,
+    rooms: int,
+    room_type_id: str | None,
+    party: Party | None,
+    lang: Lang,
+) -> str:
+    """{{REQUEST_SUMMARY}} from what is known (D80): the dates (always in full: weekday,
+    day, month, year, guardrail 3) and the party are each left out when unknown, so an
+    incomplete request still shows the dates the guest can correct."""
+    what = count(rooms, "room", lang)
+    if room_type_id is not None:
+        what = f"{room_type_name(hotel.room_types[room_type_id], lang)}, {what}"
+    details = [what]
+    if dates is not None:
+        details.append(_dates(dates, lang))
+    if party is not None:
+        details.append(format_party(party, lang))
+    return _render_file(f"summary_{lang}.txt", {"details": ", ".join(details)})
+
+
+def _dates(dates: Stay | Window | FixedHoliday, lang: Lang) -> str:
+    if isinstance(dates, Stay):
+        return format_stay(dates, lang)
+    if isinstance(dates, FixedHoliday):
+        return _phrase(
             lang,
             "holiday",
-            holiday=str(_phrases(lang)[f"holiday_{holiday.key}"]),
-            first=format_date(holiday.first_day, lang),
-            last=format_date(holiday.last_day, lang),
+            holiday=str(_phrases(lang)[f"holiday_{dates.key}"]),
+            first=format_date(dates.first_day, lang),
+            last=format_date(dates.last_day, lang),
         )
-    else:
-        window = request.window
-        dates = _phrase(
-            lang,
-            "window",
-            first=format_date(window.first_check_in, lang),
-            last=format_date(window.last_check_in, lang),
-            nights=count(window.nights, "night", lang),
-        )
-    values = {"what": what, "dates": dates, "party": format_party(party, lang)}
-    return _render_file(f"summary_{lang}.txt", values)
+    return _phrase(
+        lang,
+        "window",
+        first=format_date(dates.first_check_in, lang),
+        last=format_date(dates.last_check_in, lang),
+        nights=count(dates.nights, "night", lang),
+    )
 
 
 # --- pieces ---

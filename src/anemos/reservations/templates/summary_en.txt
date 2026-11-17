@@ -1,1 +1,1 @@
-Your request: $what, $dates, $party.
+Your request: $details.
