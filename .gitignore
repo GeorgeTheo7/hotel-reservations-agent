@@ -27,3 +27,7 @@ var/
 .idea/
 .DS_Store
 Thumbs.db
+
+# The owner's UI (web/): installed packages and the production build
+web/node_modules/
+web/dist/
