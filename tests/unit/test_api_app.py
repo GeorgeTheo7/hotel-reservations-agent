@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from anemos.api import create_app
 from anemos.api.__main__ import HOST, main
+from anemos.api.auth import OwnerAuth
 from anemos.api.deps import require_owner
 from anemos.clock import FixedClock
 from anemos.states import NotFound
@@ -28,10 +29,14 @@ def no_database() -> NoReturn:
 
 
 def app() -> FastAPI:
-    return create_app(no_database, FixedClock(datetime(2026, 11, 13, 7, 0, tzinfo=UTC)))
+    return create_app(
+        no_database,
+        FixedClock(datetime(2026, 11, 13, 7, 0, tzinfo=UTC)),
+        OwnerAuth(password="unit-test-password"),
+    )
 
 
-# --- D19 hook ------------------------------------------------------------------------
+# --- D19/D82 hook ---------------------------------------------------------------------
 
 
 def deny() -> NoReturn:
@@ -39,10 +44,10 @@ def deny() -> NoReturn:
 
 
 def test_every_route_requires_the_owner() -> None:
-    """Week 7 replaces require_owner with the password check; a route added without
-    the hook would then be open. With the hook replaced by one that refuses, every
-    path in the API description answers 401, before any connection is opened
-    (no_database would turn that into a 500).
+    """D82: a route added without require_owner would be open. With the hook
+    replaced by one that refuses, every path in the API description answers 401,
+    before any connection is opened (no_database would turn that into a 500), except
+    login, the one route a browser without a session must reach.
 
     It only sees routes in the OpenAPI schema: a route declared with
     include_in_schema=False must be added to `calls` by hand."""
@@ -55,8 +60,19 @@ def test_every_route_requires_the_owner() -> None:
         for method in operations
     ]
     assert len(calls) >= 3, calls
-    answers = {call: client.request(*call).status_code for call in calls}
-    assert answers == dict.fromkeys(calls, 401)
+    assert LOGIN in calls
+    answers = {call: client.request(*call).status_code for call in calls if call != LOGIN}
+    assert answers == dict.fromkeys(set(calls) - {LOGIN}, 401)
+
+
+LOGIN = ("POST", "/api/session")
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"])
+def test_the_api_description_is_not_served(path: str) -> None:
+    """D82: off entirely, logged in or not; tests read it with app.openapi()."""
+    client = TestClient(app(), raise_server_exceptions=False)
+    assert client.get(path).status_code == 404
 
 
 # --- D83: one origin, the API under /api -------------------------------------------------
@@ -137,8 +153,8 @@ def test_the_api_never_imports_pricing_or_date_code() -> None:
 
 
 def test_the_entry_point_binds_this_machine_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    """D19: no password until week 7, so `python -m anemos.api` never listens on other
-    interfaces."""
+    """D82/D83: `python -m anemos.api` listens on this machine only until week 11's
+    compose, password or not."""
     calls: list[dict[str, Any]] = []
     monkeypatch.setattr("uvicorn.run", lambda *args, **kw: calls.append(kw))
     main(["--port", "8123"])

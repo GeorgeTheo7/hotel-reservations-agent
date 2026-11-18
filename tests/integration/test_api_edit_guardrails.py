@@ -12,14 +12,13 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg.types.json import Jsonb
 
-from anemos.api import create_app
 from anemos.clock import FixedClock
 from anemos.guardrails import number_values
 from anemos.reservations.loader import load_hotel_data
 from anemos.stub_drafter import Drafted, draft_reply
 
 if TYPE_CHECKING:
-    from conftest import CommittedDb
+    from conftest import CommittedDb, OwnerApi
 
 pytestmark = pytest.mark.integration
 
@@ -31,8 +30,8 @@ HINT = "repeat with confirm_warnings=true to send it anyway"
 
 
 @pytest.fixture
-def api(committed_db: CommittedDb) -> Iterator[TestClient]:
-    with TestClient(create_app(committed_db.connect, FixedClock(NOW))) as client:
+def api(owner_api: OwnerApi) -> Iterator[TestClient]:
+    with owner_api(NOW) as client:
         yield client
 
 

@@ -26,7 +26,7 @@ type Conn = psycopg.Connection[TupleRow]
 # TRUNCATE fail loudly, and a harness test checks this list covers every non-seed table.
 OPERATIONAL_TABLES = (
     "audit_log", "outbox", "draft_offers", "draft_versions", "drafts", "quotes",
-    "requests", "emails", "bookings",
+    "requests", "emails", "bookings", "owner_sessions",
 )  # fmt: skip
 SEED_TABLES = (
     "room_types", "rooms", "seasons", "season_periods", "room_rates", "min_stay_rules",

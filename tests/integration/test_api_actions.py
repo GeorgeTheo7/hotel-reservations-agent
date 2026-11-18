@@ -7,7 +7,7 @@ after the rollback.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -17,13 +17,12 @@ from fastapi.testclient import TestClient
 from psycopg import sql
 from psycopg.rows import TupleRow
 
-from anemos.api import create_app
 from anemos.clock import FixedClock
 from anemos.reservations.loader import load_hotel_data
 from anemos.stub_drafter import Drafted, draft_reply
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's class is for mypy only
-    from conftest import CommittedDb
+    from conftest import CommittedDb, OwnerApi
 
 pytestmark = pytest.mark.integration
 
@@ -40,18 +39,13 @@ type Client = Callable[..., TestClient]
 
 
 @pytest.fixture
-def client(committed_db: CommittedDb) -> Iterator[Client]:
-    """client() at NOW, client(at) at another time: a separate app per clock."""
-    opened: list[TestClient] = []
+def client(owner_api: OwnerApi) -> Client:
+    """client() at NOW, client(at) at another time: a separate app per clock, logged in."""
 
     def make(at: datetime = NOW) -> TestClient:
-        test_client = TestClient(create_app(committed_db.connect, FixedClock(at)))
-        opened.append(test_client)
-        return test_client
+        return owner_api(at)
 
-    yield make
-    for test_client in opened:
-        test_client.close()
+    return make
 
 
 def drafted(committed_db: CommittedDb, sender: str = "guest@example.test") -> tuple[int, int]:
@@ -332,7 +326,7 @@ def test_bad_approve_requests_are_422(
 
 
 def test_a_bug_after_a_write_rolls_everything_back(
-    committed_db: CommittedDb, client: Client
+    committed_db: CommittedDb, owner_api: OwnerApi
 ) -> None:
     """approve_draft flips stale holds (step 3) before it builds the text (step 6). A
     text with {{HOLD_UNTIL}} and nothing held is a bug there: 500, and the flip done
@@ -348,8 +342,7 @@ def test_a_bug_after_a_write_rolls_everything_back(
     conn.commit()
     before = snapshot(committed_db)
 
-    api = TestClient(create_app(committed_db.connect, FixedClock(NOW)),
-                     raise_server_exceptions=False)  # fmt: skip
+    api = owner_api(NOW, raise_server_exceptions=False)
     response = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert (response.status_code, response.json()) == (500, {"error": "internal"})
     assert snapshot(committed_db) == before  # the stale hold is still a hold

@@ -51,12 +51,15 @@ class AuditEvent(StrEnum):
     RUN_FINISHED = "run.finished"  # D75: the owner's action ended the draft; thread resumed
     RUN_RESUME_FAILED = "run.resume_failed"  # D75: that resume failed; thread left waiting
     AGENT_TOOL_CALLED = "agent.tool_called"
+    OWNER_LOGIN = "owner.login"  # D82
+    OWNER_LOGIN_FAILED = "owner.login_failed"  # D82: actor system; counted by the throttle
+    OWNER_LOGOUT = "owner.logout"  # D82
 
 
-# Written only by the API, after it rolled back a refused or unconfirmed action
-# (api/transactions.py). Domain code never writes them, so the cross-rules scenario,
-# which calls the domain functions directly, does not either; tests/integration/
-# test_api_actions.py covers them.
+# Written only by the API: after it rolled back a refused or unconfirmed action
+# (api/transactions.py), and the owner's login and logout (api/session.py, D82).
+# Domain code never writes them, so the cross-rules scenario, which calls the domain
+# functions directly, does not either; the test_api_*.py modules cover them.
 API_ONLY_EVENTS = frozenset(
     {
         AuditEvent.EMAIL_ACTION_REFUSED,
@@ -64,6 +67,9 @@ API_ONLY_EVENTS = frozenset(
         AuditEvent.DRAFT_PRICE_WARNING_SHOWN,
         AuditEvent.DRAFT_GUARDRAIL_WARNING_SHOWN,
         AuditEvent.RUN_RESUME_FAILED,  # after an owner action committed (D75)
+        AuditEvent.OWNER_LOGIN,
+        AuditEvent.OWNER_LOGIN_FAILED,
+        AuditEvent.OWNER_LOGOUT,
     }
 )
 

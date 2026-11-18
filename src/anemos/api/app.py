@@ -10,8 +10,9 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from anemos.api import actions, reads
-from anemos.api.deps import Connect
+from anemos.api import actions, reads, session
+from anemos.api.auth import OwnerAuth, auth_from_env
+from anemos.api.deps import Connect, Unauthenticated
 from anemos.api.transactions import record_after_rollback
 from anemos.audit import AuditEvent
 from anemos.clock import Clock, SystemClock
@@ -25,12 +26,17 @@ log = logging.getLogger("anemos.api")
 API_PREFIX = "/api"
 
 
-def create_app(connect: Connect, clock: Clock) -> FastAPI:
-    app = FastAPI(title="Hotel Anemos owner API")
+def create_app(connect: Connect, clock: Clock, auth: OwnerAuth) -> FastAPI:
+    # D82: no /docs, /redoc or /openapi.json; tests read the schema with app.openapi().
+    app = FastAPI(title="Hotel Anemos owner API", docs_url=None, redoc_url=None,
+                  openapi_url=None)  # fmt: skip
     app.state.connect = connect
     app.state.clock = clock
+    app.state.auth = auth
+    app.include_router(session.router, prefix=API_PREFIX)
     app.include_router(reads.router, prefix=API_PREFIX)
     app.include_router(actions.router, prefix=API_PREFIX)
+    app.add_exception_handler(Unauthenticated, _unauthenticated)
     app.add_exception_handler(ActionRefused, _refused)
     app.add_exception_handler(NotFound, _not_found)
     app.add_exception_handler(Exception, _internal_error)
@@ -38,8 +44,9 @@ def create_app(connect: Connect, clock: Clock) -> FastAPI:
 
 
 def production_app() -> FastAPI:
-    """DATABASE_URL and the system clock; for `python -m anemos.api`."""
-    return create_app(lambda: db_connect(), SystemClock())
+    """DATABASE_URL, the system clock and the owner password from the environment;
+    for `python -m anemos.api`. Without ANEMOS_OWNER_PASSWORD it refuses to start."""
+    return create_app(lambda: db_connect(), SystemClock(), auth_from_env())
 
 
 REFUSED_EVENT: dict[Entity, AuditEvent] = {
@@ -60,6 +67,10 @@ def _refused(request: Request, exc: Exception) -> JSONResponse:
         email_id=exc.email_id, draft_id=exc.draft_id, output=exc.audit_output(),
     )  # fmt: skip
     return JSONResponse({"error": exc.reason} | exc.response_details(), status_code=409)
+
+
+def _unauthenticated(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse({"error": "unauthenticated"}, status_code=401)
 
 
 def _not_found(request: Request, exc: Exception) -> JSONResponse:

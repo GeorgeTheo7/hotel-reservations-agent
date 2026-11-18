@@ -29,12 +29,15 @@ from typing import Any
 
 import psycopg
 import pytest
+from fastapi.testclient import TestClient
 from psycopg import sql
 from psycopg.pq import TransactionStatus
 from psycopg.rows import TupleRow
 from psycopg.types.json import Jsonb
 
-from anemos.clock import FixedClock
+from anemos.api import create_app
+from anemos.api.auth import COOKIE_NAME, OwnerAuth, create_session
+from anemos.clock import Clock, FixedClock
 from anemos.db.connection import connect
 from anemos.db.migrate import upgrade
 from anemos.db.scratch import (
@@ -426,6 +429,42 @@ def committed_db(commit_test_db: str, request: pytest.FixtureRequest) -> Iterato
                 found = conn.execute("SELECT DISTINCT event FROM audit_log").fetchall()
             API_AUDIT.seen.update(event for (event,) in found)
         harness.reset()
+
+
+# D82: the owner password every integration test's app uses. Fictional, test-only.
+TEST_AUTH = OwnerAuth(password="test-owner-password")
+
+type OwnerApi = Callable[..., TestClient]
+
+
+@pytest.fixture
+def owner_api(committed_db: CommittedDb) -> Iterator[OwnerApi]:
+    """owner_api(clock_or_time, raise_server_exceptions=True): a TestClient on the
+    commit-test database with a live owner session, so every request passes the real
+    require_owner check. The session is created directly (`create_session`), not by
+    POST /api/session: a login writes an `owner.login` audit row, and many tests
+    compare the audit before and after an action. Login itself is tested in
+    test_api_session.py. https: a client never sends a Secure cookie over plain http.
+    Each call is a separate app (its own clock); all closed at teardown."""
+    opened: list[TestClient] = []
+
+    def make(at: Clock | datetime, *, raise_server_exceptions: bool = True) -> TestClient:
+        clock = FixedClock(at) if isinstance(at, datetime) else at
+        client = TestClient(
+            create_app(committed_db.connect, clock, TEST_AUTH),
+            base_url="https://testserver",
+            raise_server_exceptions=raise_server_exceptions,
+        )
+        opened.append(client)
+        conn = committed_db.connect()
+        token, _ = create_session(conn, clock.now())
+        conn.commit()
+        client.cookies.set(COOKIE_NAME, token)
+        return client
+
+    yield make
+    for client in opened:
+        client.close()
 
 
 @pytest.fixture

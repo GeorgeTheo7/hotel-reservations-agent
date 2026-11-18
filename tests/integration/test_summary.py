@@ -7,10 +7,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from fastapi.testclient import TestClient
 
 from anemos import graph
-from anemos.api import create_app
 from anemos.clock import FixedClock
 from anemos.email_cases import load_cases
 from anemos.extraction_run import process_email
@@ -23,7 +21,7 @@ from anemos.llm.fake import Answer, ScriptedClient, Step, ToolCallStep
 from anemos.run import agent_finish
 
 if TYPE_CHECKING:
-    from conftest import CommittedDb
+    from conftest import CommittedDb, OwnerApi
 
 pytestmark = pytest.mark.integration
 
@@ -73,7 +71,7 @@ def escalated_audit(committed_db: CommittedDb, email_id: int) -> dict[str, Any]:
 
 
 def test_a_code_escalation_gets_a_summary_and_its_second_code(
-    committed_db: CommittedDb, tmp_path: Path
+    committed_db: CommittedDb, owner_api: OwnerApi, tmp_path: Path
 ) -> None:
     """el-group-wedding: GROUP by code; the summary adds the DISCOUNT the guest asks."""
     email_id = run(committed_db, "el-group-wedding", GoldClient([CASES["el-group-wedding"]]),
@@ -82,9 +80,7 @@ def test_a_code_escalation_gets_a_summary_and_its_second_code(
         "escalated", ["GROUP", "DISCOUNT"], "Gold summary of el-group-wedding.")  # fmt: skip
     audit = escalated_audit(committed_db, email_id)
     assert audit["added_by_model"] == ["DISCOUNT"] and audit["reason"] == "GROUP"
-    with TestClient(
-        create_app(committed_db.connect, FixedClock(CASES["el-group-wedding"].email.received_at))
-    ) as api:
+    with owner_api(CASES["el-group-wedding"].email.received_at) as api:
         detail = api.get(f"/api/emails/{email_id}").json()
     assert detail["escalation_summary"] == "Gold summary of el-group-wedding."
 

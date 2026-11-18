@@ -1,4 +1,4 @@
-"""The owner's HTTP API (FastAPI). Build it with `create_app(connect, clock)`."""
+"""The owner's HTTP API (FastAPI). Build it with `create_app(connect, clock, auth)`."""
 
 from anemos.api.app import create_app
 

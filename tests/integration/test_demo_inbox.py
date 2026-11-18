@@ -8,9 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from fastapi.testclient import TestClient
 
-from anemos.api import create_app
 from anemos.clock import FixedClock
 from anemos.demo_inbox import fill
 from anemos.email_cases import demo_cases, load_cases
@@ -18,7 +16,7 @@ from anemos.inbox import ingest
 from anemos.mailbox import FakeMailbox
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's class is for mypy only
-    from conftest import CommittedDb
+    from conftest import CommittedDb, OwnerApi
 
 pytestmark = pytest.mark.integration
 
@@ -26,12 +24,14 @@ AT = datetime(2027, 3, 1, 9, 0, tzinfo=UTC)
 EVAL_EMAILS = Path(__file__).resolve().parents[2] / "eval" / "emails"
 
 
-def test_fills_an_inbox_and_a_second_run_stores_nothing(committed_db: CommittedDb) -> None:
+def test_fills_an_inbox_and_a_second_run_stores_nothing(
+    committed_db: CommittedDb, owner_api: OwnerApi
+) -> None:
     report = fill(committed_db.connect, FixedClock(AT))
     assert [line.split(":")[0] for line in report] == [case.id for case in demo_cases()]
     assert all("skipped" not in line for line in report)
 
-    with TestClient(create_app(committed_db.connect, FixedClock(AT))) as api:
+    with owner_api(AT) as api:
         inbox = api.get("/api/emails").json()["items"]
         routes = {
             item["subject"]: api.get(f"/api/emails/{item['id']}").json()["draft"]["route"]

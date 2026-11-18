@@ -13,12 +13,10 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg import sql
 
-from anemos.api import create_app
 from anemos.audit import API_ONLY_EVENTS
-from anemos.clock import FixedClock
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixtures' classes are for mypy only
-    from conftest import ApiAuditCoverage, CommittedDb
+    from conftest import ApiAuditCoverage, CommittedDb, OwnerApi
 
 pytestmark = pytest.mark.integration
 
@@ -34,8 +32,8 @@ AUDITED_AS = {"confirm": "hold.confirmed", "release": "hold.released",
 
 
 @pytest.fixture
-def api(committed_db: CommittedDb) -> Iterator[TestClient]:
-    with TestClient(create_app(committed_db.connect, FixedClock(NOW))) as client:
+def api(owner_api: OwnerApi) -> Iterator[TestClient]:
+    with owner_api(NOW) as client:
         yield client
 
 

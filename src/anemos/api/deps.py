@@ -1,4 +1,4 @@
-"""Per-request dependencies: a connection, the clock, the owner.
+"""Per-request dependencies: a connection, the clock, the owner (D82).
 
 FastAPI calls these for every request that names them (`Depends`). They read the
 connection factory and the clock from `app.state`, set once by `create_app`, so a
@@ -13,6 +13,7 @@ import psycopg
 from fastapi import Depends, Request
 from psycopg.rows import TupleRow
 
+from anemos.api.auth import COOKIE_NAME, session_is_live
 from anemos.clock import Clock
 
 type Conn = psycopg.Connection[TupleRow]
@@ -35,12 +36,25 @@ def get_clock(request: Request) -> Clock:
     return clock
 
 
-def require_owner() -> Literal["owner"]:
-    """The D19 hook: every route depends on it (a unit test checks). Until the week-7
-    password exists it lets every request through, so the API must not be reachable
-    from anywhere but this machine (`python -m anemos.api` binds 127.0.0.1 only)."""
-    return "owner"
-
-
 ConnDep = Annotated[Conn, Depends(get_conn)]
 ClockDep = Annotated[Clock, Depends(get_clock)]
+
+
+class Unauthenticated(Exception):
+    """No live owner session: 401 (handler in app.py)."""
+
+
+def require_owner(request: Request, conn: ConnDep, clock: ClockDep) -> Literal["owner"]:
+    """The D19 hook, D82's check: every route but login depends on it (a unit test
+    checks). The cookie's token must match a live row in owner_sessions.
+
+    It reads on the request's own connection (FastAPI gives the endpoint the same one)
+    and then rolls back, so the endpoint starts a fresh transaction exactly as it did
+    before this check existed."""
+    try:
+        live = session_is_live(conn, request.cookies.get(COOKIE_NAME), clock.now())
+    finally:
+        conn.rollback()
+    if not live:
+        raise Unauthenticated
+    return "owner"

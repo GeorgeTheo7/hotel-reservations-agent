@@ -11,9 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from fastapi.testclient import TestClient
 
-from anemos.api import actions, create_app
+from anemos.api import actions
 from anemos.clock import FixedClock
 from anemos.email_cases import load_cases
 from anemos.extraction_run import process_email
@@ -25,7 +24,7 @@ from anemos.llm.budget import Budget
 from anemos.run import agent_finish
 
 if TYPE_CHECKING:
-    from conftest import CommittedDb
+    from conftest import CommittedDb, OwnerApi
 
 pytestmark = pytest.mark.integration
 
@@ -59,9 +58,11 @@ def audit(committed_db: CommittedDb, email_id: int, event: str) -> list[Any]:
     return rows
 
 
-def test_api_approve_resumes_the_thread(committed_db: CommittedDb, tmp_path: Path) -> None:
+def test_api_approve_resumes_the_thread(
+    committed_db: CommittedDb, owner_api: OwnerApi, tmp_path: Path
+) -> None:
     email_id, draft_id = drafted_by_a_run(committed_db, tmp_path)
-    with TestClient(create_app(committed_db.connect, CLOCK)) as api:
+    with owner_api(CLOCK) as api:
         response = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert response.status_code == 200
     assert audit(committed_db, email_id, "run.finished") == [
@@ -72,7 +73,11 @@ def test_api_approve_resumes_the_thread(committed_db: CommittedDb, tmp_path: Pat
 
 @pytest.mark.parametrize("action", ["approve", "reject"])
 def test_api_a_failed_resume_still_answers_success_and_is_audited(
-    committed_db: CommittedDb, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action: str
+    committed_db: CommittedDb,
+    owner_api: OwnerApi,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
 ) -> None:
     email_id, draft_id = drafted_by_a_run(committed_db, tmp_path)
 
@@ -81,7 +86,7 @@ def test_api_a_failed_resume_still_answers_success_and_is_audited(
 
     monkeypatch.setattr(actions, "resume_after_owner", broken)
     body = {"version": 1} if action == "approve" else None
-    with TestClient(create_app(committed_db.connect, CLOCK)) as api:
+    with owner_api(CLOCK) as api:
         response = api.post(f"/api/drafts/{draft_id}/{action}", json=body)
     assert response.status_code == 200  # the owner's action stands
     expected = "approved" if action == "approve" else "rejected"

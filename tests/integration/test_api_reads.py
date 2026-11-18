@@ -11,13 +11,11 @@ import pytest
 from fastapi.testclient import TestClient
 from psycopg import sql
 
-from anemos.api import create_app
 from anemos.api.reads import inbox_query
-from anemos.clock import FixedClock
 from anemos.states import EmailStatus
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's classes are for mypy only
-    from conftest import CommittedDb, Rows
+    from conftest import CommittedDb, OwnerApi, Rows
 
 pytestmark = pytest.mark.integration
 
@@ -26,8 +24,8 @@ NOW = T0 + timedelta(hours=10)
 
 
 @pytest.fixture
-def api(committed_db: CommittedDb) -> Iterator[TestClient]:
-    with TestClient(create_app(committed_db.connect, FixedClock(NOW))) as client:
+def api(owner_api: OwnerApi) -> Iterator[TestClient]:
+    with owner_api(NOW) as client:
         yield client
 
 

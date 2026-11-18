@@ -9,9 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from fastapi.testclient import TestClient
 
-from anemos.api import create_app
 from anemos.audit import run_cost
 from anemos.clock import FixedClock
 from anemos.email_cases import load_cases
@@ -24,7 +22,7 @@ from anemos.run import process_inbox
 from anemos.sender import FakeTransport, send_due
 
 if TYPE_CHECKING:
-    from conftest import CommittedDb, EndedOnce
+    from conftest import CommittedDb, EndedOnce, OwnerApi
 
 pytestmark = pytest.mark.integration
 
@@ -46,7 +44,7 @@ def statuses(committed_db: CommittedDb, email_id: int) -> tuple[str, str | None,
 
 
 def test_an_email_from_arrival_to_the_sent_reply(
-    committed_db: CommittedDb, tmp_path: Path, ended_once: EndedOnce
+    committed_db: CommittedDb, owner_api: OwnerApi, tmp_path: Path, ended_once: EndedOnce
 ) -> None:
     clock = FixedClock(CASE.email.received_at)
     conn = committed_db.connect()
@@ -66,7 +64,7 @@ def test_an_email_from_arrival_to_the_sent_reply(
     [draft_id] = conn.execute("SELECT id FROM drafts WHERE email_id = %s",
                               (email_id,)).fetchone()  # type: ignore[misc]  # fmt: skip
     conn.commit()
-    with TestClient(create_app(committed_db.connect, clock)) as api:
+    with owner_api(clock) as api:
         approved = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert approved.status_code == 200
     assert statuses(committed_db, email_id) == ("answered", "approved", ["hold"])

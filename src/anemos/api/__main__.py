@@ -1,8 +1,7 @@
 """Run the API locally: `uv run --env-file .env python -m anemos.api [--port N]`.
 
-The host is fixed to 127.0.0.1 on purpose: until the week-7 password exists, every
-request is treated as the owner (D19), so the API must not be reachable from other
-machines.
+Needs ANEMOS_OWNER_PASSWORD (D82). The host stays fixed to 127.0.0.1 until week 11's
+compose (D83): nothing needs the API on another machine before then.
 """
 
 import argparse
