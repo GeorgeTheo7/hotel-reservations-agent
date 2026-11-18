@@ -33,17 +33,24 @@ def test_fills_an_inbox_and_a_second_run_stores_nothing(
 
     with owner_api(AT) as api:
         inbox = api.get("/api/emails").json()["items"]
-        routes = {
-            item["subject"]: api.get(f"/api/emails/{item['id']}").json()["draft"]["route"]
-            for item in inbox
-        }
+        details = {item["subject"]: api.get(f"/api/emails/{item['id']}").json() for item in inbox}
         set_aside = api.get("/api/emails", params={"status": "set_aside"}).json()["items"]
-    # Each drafted case gets the route its label names (through the agent).
-    labelled = {
-        c.email.subject: c.labels.route for c in demo_cases() if c.labels.route != "set_aside"
+    # Each case ends as its label names: drafted on its route (through the agent), or
+    # escalated with its codes and a summary (D81).
+    ended = {
+        subject: d["draft"]["route"] if d["draft"] else ("escalate", d["reason_codes"])
+        for subject, d in details.items()
     }
-    assert routes == labelled
-    assert {item["status"] for item in inbox} == {"awaiting_approval"}
+    labelled = {
+        c.email.subject: c.labels.route
+        if c.labels.route != "escalate"
+        else ("escalate", list(c.labels.reason_codes))
+        for c in demo_cases()
+        if c.labels.route != "set_aside"
+    }
+    assert ended == labelled
+    assert sorted(item["status"] for item in inbox) == ["awaiting_approval"] * 5 + ["escalated"] * 2
+    assert all(d["escalation_summary"] for d in details.values() if d["status"] == "escalated")
     assert [item["subject"] for item in set_aside] == ["You have won a free cruise"]
 
     again = fill(committed_db.connect, FixedClock(AT))
@@ -53,10 +60,10 @@ def test_fills_an_inbox_and_a_second_run_stores_nothing(
         "SELECT (SELECT count(*) FROM emails), (SELECT count(*) FROM requests),"
         " (SELECT count(*) FROM drafts)"
     ).fetchone()
-    assert counts == (6, 5, 5)
-    # Every email went through the production run: extracted, routed in code, and the
-    # five that are not spam drafted by the agent; every model call answered by the gold
-    # client (named in the audit, at no cost).
+    assert counts == (8, 6, 5)
+    # Every email went through the production run: extracted, routed in code, the five
+    # requests and questions drafted by the agent, the complaint escalated by it; every
+    # model call answered by the gold client (named in the audit, at no cost).
     routed, calls, gold_calls, agents = conn.execute(
         "SELECT (SELECT count(*) FROM audit_log WHERE event = 'email.routed'),"
         " (SELECT count(*) FROM audit_log WHERE event = 'llm.called'),"
@@ -66,8 +73,8 @@ def test_fills_an_inbox_and_a_second_run_stores_nothing(
         "  AND step = 'agent')"
     ).fetchone()  # type: ignore[misc]
     conn.commit()
-    assert (routed, agents) == (6, 5)
-    assert calls == gold_calls > 6
+    assert (routed, agents) == (8, 6)
+    assert calls == gold_calls > 8
 
 
 def test_a_mailbox_of_eval_cases_is_stored_once(committed_db: CommittedDb) -> None:

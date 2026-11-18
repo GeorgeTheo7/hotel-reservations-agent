@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { Inbox } from "./Inbox";
 import { Login } from "./Login";
 import { logOut, sessionIsLive } from "./session";
 
@@ -19,6 +20,10 @@ export const SESSION_ENDED = "Your session has ended. Log in again.";
 
 export function App() {
   const [view, setView] = useState<View>({ kind: "checking" });
+  // Stable, so screens can list it as an effect dependency without refetching.
+  const sessionEnded = useCallback(() => {
+    setView({ kind: "anonymous", notice: SESSION_ENDED });
+  }, []);
 
   useEffect(() => {
     let current = true;
@@ -75,7 +80,7 @@ export function App() {
             </button>
           </header>
           <main className="page">
-            <p>Logged in. The inbox is the next screen to build.</p>
+            <Inbox onUnauthenticated={sessionEnded} />
           </main>
         </>
       );

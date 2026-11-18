@@ -111,12 +111,16 @@ def test_every_eval_file_loads() -> None:
 
 def test_every_demo_case_loads_and_can_be_drafted() -> None:
     """The demo set ships in the package: split demo, no world (the CLI applies none),
-    and every drafted case's gold dates resolve to one stay for the requests row."""
+    and every drafted case's gold dates resolve to one stay for the requests row. Two
+    escalate (owner's UI, week 7: reason codes and a summary to show)."""
     cases = demo_cases()
-    assert len(cases) == 6
+    assert len(cases) == 8
+    assert sorted(c.id for c in cases if c.labels.route == "escalate") == [
+        "demo-complaint-noise", "demo-group-christening-el",
+    ]  # fmt: skip
     for case in cases:
         assert (case.split, case.world.bookings) == ("demo", []), case.id
-        if case.labels.route != "set_aside":  # the demo answers with these labels
+        if case.labels.route not in ("set_aside", "escalate"):  # answered from these labels
             gold = case.gold_output()
             assert gold is not None and gold.adults is not None, case.id
 

@@ -1,0 +1,34 @@
+schema_version: 2
+id: demo-group-christening-el
+split: demo
+
+email:
+  from: "Eleni Fictional <eleni@example.test>"
+  subject: "Δωμάτια για βάπτιση"
+  received_at: "2026-11-15T10:20:00+00:00"
+  body: |
+    Καλημέρα σας,
+
+    Κάνουμε βάπτιση στο νησί τον Ιούνιο και χρειαζόμαστε 4 δίκλινα για
+    8 ενήλικες, από 11 έως 14 Ιουνίου 2027. Μπορείτε να μας κάνετε
+    κάποια έκπτωση για τόσα δωμάτια;
+
+    Ελένη
+
+# GROUP by code (4 rooms); the summary adds DISCOUNT (D81). An escalation in the demo
+# inbox, so the owner's UI shows reason codes and a summary written by the model.
+labels:
+  language: el
+  script: greek
+  kind: request
+  extraction:
+    date_spec:
+      kind: exact
+      check_in: {day: 11, month: 6, year: 2027}
+      check_out: {day: 14, month: 6, year: 2027}
+    adults: 8
+    children: 0
+    rooms: 4
+    room_type: null
+  route: escalate
+  reason_codes: [GROUP, DISCOUNT]

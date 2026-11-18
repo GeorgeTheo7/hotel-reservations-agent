@@ -1,0 +1,26 @@
+schema_version: 2
+id: demo-complaint-noise
+split: demo
+
+email:
+  from: "Mark Fictional <mark@example.test>"
+  subject: "Noise during our stay"
+  received_at: "2026-11-16T07:45:00+00:00"
+  body: |
+    Hello,
+
+    We stayed with you in October. Building work next door started at seven
+    every morning and nobody had told us about it when we booked. It spoiled
+    our holiday and we would like to hear what you have to say.
+
+    Mark
+
+# An "other" email with no legal threat: code does not escalate it, so the agent
+# (escalate only, D11) chooses COMPLAINT.
+labels:
+  language: en
+  script: latin
+  kind: other
+  extraction: null
+  route: escalate
+  reason_codes: [COMPLAINT]
