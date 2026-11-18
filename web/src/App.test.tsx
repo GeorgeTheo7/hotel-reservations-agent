@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 
 import { App, COOKIE_NOT_KEPT, SESSION_ENDED } from "./App";
 import { answer, fakeFetch } from "./test/fetch";
+import detailGroup from "./test/fixtures/detailGroup";
 import inbox from "./test/fixtures/inbox";
+import inboxSetAside from "./test/fixtures/inboxSetAside";
 
 const UNAUTHENTICATED = answer(401, { error: "unauthenticated" });
 const OWNER = answer(200, { owner: true });
@@ -74,6 +76,40 @@ describe("App", () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Log out" }));
     expect(await screen.findByLabelText("Owner password")).toBeInTheDocument();
+  });
+
+  it("a subject opens the email; Back to the inbox keeps the filter", async () => {
+    const sent = fakeFetch(OWNER, answer(200, inboxSetAside), answer(200, detailGroup), answer(200, inboxSetAside));
+    window.history.replaceState(null, "", "/?status=set_aside");
+    render(<App />);
+    const user = userEvent.setup();
+    const spam = inboxSetAside.items[0];
+    await user.click(await screen.findByRole("link", { name: spam?.subject ?? "" }));
+    expect(window.location.pathname).toBe(`/emails/${String(spam?.id)}`);
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(detailGroup.subject);
+    window.history.back();
+    expect(await screen.findByLabelText("Show")).toHaveValue("set_aside");
+    expect(sent.map((s) => s.url)).toEqual([
+      "/api/session",
+      "/api/emails?limit=50&status=set_aside",
+      `/api/emails/${String(spam?.id)}`,
+      "/api/emails?limit=50&status=set_aside",
+    ]);
+  });
+
+  it("an email can be opened straight from its URL", async () => {
+    fakeFetch(OWNER, answer(200, detailGroup));
+    window.history.replaceState(null, "", `/emails/${String(detailGroup.id)}`);
+    render(<App />);
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(detailGroup.subject);
+  });
+
+  it("an unknown path says so, with a way back", async () => {
+    fakeFetch(OWNER);
+    window.history.replaceState(null, "", "/nowhere");
+    render(<App />);
+    expect(await screen.findByText(/There is no such page/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to the inbox" })).toHaveAttribute("href", "/");
   });
 
   it("says when the API does not answer", async () => {

@@ -198,3 +198,61 @@ select {
 .badge.overdue {
   background: var(--notice-bg);
 }
+
+a {
+  color: var(--accent);
+}
+
+.bar nav {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+}
+
+.detail h1 {
+  margin: 0.25rem 0;
+  font-size: 1.4rem;
+  overflow-wrap: anywhere;
+}
+
+.detail h2 {
+  font-size: 1.1rem;
+  margin-top: 1.5rem;
+}
+
+.text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  margin: 0.5rem 0;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.summary {
+  border-left: 4px solid var(--error);
+  background: var(--surface);
+  padding: 0.5rem 1rem;
+  margin: 1rem 0;
+}
+
+.summary-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.offer {
+  margin: 0.5rem 0 1rem;
+}
+
+.history ol {
+  padding-left: 1.25rem;
+}

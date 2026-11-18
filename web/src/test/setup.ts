@@ -7,4 +7,5 @@ import { afterEach } from "vitest";
 
 afterEach(() => {
   cleanup();
+  window.history.replaceState(null, "", "/"); // every test starts on the inbox
 });

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { ApiError } from "./api";
 import { PAGE_SIZE, STATUS_LABEL, fetchInbox, hotelTime } from "./emails";
+import { Link, navigate, useLocation } from "./router";
 import { EMAIL_STATUSES, type EmailStatus, type EmailSummary } from "./types";
 
 interface Props {
@@ -9,9 +10,15 @@ interface Props {
   pageSize?: number;
 }
 
-/** The inbox with its status filter; changing the filter starts a fresh list. */
+function isStatus(value: string | null): value is EmailStatus {
+  return (EMAIL_STATUSES as readonly (string | null)[]).includes(value);
+}
+
+/** The inbox with its status filter, kept in the URL (?status=) so Back from an
+ * email returns to the same filter; changing it starts a fresh list. */
 export function Inbox({ onUnauthenticated, pageSize = PAGE_SIZE }: Props) {
-  const [status, setStatus] = useState<EmailStatus | null>(null);
+  const requested = useLocation().searchParams.get("status");
+  const status = isStatus(requested) ? requested : null;
   return (
     <section>
       <div className="toolbar">
@@ -22,7 +29,7 @@ export function Inbox({ onUnauthenticated, pageSize = PAGE_SIZE }: Props) {
             value={status ?? ""}
             onChange={(event) => {
               const value = event.target.value;
-              setStatus(value === "" ? null : (value as EmailStatus));
+              navigate(value === "" ? "/" : `/?status=${value}`, { replace: true });
             }}
           >
             <option value="">All but set aside</option>
@@ -142,7 +149,9 @@ function EmailRow({ email }: { email: EmailSummary }) {
   return (
     <li className="email">
       <div className="email-main">
-        <span className="subject">{email.subject}</span>
+        <Link to={`/emails/${String(email.id)}`} className="subject">
+          {email.subject}
+        </Link>
         <span className="muted">{email.from_address}</span>
       </div>
       <div className="email-meta">

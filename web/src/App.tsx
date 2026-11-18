@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { EmailDetail } from "./EmailDetail";
 import { Inbox } from "./Inbox";
 import { Login } from "./Login";
+import { Link, useLocation } from "./router";
 import { logOut, sessionIsLive } from "./session";
 
 type View =
@@ -74,15 +76,35 @@ export function App() {
       return (
         <>
           <header className="bar">
-            <strong>Hotel Anemos</strong>
+            <nav>
+              <strong>Hotel Anemos</strong> <Link to="/">Inbox</Link>
+            </nav>
             <button type="button" onClick={() => void leave()}>
               Log out
             </button>
           </header>
           <main className="page">
-            <Inbox onUnauthenticated={sessionEnded} />
+            <Screen onUnauthenticated={sessionEnded} />
           </main>
         </>
       );
   }
+}
+
+const EMAIL_PATH = /^\/emails\/(\d+)$/;
+
+/** The owner's screens by path: / (inbox, ?status= filter), /emails/<id>. */
+function Screen({ onUnauthenticated }: { onUnauthenticated: () => void }) {
+  const { pathname } = useLocation();
+  if (pathname === "/") return <Inbox onUnauthenticated={onUnauthenticated} />;
+  const email = EMAIL_PATH.exec(pathname);
+  if (email?.[1] !== undefined) {
+    const id = Number(email[1]);
+    return <EmailDetail key={id} id={id} onUnauthenticated={onUnauthenticated} />;
+  }
+  return (
+    <p>
+      There is no such page. <Link to="/">Back to the inbox</Link>
+    </p>
+  );
 }
