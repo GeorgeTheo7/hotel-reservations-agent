@@ -67,7 +67,7 @@ def test_an_email_from_arrival_to_the_sent_reply(
                               (email_id,)).fetchone()  # type: ignore[misc]  # fmt: skip
     conn.commit()
     with TestClient(create_app(committed_db.connect, clock)) as api:
-        approved = api.post(f"/drafts/{draft_id}/approve", json={"version": 1})
+        approved = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert approved.status_code == 200
     assert statuses(committed_db, email_id) == ("answered", "approved", ["hold"])
     assert not thread_snapshot(committed_db.connect, email_id).interrupts  # resumed, ended

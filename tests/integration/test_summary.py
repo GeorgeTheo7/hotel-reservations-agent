@@ -85,7 +85,7 @@ def test_a_code_escalation_gets_a_summary_and_its_second_code(
     with TestClient(
         create_app(committed_db.connect, FixedClock(CASES["el-group-wedding"].email.received_at))
     ) as api:
-        detail = api.get(f"/emails/{email_id}").json()
+        detail = api.get(f"/api/emails/{email_id}").json()
     assert detail["escalation_summary"] == "Gold summary of el-group-wedding."
 
 

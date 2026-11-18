@@ -113,7 +113,7 @@ def test_edit_adds_an_owner_version(committed_db: CommittedDb, client: Client) -
     _, draft_id = drafted(committed_db)
     friendlier = latest_body(committed_db, draft_id).replace("Dear", "Hello")
     response = client().post(
-        f"/drafts/{draft_id}/versions", json={"body": friendlier, "base_version": 1}
+        f"/api/drafts/{draft_id}/versions", json={"body": friendlier, "base_version": 1}
     )
     assert (response.status_code, response.json()) == (
         201, {"version": 2, "price_warning": None, "warnings": []})  # fmt: skip
@@ -130,7 +130,7 @@ def test_edit_that_changes_a_price_is_stored_with_a_warning(
     _, draft_id = drafted(committed_db)
     cheaper = latest_body(committed_db, draft_id).replace("€390.00", "€350.00")
     response = client().post(
-        f"/drafts/{draft_id}/versions", json={"body": cheaper, "base_version": 1}
+        f"/api/drafts/{draft_id}/versions", json={"body": cheaper, "base_version": 1}
     )
     assert response.status_code == 201
     assert response.json()["price_warning"].startswith("edited-price warning")
@@ -147,7 +147,7 @@ def test_bad_edit_requests_are_422_and_write_nothing(
 ) -> None:
     _, draft_id = drafted(committed_db)
     before = snapshot(committed_db)
-    assert client().post(f"/drafts/{draft_id}/versions", json=payload).status_code == 422
+    assert client().post(f"/api/drafts/{draft_id}/versions", json=payload).status_code == 422
     assert snapshot(committed_db) == before
 
 
@@ -156,11 +156,13 @@ def test_stale_edit_is_409_and_only_audited(committed_db: CommittedDb, client: C
     email_id, draft_id = drafted(committed_db)
     api = client()
     assert api.post(
-        f"/drafts/{draft_id}/versions", json={"body": "Laptop.", "base_version": 1}
+        f"/api/drafts/{draft_id}/versions", json={"body": "Laptop.", "base_version": 1}
     ).status_code == 201  # fmt: skip
     before, audits = snapshot(committed_db), len(audit_rows(committed_db))
 
-    response = api.post(f"/drafts/{draft_id}/versions", json={"body": "Phone.", "base_version": 1})
+    response = api.post(
+        f"/api/drafts/{draft_id}/versions", json={"body": "Phone.", "base_version": 1}
+    )
     assert (response.status_code, response.json()) == (
         409, {"error": "stale_version", "latest": 2},
     )  # fmt: skip
@@ -175,7 +177,7 @@ def test_edit_after_72_hours_is_409_expired_and_the_flip_is_kept(
 ) -> None:
     _, draft_id = drafted(committed_db)
     response = client(PAST_72H).post(
-        f"/drafts/{draft_id}/versions", json={"body": "Too late.", "base_version": 1}
+        f"/api/drafts/{draft_id}/versions", json={"body": "Too late.", "base_version": 1}
     )
     assert (response.status_code, response.json()) == (
         409, {"error": "expired", "draft_id": draft_id},
@@ -196,7 +198,7 @@ def test_edit_after_72_hours_is_409_expired_and_the_flip_is_kept(
 
 def test_approve_holds_and_queues_the_reply(committed_db: CommittedDb, client: Client) -> None:
     _, draft_id = drafted(committed_db)
-    response = client().post(f"/drafts/{draft_id}/approve", json={"version": 1})
+    response = client().post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert response.status_code == 200
     body = response.json()
     [(outbox_id,)] = read(committed_db, "SELECT id FROM outbox WHERE draft_id = %s", draft_id)
@@ -215,10 +217,10 @@ def test_double_approve_is_409_and_only_audited(committed_db: CommittedDb, clien
     draft.action_refused row in its own transaction."""
     email_id, draft_id = drafted(committed_db)
     api = client()
-    assert api.post(f"/drafts/{draft_id}/approve", json={"version": 1}).status_code == 200
+    assert api.post(f"/api/drafts/{draft_id}/approve", json={"version": 1}).status_code == 200
     before, audits = snapshot(committed_db), len(audit_rows(committed_db))
 
-    response = api.post(f"/drafts/{draft_id}/approve", json={"version": 1})
+    response = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert (response.status_code, response.json()) == (
         409, {"error": "transition_refused", "current": "approved", "wanted": "approved"},
     )  # fmt: skip
@@ -234,10 +236,10 @@ def test_stale_approve_is_409_and_only_audited(committed_db: CommittedDb, client
     email_id, draft_id = drafted(committed_db)
     api = client()
     friendlier = latest_body(committed_db, draft_id).replace("Dear", "Hello")
-    api.post(f"/drafts/{draft_id}/versions", json={"body": friendlier, "base_version": 1})
+    api.post(f"/api/drafts/{draft_id}/versions", json={"body": friendlier, "base_version": 1})
     before, audits = snapshot(committed_db), len(audit_rows(committed_db))
 
-    response = api.post(f"/drafts/{draft_id}/approve", json={"version": 1})
+    response = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert (response.status_code, response.json()) == (
         409, {"error": "stale_version", "latest": 2},
     )  # fmt: skip
@@ -254,14 +256,14 @@ def test_price_warning_is_422_audited_then_confirmed(
     api = client()
     cheaper = latest_body(committed_db, draft_id).replace("€390.00", "€350.00")
     warning = api.post(
-        f"/drafts/{draft_id}/versions", json={"body": cheaper, "base_version": 1}
+        f"/api/drafts/{draft_id}/versions", json={"body": cheaper, "base_version": 1}
     ).json()["price_warning"]
     [(quote_id,)] = read(
         committed_db, "SELECT quote_id FROM draft_offers WHERE draft_id = %s", draft_id
     )
     before, audits = snapshot(committed_db), len(audit_rows(committed_db))
 
-    response = api.post(f"/drafts/{draft_id}/approve", json={"version": 2})
+    response = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 2})
     assert (response.status_code, response.json()) == (
         422,
         {"error": "price_warning", "message": warning,
@@ -274,7 +276,7 @@ def test_price_warning_is_422_audited_then_confirmed(
     ]  # fmt: skip
 
     confirmed = api.post(
-        f"/drafts/{draft_id}/approve", json={"version": 2, "confirm_warnings": True}
+        f"/api/drafts/{draft_id}/approve", json={"version": 2, "confirm_warnings": True}
     )
     assert confirmed.status_code == 200
     [(body,)] = read(committed_db, "SELECT body FROM outbox WHERE draft_id = %s", draft_id)
@@ -291,7 +293,7 @@ def test_invalidated_is_409_with_reasons_and_kept(
         rows.booking(room_id=room, stay=JUNE)
     conn.commit()
 
-    response = client().post(f"/drafts/{draft_id}/approve", json={"version": 1})
+    response = client().post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert response.status_code == 409
     body = response.json()
     assert body["error"] == "invalidated"
@@ -309,7 +311,7 @@ def test_approve_after_72_hours_is_409_expired_and_kept(
     committed_db: CommittedDb, client: Client
 ) -> None:
     _, draft_id = drafted(committed_db)
-    response = client(PAST_72H).post(f"/drafts/{draft_id}/approve", json={"version": 1})
+    response = client(PAST_72H).post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert (response.status_code, response.json()) == (
         409, {"error": "expired", "draft_id": draft_id},
     )  # fmt: skip
@@ -325,7 +327,7 @@ def test_bad_approve_requests_are_422(
 ) -> None:
     _, draft_id = drafted(committed_db)
     before = snapshot(committed_db)
-    assert client().post(f"/drafts/{draft_id}/approve", json=payload).status_code == 422
+    assert client().post(f"/api/drafts/{draft_id}/approve", json=payload).status_code == 422
     assert snapshot(committed_db) == before
 
 
@@ -348,7 +350,7 @@ def test_a_bug_after_a_write_rolls_everything_back(
 
     api = TestClient(create_app(committed_db.connect, FixedClock(NOW)),
                      raise_server_exceptions=False)  # fmt: skip
-    response = api.post(f"/drafts/{draft_id}/approve", json={"version": 1})
+    response = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert (response.status_code, response.json()) == (500, {"error": "internal"})
     assert snapshot(committed_db) == before  # the stale hold is still a hold
 
@@ -359,18 +361,18 @@ def test_a_bug_after_a_write_rolls_everything_back(
 def test_reject_then_reject_again(committed_db: CommittedDb, client: Client) -> None:
     email_id, draft_id = drafted(committed_db)
     api = client()
-    response = api.post(f"/drafts/{draft_id}/reject")
+    response = api.post(f"/api/drafts/{draft_id}/reject")
     assert (response.status_code, response.json()) == (
         200, {"draft_id": draft_id, "status": "rejected"},
     )  # fmt: skip
     assert read(committed_db, "SELECT status FROM emails WHERE id = %s", email_id) == [("closed",)]
-    again = api.post(f"/drafts/{draft_id}/reject")
+    again = api.post(f"/api/drafts/{draft_id}/reject")
     assert (again.status_code, again.json()["current"]) == (409, "rejected")
 
 
 def test_reject_after_72_hours_is_409_expired(committed_db: CommittedDb, client: Client) -> None:
     _, draft_id = drafted(committed_db)
-    response = client(PAST_72H).post(f"/drafts/{draft_id}/reject")
+    response = client(PAST_72H).post(f"/api/drafts/{draft_id}/reject")
     assert (response.status_code, response.json()["error"]) == (409, "expired")
 
 
@@ -386,7 +388,7 @@ def email(committed_db: CommittedDb, status: str, reasons: list[str] | None = No
 
 def test_close_an_escalated_email(committed_db: CommittedDb, client: Client) -> None:
     email_id = email(committed_db, "escalated", ["COMPLAINT"])
-    response = client().post(f"/emails/{email_id}/close")
+    response = client().post(f"/api/emails/{email_id}/close")
     assert (response.status_code, response.json()) == (
         200, {"email_id": email_id, "status": "closed"},
     )  # fmt: skip
@@ -395,7 +397,7 @@ def test_close_an_escalated_email(committed_db: CommittedDb, client: Client) -> 
 
 def test_reopen_a_set_aside_email(committed_db: CommittedDb, client: Client) -> None:
     email_id = email(committed_db, "set_aside")
-    response = client().post(f"/emails/{email_id}/reopen")
+    response = client().post(f"/api/emails/{email_id}/reopen")
     assert (response.status_code, response.json()) == (
         200, {"email_id": email_id, "status": "escalated"},
     )  # fmt: skip
@@ -413,7 +415,7 @@ def test_refused_email_actions_are_409_and_only_audited(
 ) -> None:
     email_id = email(committed_db, status, ["COMPLAINT"] if status == "escalated" else None)
     before, audits = snapshot(committed_db), len(audit_rows(committed_db))
-    response = client().post(f"/emails/{email_id}/{action}")
+    response = client().post(f"/api/emails/{email_id}/{action}")
     assert (response.status_code, response.json()) == (
         409, {"error": "transition_refused", "current": status, "wanted": wanted},
     )  # fmt: skip
@@ -425,7 +427,7 @@ def test_refused_email_actions_are_409_and_only_audited(
 
 @pytest.mark.parametrize(
     "path",
-    ["/drafts/999999/reject", "/emails/999999/close", "/emails/999999/reopen"],
+    ["/api/drafts/999999/reject", "/api/emails/999999/close", "/api/emails/999999/reopen"],
 )
 def test_unknown_ids_are_404_and_write_nothing(
     committed_db: CommittedDb, client: Client, path: str
@@ -438,8 +440,8 @@ def test_unknown_ids_are_404_and_write_nothing(
 
 @pytest.mark.parametrize(
     ("path", "payload"),
-    [("/drafts/999999/versions", {"body": "Hi.", "base_version": 1}),
-     ("/drafts/999999/approve", {"version": 1})],
+    [("/api/drafts/999999/versions", {"body": "Hi.", "base_version": 1}),
+     ("/api/drafts/999999/approve", {"version": 1})],
 )  # fmt: skip
 def test_unknown_drafts_are_404_for_edit_and_approve(
     committed_db: CommittedDb, client: Client, path: str, payload: dict[str, Any]

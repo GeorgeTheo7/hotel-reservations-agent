@@ -58,7 +58,7 @@ def drafted(committed_db: CommittedDb, language: str = "en") -> tuple[int, int, 
 
 
 def edit(api: TestClient, draft_id: int, body: str) -> dict[str, Any]:
-    response = api.post(f"/drafts/{draft_id}/versions", json={"body": body, "base_version": 1})
+    response = api.post(f"/api/drafts/{draft_id}/versions", json={"body": body, "base_version": 1})
     assert response.status_code == 201
     result: dict[str, Any] = response.json()
     return result
@@ -82,7 +82,7 @@ def test_api_a_guardrail_warning_is_422_audited_then_confirmed(
     edited = edit(api, draft_id, v1.replace("Dear guest,", "Dear guest, your room is guaranteed."))
     assert edited["price_warning"] is None
     assert edited["warnings"] == ["forbidden phrases: ['guaranteed']"]
-    refused = api.post(f"/drafts/{draft_id}/approve", json={"version": 2})
+    refused = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 2})
     assert (refused.status_code, refused.json()) == (422, {
         "error": "guardrail_warning",
         "warnings": [{"check": "g5_no_forbidden_phrases",
@@ -93,7 +93,7 @@ def test_api_a_guardrail_warning_is_422_audited_then_confirmed(
         "action": "approve", "version": 2, "check": "g5_no_forbidden_phrases",
         "message": "forbidden phrases: ['guaranteed']",
     })]  # fmt: skip
-    confirmed = api.post(f"/drafts/{draft_id}/approve",
+    confirmed = api.post(f"/api/drafts/{draft_id}/approve",
                          json={"version": 2, "confirm_warnings": True})  # fmt: skip
     assert confirmed.status_code == 200
 
@@ -105,7 +105,7 @@ def test_api_a_changed_price_and_a_guardrail_warning_come_in_one_422(
     both = v1.replace("€390.00", "€350.00").replace("Dear guest,", "Dear guest, guaranteed:")
     edited = edit(api, draft_id, both)
     assert edited["price_warning"] is not None and edited["warnings"] != []
-    refused = api.post(f"/drafts/{draft_id}/approve", json={"version": 2})
+    refused = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 2})
     assert refused.status_code == 422
     body = refused.json()
     assert body["error"] == "guardrail_warning"
@@ -113,7 +113,7 @@ def test_api_a_changed_price_and_a_guardrail_warning_come_in_one_422(
     assert [event for event, _ in shown(committed_db, email_id)] == [
         "draft.price_warning_shown", "draft.guardrail_warning_shown",
     ]  # fmt: skip
-    confirmed = api.post(f"/drafts/{draft_id}/approve",
+    confirmed = api.post(f"/api/drafts/{draft_id}/approve",
                          json={"version": 2, "confirm_warnings": True})  # fmt: skip
     assert confirmed.status_code == 200
     conn = committed_db.connect()

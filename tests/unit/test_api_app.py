@@ -59,6 +59,24 @@ def test_every_route_requires_the_owner() -> None:
     assert answers == dict.fromkeys(calls, 401)
 
 
+# --- D83: one origin, the API under /api -------------------------------------------------
+
+
+def test_every_route_is_under_the_api_prefix() -> None:
+    """The built UI will be served at / (D83); an API route outside /api would collide
+    with the UI's own paths."""
+    paths = list(app().openapi()["paths"])
+    assert len(paths) >= 3, paths
+    assert [p for p in paths if not p.startswith("/api/")] == []
+
+
+def test_the_old_unprefixed_paths_are_gone() -> None:
+    """Answered by the router itself (no route matches), before any connection."""
+    client = TestClient(app(), raise_server_exceptions=False)
+    assert client.get("/emails").status_code == 404
+    assert client.get("/holds").status_code == 404
+
+
 # --- error handlers --------------------------------------------------------------------
 
 

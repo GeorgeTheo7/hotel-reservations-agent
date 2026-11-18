@@ -20,13 +20,17 @@ from anemos.states import ActionRefused, Entity, NotFound
 
 log = logging.getLogger("anemos.api")
 
+# D83: every API route lives under /api, so the built UI can be served from the same
+# origin at / and a path under /api never falls back to the UI.
+API_PREFIX = "/api"
+
 
 def create_app(connect: Connect, clock: Clock) -> FastAPI:
     app = FastAPI(title="Hotel Anemos owner API")
     app.state.connect = connect
     app.state.clock = clock
-    app.include_router(reads.router)
-    app.include_router(actions.router)
+    app.include_router(reads.router, prefix=API_PREFIX)
+    app.include_router(actions.router, prefix=API_PREFIX)
     app.add_exception_handler(ActionRefused, _refused)
     app.add_exception_handler(NotFound, _not_found)
     app.add_exception_handler(Exception, _internal_error)

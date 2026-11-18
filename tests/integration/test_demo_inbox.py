@@ -32,12 +32,12 @@ def test_fills_an_inbox_and_a_second_run_stores_nothing(committed_db: CommittedD
     assert all("skipped" not in line for line in report)
 
     with TestClient(create_app(committed_db.connect, FixedClock(AT))) as api:
-        inbox = api.get("/emails").json()["items"]
+        inbox = api.get("/api/emails").json()["items"]
         routes = {
-            item["subject"]: api.get(f"/emails/{item['id']}").json()["draft"]["route"]
+            item["subject"]: api.get(f"/api/emails/{item['id']}").json()["draft"]["route"]
             for item in inbox
         }
-        set_aside = api.get("/emails", params={"status": "set_aside"}).json()["items"]
+        set_aside = api.get("/api/emails", params={"status": "set_aside"}).json()["items"]
     # Each drafted case gets the route its label names (through the agent).
     labelled = {
         c.email.subject: c.labels.route for c in demo_cases() if c.labels.route != "set_aside"

@@ -63,7 +63,7 @@ def test_inbox_is_newest_first_and_hides_set_aside(api: TestClient, rows: Rows) 
     new = email_in(rows, EmailStatus.ESCALATED, minutes=2)
     email_in(rows, EmailStatus.SET_ASIDE, minutes=3)
     commit(rows)
-    page = api.get("/emails").json()
+    page = api.get("/api/emails").json()
     assert ids(page) == [new, old]
     assert page["next_cursor"] is None
     assert page["items"][0] | {"received_at": None} == {
@@ -80,7 +80,7 @@ def test_status_filter_returns_only_that_status(
     """One email in every status; the filter finds exactly its own, set_aside too (D50)."""
     by_status = {s: email_in(rows, s, minutes=i) for i, s in enumerate(EmailStatus)}
     commit(rows)
-    response = api.get("/emails", params={"status": status.value})
+    response = api.get("/api/emails", params={"status": status.value})
     assert response.status_code == 200
     assert ids(response.json()) == [by_status[status]]
 
@@ -89,7 +89,7 @@ def test_inbox_shows_the_draft(api: TestClient, rows: Rows) -> None:
     email_id = email_in(rows, EmailStatus.AWAITING_APPROVAL)
     draft_id = rows.draft(email_id, None, route="policy")
     commit(rows)
-    [item] = api.get("/emails").json()["items"]
+    [item] = api.get("/api/emails").json()["items"]
     assert (item["draft_id"], item["draft_status"]) == (draft_id, "pending_approval")
 
 
@@ -106,7 +106,7 @@ def test_inbox_shows_the_draft(api: TestClient, rows: Rows) -> None:
     ids=["unknown-status", "limit-0", "limit-201", "garbage", "naive-time", "text-id"],
 )
 def test_bad_inbox_parameters_are_422(api: TestClient, params: dict[str, Any]) -> None:
-    assert api.get("/emails", params=params).status_code == 422
+    assert api.get("/api/emails", params=params).status_code == 422
 
 
 def test_pages_have_no_duplicates_or_gaps_when_an_email_arrives(
@@ -116,14 +116,14 @@ def test_pages_have_no_duplicates_or_gaps_when_an_email_arrives(
     anything into or out of pages 2 and 3; it is on top of a fresh first page."""
     five = [email_in(rows, EmailStatus.RECEIVED, minutes=i) for i in range(5)]
     commit(rows)
-    first = api.get("/emails", params={"limit": 2}).json()
+    first = api.get("/api/emails", params={"limit": 2}).json()
     newest = email_in(rows, EmailStatus.RECEIVED, minutes=10)
     commit(rows)
-    second = api.get("/emails", params={"limit": 2, "cursor": first["next_cursor"]}).json()
-    third = api.get("/emails", params={"limit": 2, "cursor": second["next_cursor"]}).json()
+    second = api.get("/api/emails", params={"limit": 2, "cursor": first["next_cursor"]}).json()
+    third = api.get("/api/emails", params={"limit": 2, "cursor": second["next_cursor"]}).json()
     assert ids(first) + ids(second) + ids(third) == five[::-1]
     assert third["next_cursor"] is None
-    assert ids(api.get("/emails", params={"limit": 2}).json())[0] == newest
+    assert ids(api.get("/api/emails", params={"limit": 2}).json())[0] == newest
 
 
 def test_same_received_at_is_ordered_by_id_across_pages(api: TestClient, rows: Rows) -> None:
@@ -131,8 +131,8 @@ def test_same_received_at_is_ordered_by_id_across_pages(api: TestClient, rows: R
     the same second neither repeats nor skips one."""
     same = [email_in(rows, EmailStatus.RECEIVED) for _ in range(3)]
     commit(rows)
-    first = api.get("/emails", params={"limit": 2}).json()
-    second = api.get("/emails", params={"limit": 2, "cursor": first["next_cursor"]}).json()
+    first = api.get("/api/emails", params={"limit": 2}).json()
+    second = api.get("/api/emails", params={"limit": 2, "cursor": first["next_cursor"]}).json()
     assert ids(first) + ids(second) == same[::-1]
 
 
@@ -140,7 +140,7 @@ def test_a_full_last_page_has_no_cursor(api: TestClient, rows: Rows) -> None:
     for i in range(2):
         email_in(rows, EmailStatus.RECEIVED, minutes=i)
     commit(rows)
-    assert api.get("/emails", params={"limit": 2}).json()["next_cursor"] is None
+    assert api.get("/api/emails", params={"limit": 2}).json()["next_cursor"] is None
 
 
 @pytest.mark.parametrize(
@@ -189,7 +189,7 @@ def test_email_detail_returns_what_the_database_holds(api: TestClient, rows: Row
     rows.offer(draft_id, request_id, quote_id, hold=True)
     commit(rows)
 
-    body = api.get(f"/emails/{email_id}").json()
+    body = api.get(f"/api/emails/{email_id}").json()
     assert body["status"] == "awaiting_approval"
     assert body["outbox"] is None
     draft = body["draft"]
@@ -216,7 +216,7 @@ def test_email_detail_with_its_outbox_row(api: TestClient, rows: Rows) -> None:
     found = email_id.fetchone()
     assert found is not None
     commit(rows)
-    body = api.get(f"/emails/{found[0]}").json()
+    body = api.get(f"/api/emails/{found[0]}").json()
     assert body["draft"]["status"] == "approved"
     assert body["outbox"] == {
         "id": outbox_id, "status": "pending", "attempts": 0, "last_error": None,
@@ -227,14 +227,14 @@ def test_email_detail_with_its_outbox_row(api: TestClient, rows: Rows) -> None:
 def test_email_without_a_draft(api: TestClient, rows: Rows) -> None:
     email_id = email_in(rows, EmailStatus.RECEIVED)
     commit(rows)
-    body = api.get(f"/emails/{email_id}").json()
+    body = api.get(f"/api/emails/{email_id}").json()
     assert (body["draft"], body["outbox"], body["clean_body"]) == (
         None, None, "Hello, do you have a room?",
     )  # fmt: skip
 
 
 def test_unknown_email_is_404(api: TestClient) -> None:
-    response = api.get("/emails/999999")
+    response = api.get("/api/emails/999999")
     assert (response.status_code, response.json()) == (404, {"error": "not_found"})
 
 
@@ -260,7 +260,7 @@ def test_holds_page_lists_holds_and_confirmed(api: TestClient, rows: Rows) -> No
                  expires_at=T0, **link)  # fmt: skip
     commit(rows)
 
-    holds = api.get("/holds").json()
+    holds = api.get("/api/holds").json()
     assert [(b["id"], b["past_expiry"]) for b in holds] == [
         (early, False), (stale, True), (late, False),
     ]  # fmt: skip
@@ -282,7 +282,7 @@ def test_exactly_at_expiry_is_not_past_expiry(api: TestClient, rows: Rows) -> No
     rows.booking(status="hold", expires_at=NOW, email_id=email_id, request_id=request_id,
                  draft_id=draft_id)  # fmt: skip
     commit(rows)
-    [hold] = api.get("/holds").json()
+    [hold] = api.get("/api/holds").json()
     assert hold["past_expiry"] is False
 
 
@@ -295,9 +295,9 @@ def test_holds_page_filter(api: TestClient, rows: Rows, status: str) -> None:
     confirmed = rows.booking(room_id=r2, status="confirmed")
     commit(rows)
     expected = {"hold": held, "confirmed": confirmed}[status]
-    assert [b["id"] for b in api.get("/holds", params={"status": status}).json()] == [expected]
+    assert [b["id"] for b in api.get("/api/holds", params={"status": status}).json()] == [expected]
 
 
 @pytest.mark.parametrize("status", ["cancelled", "expired", "nonsense"])
 def test_holds_page_filter_only_takes_page_statuses(api: TestClient, status: str) -> None:
-    assert api.get("/holds", params={"status": status}).status_code == 422
+    assert api.get("/api/holds", params={"status": status}).status_code == 422

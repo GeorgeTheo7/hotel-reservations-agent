@@ -84,7 +84,7 @@ def test_each_action_moves_its_booking(
 ) -> None:
     current, wanted = ALLOWED[action]
     booking_id = booking(committed_db, current)
-    response = api.post(f"/bookings/{booking_id}/{action}")
+    response = api.post(f"/api/bookings/{booking_id}/{action}")
     assert (response.status_code, response.json()) == (
         200, {"booking_id": booking_id, "status": wanted},
     )  # fmt: skip
@@ -103,10 +103,10 @@ def test_a_hold_past_its_expiry_can_still_be_confirmed(
     """D43: until a hold is flipped, the room has been kept for this guest. The Holds
     page shows it as past expiry; confirming it is allowed."""
     booking_id = booking(committed_db, "hold", expires_in=-timedelta(minutes=1))
-    [hold] = api.get("/holds").json()
+    [hold] = api.get("/api/holds").json()
     assert (hold["id"], hold["past_expiry"], hold["status"]) == (booking_id, True, "hold")
-    assert api.post(f"/bookings/{booking_id}/confirm").status_code == 200
-    [after] = api.get("/holds").json()
+    assert api.post(f"/api/bookings/{booking_id}/confirm").status_code == 200
+    [after] = api.get("/api/holds").json()
     assert (after["status"], after["past_expiry"]) == ("confirmed", False)
 
 
@@ -129,7 +129,7 @@ def test_refused_booking_actions_are_409_and_only_audited(
     booking_id = booking(committed_db, status, expires_in=-timedelta(hours=1))
     wanted = ALLOWED[action][1]
     before = snapshot(committed_db)
-    response = api.post(f"/bookings/{booking_id}/{action}")
+    response = api.post(f"/api/bookings/{booking_id}/{action}")
     assert (response.status_code, response.json()) == (
         409, {"error": "transition_refused", "current": status, "wanted": wanted},
     )  # fmt: skip
@@ -146,7 +146,7 @@ def test_refused_booking_actions_are_409_and_only_audited(
 @pytest.mark.parametrize("action", list(ALLOWED))
 def test_unknown_booking_is_404(committed_db: CommittedDb, api: TestClient, action: str) -> None:
     before = snapshot(committed_db)
-    response = api.post(f"/bookings/999999/{action}")
+    response = api.post(f"/api/bookings/999999/{action}")
     assert (response.status_code, response.json()) == (404, {"error": "not_found"})
     assert snapshot(committed_db) == before
 

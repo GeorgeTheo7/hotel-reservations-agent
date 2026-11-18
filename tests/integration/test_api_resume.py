@@ -62,7 +62,7 @@ def audit(committed_db: CommittedDb, email_id: int, event: str) -> list[Any]:
 def test_api_approve_resumes_the_thread(committed_db: CommittedDb, tmp_path: Path) -> None:
     email_id, draft_id = drafted_by_a_run(committed_db, tmp_path)
     with TestClient(create_app(committed_db.connect, CLOCK)) as api:
-        response = api.post(f"/drafts/{draft_id}/approve", json={"version": 1})
+        response = api.post(f"/api/drafts/{draft_id}/approve", json={"version": 1})
     assert response.status_code == 200
     assert audit(committed_db, email_id, "run.finished") == [
         ("system", {"draft_status": "approved"})
@@ -82,7 +82,7 @@ def test_api_a_failed_resume_still_answers_success_and_is_audited(
     monkeypatch.setattr(actions, "resume_after_owner", broken)
     body = {"version": 1} if action == "approve" else None
     with TestClient(create_app(committed_db.connect, CLOCK)) as api:
-        response = api.post(f"/drafts/{draft_id}/{action}", json=body)
+        response = api.post(f"/api/drafts/{draft_id}/{action}", json=body)
     assert response.status_code == 200  # the owner's action stands
     expected = "approved" if action == "approve" else "rejected"
     conn = committed_db.connect()
