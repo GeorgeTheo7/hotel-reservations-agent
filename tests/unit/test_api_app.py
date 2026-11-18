@@ -16,6 +16,7 @@ from anemos.api import create_app
 from anemos.api.__main__ import HOST, main
 from anemos.api.auth import OwnerAuth
 from anemos.api.deps import require_owner
+from anemos.api.security import CLIENT_HEADER, CLIENT_VALUE
 from anemos.clock import FixedClock
 from anemos.states import NotFound
 
@@ -53,7 +54,9 @@ def test_every_route_requires_the_owner() -> None:
     include_in_schema=False must be added to `calls` by hand."""
     application = app()
     application.dependency_overrides[require_owner] = deny
-    client = TestClient(application, raise_server_exceptions=False)
+    client = TestClient(
+        application, raise_server_exceptions=False, headers={CLIENT_HEADER: CLIENT_VALUE}
+    )
     calls = [
         (method.upper(), re.sub(r"\{[^}]+\}", "1", path))
         for path, operations in application.openapi()["paths"].items()

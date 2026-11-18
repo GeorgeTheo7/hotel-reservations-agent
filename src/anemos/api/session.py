@@ -14,7 +14,9 @@ from anemos.api.auth import (
     OwnerAuth,
     create_session,
     delete_session,
+    login_locked_until,
     password_matches,
+    retry_after_seconds,
 )
 from anemos.api.deps import ClockDep, ConnDep, require_owner
 from anemos.audit import AuditEvent, write_audit
@@ -30,13 +32,19 @@ class SessionInfo(BaseModel):
     owner: Literal[True] = True
 
 
-@router.post("/session", status_code=status.HTTP_204_NO_CONTENT, responses={401: {}})
+@router.post("/session", status_code=status.HTTP_204_NO_CONTENT, responses={401: {}, 429: {}})
 def login(http: Request, conn: ConnDep, clock: ClockDep, body: LoginRequest) -> Response:
     """A right password: a new session and its cookie. A wrong one: 401, audited with
     actor `system` (nobody is known to be the owner yet). The audit never holds the
-    password, the token or its hash."""
+    password, the token or its hash. While locked (5 failures in 15 minutes): 429
+    with Retry-After, the password not even checked, nothing written."""
     auth: OwnerAuth = http.app.state.auth
     now = clock.now()
+    until = login_locked_until(conn, now)
+    if until is not None:
+        conn.rollback()
+        headers = {"Retry-After": str(retry_after_seconds(until, now))}
+        return JSONResponse({"error": "login_locked"}, status_code=429, headers=headers)
     if not password_matches(body.password, auth.password):
         write_audit(conn, now, "system", AuditEvent.OWNER_LOGIN_FAILED)
         conn.commit()

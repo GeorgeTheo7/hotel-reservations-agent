@@ -660,3 +660,10 @@ Run: `eval/results/20261117T160531Z-agent-dev-gpt-6-luna.json` (commit 260a442, 
 - **Trade-off in the test fixture:** `owner_api` creates the session directly (`create_session`) instead of calling `POST /api/session`. Found when the switched API tests failed: a login writes an `owner.login` audit row, and many tests compare the whole audit before and after an action. Every request still passes the real `require_owner` check; login, its audit and its cookie are tested in `test_api_session.py`.
 - **Tests use `https://testserver`:** a client does not send a Secure cookie over plain http.
 - **Mutations caught:** expiry inclusive of `expires_at` (2 tests), `require_owner` letting every request through (6), logout keeping the session row (1).
+
+## 2026-11-18 · CSRF guard, login lock, security headers (D82, D83)
+- **Built:** one HTTP middleware (`anemos.api.security`): any method but GET, HEAD, OPTIONS needs `X-Anemos-Client: web` and, if `Origin` is sent, our own origin, else 403 `csrf`; it runs before routing, so login and unknown paths are guarded and no connection is opened. The same middleware adds the CSP, `nosniff` and `Referrer-Policy` to every response. The login lock (`login_locked_until`) reads the `owner.login_failed` audit rows of the last 15 minutes (a failure exactly 15 minutes old no longer counts); locked: 429, `Retry-After` until the oldest of the five leaves the window, rounded up, the password not checked, nothing written.
+- **Found while writing the header test:** Starlette answers an unhandled exception outside every middleware, so a 500 had no security headers; the 500 handler now adds them itself.
+- **Accepted:** two wrong passwords sent at the same moment can both pass the lock check, so a burst may get a 6th or 7th try in; for one owner on 127.0.0.1 that is not worth a lock row.
+- **Secure cookie in a real browser:** not checked yet; done at the login screen (step 5), before more screens are built (owner).
+- **Mutations caught:** the guard skipping DELETE (9 tests), the lock counting successful logins (1), the window including its first instant (1).

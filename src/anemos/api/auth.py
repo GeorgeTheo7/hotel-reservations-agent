@@ -7,6 +7,7 @@ the row, so a copied cookie stops working too.
 
 import hashlib
 import hmac
+import math
 import os
 import secrets
 from dataclasses import dataclass
@@ -14,6 +15,8 @@ from datetime import datetime, timedelta
 
 import psycopg
 from psycopg.rows import TupleRow
+
+from anemos.audit import AuditEvent
 
 type Conn = psycopg.Connection[TupleRow]
 
@@ -23,6 +26,8 @@ SESSION_LIFETIME = timedelta(hours=12)
 MIN_PASSWORD_LENGTH = 12
 PASSWORD_ENV = "ANEMOS_OWNER_PASSWORD"
 COOKIE_SECURE_ENV = "ANEMOS_COOKIE_SECURE"
+LOCK_AFTER_FAILURES = 5
+LOCK_WINDOW = timedelta(minutes=15)
 
 
 @dataclass(frozen=True)
@@ -89,3 +94,24 @@ def session_is_live(conn: Conn, token: str | None, now: datetime) -> bool:
 
 def delete_session(conn: Conn, token: str) -> None:
     conn.execute("DELETE FROM owner_sessions WHERE token_sha256 = %s", (token_hash(token),))
+
+
+def login_locked_until(conn: Conn, now: datetime) -> datetime | None:
+    """D82's throttle: with 5 failed logins in the last 15 minutes, login is locked
+    until the oldest of those five is 15 minutes old (a failure exactly 15 minutes old
+    no longer counts). Counted from the audit, so a restart does not reset it; only
+    `owner.login_failed` counts, never a successful login or a refused (locked) one."""
+    row = conn.execute(
+        "SELECT at FROM audit_log WHERE event = %s AND at > %s"
+        " ORDER BY at DESC, id DESC LIMIT 1 OFFSET %s",
+        (AuditEvent.OWNER_LOGIN_FAILED.value, now - LOCK_WINDOW, LOCK_AFTER_FAILURES - 1),
+    ).fetchone()
+    if row is None:
+        return None
+    until: datetime = row[0] + LOCK_WINDOW
+    return until
+
+
+def retry_after_seconds(until: datetime, now: datetime) -> int:
+    """Whole seconds for the Retry-After header, rounded up, at least 1."""
+    return max(1, math.ceil((until - now).total_seconds()))

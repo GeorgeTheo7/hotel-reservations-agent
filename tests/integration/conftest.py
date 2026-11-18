@@ -37,6 +37,7 @@ from psycopg.types.json import Jsonb
 
 from anemos.api import create_app
 from anemos.api.auth import COOKIE_NAME, OwnerAuth, create_session
+from anemos.api.security import CLIENT_HEADER, CLIENT_VALUE
 from anemos.clock import Clock, FixedClock
 from anemos.db.connection import connect
 from anemos.db.migrate import upgrade
@@ -454,6 +455,7 @@ def owner_api(committed_db: CommittedDb) -> Iterator[OwnerApi]:
             create_app(committed_db.connect, clock, TEST_AUTH),
             base_url="https://testserver",
             raise_server_exceptions=raise_server_exceptions,
+            headers={CLIENT_HEADER: CLIENT_VALUE},  # the UI's header (D82 CSRF guard)
         )
         opened.append(client)
         conn = committed_db.connect()

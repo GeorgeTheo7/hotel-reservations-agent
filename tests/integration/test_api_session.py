@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from anemos.api import create_app
 from anemos.api.auth import COOKIE_NAME, OwnerAuth, token_hash
+from anemos.api.security import CLIENT_HEADER, CLIENT_VALUE
 from anemos.clock import FixedClock
 
 if TYPE_CHECKING:  # tests/ is not a package: the fixture's class is for mypy only
@@ -36,7 +37,9 @@ def make(committed_db: CommittedDb) -> Iterator[Any]:
 
     def build(at: datetime = T0, *, secure: bool = True, token: str | None = None) -> TestClient:
         app = create_app(committed_db.connect, FixedClock(at), OwnerAuth(PASSWORD, secure))
-        client = TestClient(app, base_url="https://testserver")
+        client = TestClient(
+            app, base_url="https://testserver", headers={CLIENT_HEADER: CLIENT_VALUE}
+        )
         if token is not None:
             client.cookies.set(COOKIE_NAME, token)
         opened.append(client)
@@ -175,3 +178,64 @@ def test_logout_deletes_the_session_so_a_copied_cookie_is_dead(
     assert [event for _, event, *_ in audit(committed_db)] == [
         "owner.login", "owner.login", "owner.logout",
     ]  # fmt: skip
+
+
+# --- the login lock: 5 failures within 15 minutes (D82) ---------------------------------
+
+
+def fail(make: Any, at: datetime) -> int:
+    return int(make(at).post("/api/session", json={"password": "wrong-password!"}).status_code)
+
+
+def test_the_sixth_failed_login_within_the_window_is_429(
+    committed_db: CommittedDb, make: Any
+) -> None:
+    assert [fail(make, T0 + timedelta(minutes=m)) for m in range(5)] == [401] * 5
+    client = make(T0 + timedelta(minutes=5))
+    locked = client.post("/api/session", json={"password": PASSWORD})  # even the right one
+    assert (locked.status_code, locked.json()) == (429, {"error": "login_locked"})
+    assert locked.headers["Retry-After"] == "600"  # the first failure leaves at T0 + 15 min
+    assert "set-cookie" not in locked.headers
+    assert read(committed_db, "SELECT count(*) FROM owner_sessions") == [(0,)]
+    events = [event for _, event, *_ in audit(committed_db)]
+    assert events == ["owner.login_failed"] * 5  # a locked attempt writes nothing
+
+
+@pytest.mark.parametrize(
+    ("later", "status"),
+    [(timedelta(minutes=15) - timedelta(microseconds=1), 429), (timedelta(minutes=15), 204)],
+)
+def test_login_works_again_once_the_window_has_passed(
+    make: Any, later: timedelta, status: int
+) -> None:
+    """Five failures at T0: locked until exactly T0 + 15 min, then open again."""
+    assert [fail(make, T0) for _ in range(5)] == [401] * 5
+    response = make(T0 + later).post("/api/session", json={"password": PASSWORD})
+    assert response.status_code == status
+    if status == 429:
+        assert response.headers["Retry-After"] == "1"  # rounded up, never 0
+
+
+def test_four_failures_do_not_lock(make: Any) -> None:
+    assert [fail(make, T0) for _ in range(4)] == [401] * 4
+    log_in(make(T0))
+
+
+def test_successful_logins_are_not_counted(make: Any) -> None:
+    """Five logins and four failures in the window: still open."""
+    for _ in range(5):
+        log_in(make(T0))
+    assert [fail(make, T0) for _ in range(4)] == [401] * 4
+    log_in(make(T0))
+
+
+# --- headers on a real answer ------------------------------------------------------------
+
+
+def test_security_headers_on_a_logged_in_read(make: Any) -> None:
+    client = make()
+    log_in(client)
+    response = client.get(PROTECTED)
+    assert response.status_code == 200
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+    assert response.headers["X-Content-Type-Options"] == "nosniff"

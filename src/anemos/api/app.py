@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from anemos.api import actions, reads, session
 from anemos.api.auth import OwnerAuth, auth_from_env
 from anemos.api.deps import Connect, Unauthenticated
+from anemos.api.security import SECURITY_HEADERS, guard_and_headers
 from anemos.api.transactions import record_after_rollback
 from anemos.audit import AuditEvent
 from anemos.clock import Clock, SystemClock
@@ -33,6 +34,7 @@ def create_app(connect: Connect, clock: Clock, auth: OwnerAuth) -> FastAPI:
     app.state.connect = connect
     app.state.clock = clock
     app.state.auth = auth
+    app.middleware("http")(guard_and_headers)  # D82 CSRF guard, D83 headers
     app.include_router(session.router, prefix=API_PREFIX)
     app.include_router(reads.router, prefix=API_PREFIX)
     app.include_router(actions.router, prefix=API_PREFIX)
@@ -79,6 +81,7 @@ def _not_found(request: Request, exc: Exception) -> JSONResponse:
 
 def _internal_error(request: Request, exc: Exception) -> JSONResponse:
     """Any exception no other handler took is a bug: the full traceback goes to the
-    server log, the client only learns that it failed."""
+    server log, the client only learns that it failed. Starlette answers this one
+    outside every middleware, so the security headers are added here too (D83)."""
     log.error("unhandled error in %s %s", request.method, request.url.path, exc_info=exc)
-    return JSONResponse({"error": "internal"}, status_code=500)
+    return JSONResponse({"error": "internal"}, status_code=500, headers=SECURITY_HEADERS)
