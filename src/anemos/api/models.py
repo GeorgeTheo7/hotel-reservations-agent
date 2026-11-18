@@ -23,6 +23,9 @@ class EmailSummary(BaseModel):
     reason_codes: list[str]
     draft_id: int | None
     draft_status: DraftStatus | None
+    # Pending and older than 72 h: shown, never flipped by a read; the next owner action
+    # expires it (D42, D54). False when there is no draft.
+    draft_past_expiry: bool
 
 
 class EmailPage(BaseModel):
@@ -41,6 +44,7 @@ class DraftVersion(BaseModel):
 class DraftOffer(BaseModel):
     quote_id: int
     room_type_id: str
+    room_type_name: str  # English name, for the owner's screen
     check_in: date
     check_out: date
     rooms: int
@@ -60,6 +64,7 @@ class Draft(BaseModel):
     status: DraftStatus
     created_at: datetime
     decided_at: datetime | None
+    past_expiry: bool  # pending and older than 72 h (D42, D54); never flipped by a read
     versions: list[DraftVersion]  # oldest first; the last one is the current text
     offers: list[DraftOffer]
 
@@ -94,6 +99,7 @@ class Booking(BaseModel):
     id: int
     room_id: int
     room_type_id: str
+    room_type_name: str
     check_in: date
     check_out: date
     status: BookingStatus

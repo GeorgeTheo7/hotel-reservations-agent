@@ -67,7 +67,7 @@ def test_inbox_is_newest_first_and_hides_set_aside(api: TestClient, rows: Rows) 
     assert page["items"][0] | {"received_at": None} == {
         "id": new, "from_address": "guest@example.test", "subject": "Room in July",
         "received_at": None, "status": "escalated", "reason_codes": ["MODEL"],
-        "draft_id": None, "draft_status": None,
+        "draft_id": None, "draft_status": None, "draft_past_expiry": False,
     }  # fmt: skip
 
 
@@ -89,6 +89,48 @@ def test_inbox_shows_the_draft(api: TestClient, rows: Rows) -> None:
     commit(rows)
     [item] = api.get("/api/emails").json()["items"]
     assert (item["draft_id"], item["draft_status"]) == (draft_id, "pending_approval")
+
+
+# Pending drafts created at these ages, against NOW: exactly 72 h is not yet past
+# (owner_actions._is_due, D42, D54); one microsecond more is.
+AGES = [(timedelta(hours=72), False), (timedelta(hours=72, microseconds=1), True),
+        (timedelta(hours=1), False)]  # fmt: skip
+
+
+@pytest.mark.parametrize(("age", "past"), AGES)
+def test_inbox_marks_a_draft_past_72_hours(
+    api: TestClient, rows: Rows, age: timedelta, past: bool
+) -> None:
+    email_id = email_in(rows, EmailStatus.AWAITING_APPROVAL)
+    rows.draft(email_id, None, route="policy", created_at=NOW - age)
+    commit(rows)
+    [item] = api.get("/api/emails").json()["items"]
+    assert item["draft_past_expiry"] is past
+
+
+@pytest.mark.parametrize(("age", "past"), AGES)
+def test_detail_marks_a_draft_past_72_hours_and_flips_nothing(
+    api: TestClient, rows: Rows, age: timedelta, past: bool
+) -> None:
+    email_id = email_in(rows, EmailStatus.AWAITING_APPROVAL)
+    draft_id = rows.draft(email_id, None, route="policy", created_at=NOW - age)
+    rows.version(draft_id)
+    commit(rows)
+    assert api.get(f"/api/emails/{email_id}").json()["draft"]["past_expiry"] is past
+    status = rows.db.execute("SELECT status FROM drafts WHERE id = %s", (draft_id,)).fetchone()
+    assert status == ("pending_approval",)  # a read never expires anything (D22)
+
+
+def test_only_a_pending_draft_can_be_past_72_hours(owner_api: OwnerApi, rows: Rows) -> None:
+    """Four days on, an approved draft is history, not an overdue one; a pending draft
+    of the same age is."""
+    _, _, approved = rows.approved_draft()  # created at T0
+    pending_email = email_in(rows, EmailStatus.AWAITING_APPROVAL, minutes=5)
+    pending = rows.draft(pending_email, None, route="policy", created_at=T0)
+    commit(rows)
+    items = owner_api(T0 + timedelta(days=4)).get("/api/emails").json()["items"]
+    flags = {item["draft_id"]: item["draft_past_expiry"] for item in items}
+    assert flags == {approved: False, pending: True}
 
 
 @pytest.mark.parametrize(
@@ -166,7 +208,7 @@ def test_a_second_inbox_page_seeks_in_its_index(
     conn = committed_db.connect()
     conn.execute("ANALYZE emails")
     conn.execute("SET LOCAL enable_seqscan = off")
-    query = inbox_query(status, (T0 + timedelta(minutes=4), 5), 2)
+    query = inbox_query(status, (T0 + timedelta(minutes=4), 5), 2, NOW)
     plan = [line for (line,) in conn.execute(sql.SQL("EXPLAIN {}").format(query))]
     conn.rollback()
     scan = next((i for i, line in enumerate(plan) if index in line), None)
@@ -197,7 +239,7 @@ def test_email_detail_returns_what_the_database_holds(api: TestClient, rows: Row
     assert draft["versions"][0]["guardrail_results"] == {"quote_block_once": True}
     assert draft["offers"] == [
         {
-            "quote_id": quote_id, "room_type_id": "sea_view",
+            "quote_id": quote_id, "room_type_id": "sea_view", "room_type_name": "Sea View Double",
             "check_in": "2027-07-12", "check_out": "2027-07-15", "rooms": 1,
             "hold": True, "hold_allowed": True, "changes": [],
             "accommodation_subtotal_cents": 39000, "city_tax_cents": 1200,
@@ -262,14 +304,18 @@ def test_holds_page_lists_holds_and_confirmed(api: TestClient, rows: Rows) -> No
     assert [(b["id"], b["past_expiry"]) for b in holds] == [
         (early, False), (stale, True), (late, False),
     ]  # fmt: skip
-    assert holds[1] | {"room_type_id": None} == {
-        "id": stale, "room_id": r1, "room_type_id": None,
+    assert holds[1] | {"room_type_id": None, "room_type_name": None} == {
+        "id": stale, "room_id": r1, "room_type_id": None, "room_type_name": None,
         "check_in": "2027-07-12", "check_out": "2027-07-15", "status": "hold",
         "expires_at": (NOW - timedelta(seconds=1)).isoformat().replace("+00:00", "Z"),
         "past_expiry": True, "price_cents": 39000, "email_id": email_id,
         "guest_address": "guest@example.test", "draft_id": draft_id,
     }  # fmt: skip
     assert holds[0]["guest_address"] is None  # entered without an email
+    names: dict[int, str] = dict(rows.db.execute(
+        "SELECT r.id, t.name FROM rooms r JOIN room_types t ON t.id = r.room_type_id"
+    ).fetchall())  # fmt: skip
+    assert [b["room_type_name"] for b in holds] == [names[r3], names[r1], names[r2]]
     status = rows.db.execute("SELECT status FROM bookings WHERE id = %s", (stale,)).fetchone()
     assert status == ("hold",)
 
